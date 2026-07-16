@@ -1,0 +1,7 @@
+numpy>=1.26.4
+esptool>=4.7
+pyinstaller>=6.0
+platformio>=6.1
+PyQt6>=6.5
+matplotlib>=3.9
+pyserial>=3.5

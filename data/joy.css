@@ -1,0 +1,203 @@
+
+*
+{
+	box-sizing: border-box;
+}
+body
+{
+	margin: 10px;
+	padding: 10px;
+	font-family: monospace;
+	user-select: none; 
+
+}
+.flex-center {
+	display: flex;
+	justify-content: center;
+	margin: 0; 
+	padding: 0; 
+  }
+
+#row
+{
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: flex-start;
+	justify-content: space-between;
+	width: 100%;
+	clear: both;
+}
+.columnLeft
+{
+	color: white;
+	flex: 0 0 auto;
+	width: 30%;
+	min-width: 180px;
+	max-width: 250px;
+}
+.columnMedium
+{
+	color:#696969;
+	text-align:center;
+	font-size:xx-small;
+	flex: 1;
+	min-width: 150px;
+	max-width: 350px;
+	padding: 0 15px;
+}
+.columnRight
+{
+	color: white;
+	flex: 0 0 auto;
+	width: 30%;
+	min-width: 180px;
+	max-width: 250px;
+}
+
+#joy1Div
+{
+	width:200px;
+	height:200px;
+	margin:10px
+}
+
+
+#joy2Div
+{
+	width:200px;
+	height:200px;
+	margin:10px
+}
+
+#joystick1
+{
+	border: 1px solid #DDDDDD;
+	border-radius:20px
+}
+#joystick2
+{
+	border: 1px solid #DDDDDD;
+	border-radius:20px
+}
+
+ 
+.vButton{  
+	width: 70px;
+	height: 70px;
+	line-height: 70px;
+	border-radius: 70px;
+	padding:0;
+	font-size:x-small;
+	text-align: center;
+	color: #000;
+	border: 2px solid #1ae2e9;
+	background: rgb(255, 255, 255);
+	box-shadow: none ;
+	outline: none;
+	margin: 10px 25px;
+  }
+  
+  table {
+	border: 0;
+	border-collapse: collapse;
+	border-radius: 8px;
+	table-layout: fixed;
+	margin-left:auto; 
+	margin-right:auto;  
+   }
+
+   
+.active{
+	width: 90%;
+   }
+  
+.td1{
+	width:20%;
+   }
+  
+.td3{
+	width:15%;
+}  
+   
+.td2{
+	text-align:left;
+   }
+
+  
+  td {
+	border: solid 1px #5ceffe;
+	text-align: center;
+	padding: 5px;
+	color: #757575;
+  }
+  
+  input[type="number"] {
+	font-size:1rem;
+	width: 4em;
+  }
+
+  .slider {
+	width: 50%;
+ }
+  
+ .slider_Servo {
+	width: 30%;
+ }
+
+ .slider_Servo {
+	width: 100%;
+}
+.center-table {
+	width: 80%;
+	margin: 0 auto;
+	border-collapse: collapse;
+}
+.center-table td {
+	border: none;
+	text-align: center;
+	vertical-align: middle;
+	padding: 20px;
+}
+
+/* 響應式設計 - 平板 */
+@media (max-width: 768px) {
+	#joy1Div, #joy2Div {
+		width: 150px !important;
+		height: 150px !important;
+		margin: 8px auto !important;
+	}
+	
+	.columnLeft, .columnRight {
+		min-width: 140px !important;
+		max-width: 200px !important;
+	}
+	
+	.columnMedium {
+		min-width: 80px !important;
+		max-width: 120px !important;
+	}
+}
+
+/* 響應式設計 - 手機 */
+@media (max-width: 480px) {
+	#row {
+		gap: 5px !important;
+	}
+	
+	#joy1Div, #joy2Div {
+		width: 100px !important;
+		height: 100px !important;
+		margin: 5px auto !important;
+	}
+	
+	.columnLeft, .columnRight {
+		min-width: 110px !important;
+		max-width: 150px !important;
+	}
+	
+	.columnMedium {
+		min-width: 60px !important;
+		max-width: 100px !important;
+	}
+}
+

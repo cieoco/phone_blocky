@@ -1,0 +1,29 @@
+# Windows system files
+desktop.ini
+Thumbs.db
+
+# PlatformIO
+.pio
+.pioenvs
+.piolibdeps
+.clang_complete
+.gcc-flags.json
+fp.json
+libdeps
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/tasks.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# Claude Code local tooling
+.claude/

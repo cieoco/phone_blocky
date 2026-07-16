@@ -1,0 +1,1171 @@
+<!DOCTYPE HTML>
+<!--
+ The MIT License (MIT)
+
+ This file is part of the JoyStick Project (https://github.com/bobboteck/JoyStick).
+ Copyright (c) 2015 Roberto D'Amico (Bobboteck).
+
+
+-->
+<html>
+
+<head>
+	<title>🎮 ESP32 機器人遙控器</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1" ; charset="utf-8">
+	<link rel="stylesheet" href="joy.css">
+	<script src="joy.js"></script>
+	<style>
+		/* 現代化美化樣式 */
+		body {
+			background: linear-gradient(135deg, #667eea 0%, #4d7fff 100%);
+			min-height: 100vh;
+			margin: 0;
+			padding: 20px;
+			font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+		}
+
+		.main-container {
+			background: rgba(255, 255, 255, 0.95);
+			border-radius: 20px;
+			box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+			padding: 30px;
+			max-width: 1200px;
+			margin: 0 auto;
+			backdrop-filter: blur(10px);
+		}
+
+		.header {
+			text-align: center;
+			margin-bottom: 30px;
+		}
+
+		.header h1 {
+			color: #333;
+			font-size: 2.5em;
+			margin: 0;
+			background: linear-gradient(45deg, #667eea, #4d7fff);
+			-webkit-background-clip: text;
+			-webkit-text-fill-color: transparent;
+			background-clip: text;
+		}
+
+		.header p {
+			color: #666;
+			font-size: 1.1em;
+			margin: 10px 0;
+		}
+
+		.joystick-section {
+			background: white;
+			border-radius: 15px;
+			box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+			padding: 25px;
+			margin: 20px 0;
+		}
+
+		.controls-section {
+			background: white;
+			border-radius: 15px;
+			box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+			padding: 25px;
+			margin: 20px 0;
+		}
+
+		.section-title {
+			color: #333;
+			font-size: 1.3em;
+			font-weight: 600;
+			margin-bottom: 20px;
+			text-align: center;
+			border-bottom: 2px solid #eee;
+			padding-bottom: 10px;
+		}
+
+		/* 滑桿美化 */
+		input[type="range"]::-webkit-slider-thumb {
+			-webkit-appearance: none;
+			appearance: none;
+			width: 20px;
+			height: 20px;
+			border-radius: 50%;
+			background: linear-gradient(45deg, #667eea, #4d7fff);
+			cursor: pointer;
+			box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+		}
+
+		input[type="range"]::-moz-range-thumb {
+			width: 20px;
+			height: 20px;
+			border-radius: 50%;
+			background: linear-gradient(45deg, #667eea, #4d7fff);
+			cursor: pointer;
+			border: none;
+			box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+		}
+
+		/* 模式切換樣式 */
+		.mode-selector {
+			display: flex;
+			background: #eee;
+			border-radius: 15px;
+			padding: 2px;
+			gap: 2px;
+		}
+
+		.mode-option {
+			padding: 4px 12px;
+			border-radius: 12px;
+			cursor: pointer;
+			font-size: 0.75em;
+			transition: all 0.2s;
+			user-select: none;
+		}
+
+		.mode-option.active {
+			background: white;
+			box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+			font-weight: bold;
+		}
+
+		.hidden {
+			display: none !important;
+		}
+
+		/* 全域強制M3M4按鈕並列 */
+		.controls-section div[style*="justify-content: center"] {
+			flex-wrap: nowrap !important;
+			flex-direction: row !important;
+			gap: 20px !important;
+		}
+
+		/* 馬達控制區域響應式樣式 */
+		@media (max-width: 768px) {
+			.controls-section>div[style*="display: flex"]>div {
+				min-width: 180px !important;
+				max-width: calc(50% - 5px) !important;
+				flex: 1 1 calc(50% - 5px) !important;
+			}
+
+			/* 平板版強制M3M4按鈕並列 */
+			.controls-section div[style*="justify-content: center"] {
+				flex-wrap: nowrap !important;
+				flex-direction: row !important;
+				gap: 25px !important;
+			}
+		}
+
+		@media (max-width: 480px) {
+			.controls-section>div[style*="display: flex"] {
+				flex-direction: column !important;
+				gap: 8px !important;
+			}
+
+			.controls-section>div[style*="display: flex"]>div {
+				min-width: auto !important;
+				max-width: 100% !important;
+				flex: 1 !important;
+			}
+		}
+
+		/* 按鈕懸停效果 */
+		.vButton:hover {
+			transform: translateY(-3px);
+			box-shadow: 0 12px 25px rgba(0, 0, 0, 0.15) !important;
+		}
+
+		.vButton:active {
+			transform: translateY(-1px);
+		}
+
+		button[onclick*="location.href"]:hover {
+			transform: translateY(-2px);
+			box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4) !important;
+		}
+
+		.header-actions {
+			display: flex;
+			gap: 10px;
+			align-items: center;
+			flex-shrink: 0;
+		}
+
+		.estop-button {
+			background: #d7263d;
+			color: white;
+			border: none;
+			padding: 12px 22px;
+			border-radius: 8px;
+			cursor: pointer;
+			font-weight: 800;
+			box-shadow: 0 6px 18px rgba(215, 38, 61, 0.35);
+			transition: all 0.2s ease;
+		}
+
+		.estop-button:hover {
+			transform: translateY(-2px);
+			box-shadow: 0 8px 22px rgba(215, 38, 61, 0.45);
+		}
+
+		.fine-buttons {
+			display: grid;
+			grid-template-columns: repeat(4, minmax(42px, 1fr));
+			gap: 6px;
+			margin-top: 10px;
+		}
+
+		.fine-button {
+			border: 1px solid #d8dde8;
+			background: white;
+			color: #333;
+			border-radius: 8px;
+			padding: 8px 0;
+			cursor: pointer;
+			font-weight: 700;
+			min-height: 36px;
+		}
+
+		.fine-button:active {
+			transform: translateY(1px);
+		}
+
+		@media (max-width: 620px) {
+			.header {
+				flex-direction: column;
+				gap: 12px;
+			}
+
+			.header-actions {
+				width: 100%;
+				justify-content: center;
+				flex-wrap: wrap;
+			}
+		}
+
+		/* 平板尺寸 - 保持水平排列 */
+		@media (max-width: 768px) {
+			.main-container {
+				margin: 8px;
+				padding: 15px;
+			}
+
+			.header h1 {
+				font-size: 1.8em;
+			}
+
+			#row {
+				flex-direction: row !important;
+				align-items: flex-start;
+				justify-content: space-between;
+				gap: 8px;
+			}
+
+			.columnLeft,
+			.columnRight {
+				width: 46% !important;
+				min-width: 150px !important;
+				max-width: 220px !important;
+			}
+
+			.columnMedium {
+				width: 8% !important;
+				min-width: 30px !important;
+				max-width: 60px !important;
+				padding: 0 3px !important;
+			}
+
+			#joy1Div,
+			#joy2Div {
+				width: 150px !important;
+				height: 150px !important;
+				margin: 8px auto !important;
+			}
+
+			.center-table {
+				width: 100%;
+			}
+
+			.center-table td {
+				display: block;
+				width: 100%;
+				margin: 10px 0;
+			}
+		}
+
+		/* 手機尺寸 - 強制保持水平排列 */
+		@media (max-width: 480px) {
+			.main-container {
+				margin: 5px;
+				padding: 10px;
+			}
+
+			.header h1 {
+				font-size: 1.5em;
+			}
+
+			.header p {
+				font-size: 0.9em;
+				margin: 5px 0;
+			}
+
+			#row {
+				flex-direction: row !important;
+				align-items: flex-start !important;
+				justify-content: space-between !important;
+				gap: 5px !important;
+				flex-wrap: nowrap !important;
+			}
+
+			.columnLeft,
+			.columnRight {
+				width: 45% !important;
+				min-width: 120px !important;
+				max-width: 160px !important;
+				flex: 0 0 45% !important;
+			}
+
+			.columnMedium {
+				width: 10% !important;
+				min-width: 20px !important;
+				max-width: 40px !important;
+				flex: 0 0 10% !important;
+				padding: 0 2px !important;
+			}
+
+			.columnLeft h3,
+			.columnRight h3 {
+				font-size: 0.9em !important;
+				margin: 0 0 3px 0 !important;
+			}
+
+			.columnLeft p,
+			.columnRight p {
+				font-size: 0.7em !important;
+				margin: 1px 0 !important;
+			}
+
+			#joy1Div,
+			#joy2Div {
+				width: 100px !important;
+				height: 100px !important;
+				margin: 5px auto !important;
+			}
+
+			.joystick-section,
+			.controls-section {
+				padding: 12px;
+				margin: 12px 0;
+			}
+
+			.section-title {
+				font-size: 1.1em;
+				margin-bottom: 10px;
+			}
+
+			/* 強制M3M4按鈕並列 */
+			.controls-section div[style*="justify-content: center"] {
+				flex-wrap: nowrap !important;
+				flex-direction: row !important;
+				gap: 15px !important;
+			}
+		}
+	</style>
+</head>
+
+<body>
+	<div class="main-container">
+		<div class="header" style="display: flex; justify-content: space-between; align-items: center;">
+			<div>
+				<h1>🎮 機器人遙控器</h1>
+				<p>使用虛擬搖桿控制機器人</p>
+			</div>
+			<div class="header-actions">
+				<button type="button" class="estop-button" onclick="emergencyStop()">緊急停止</button>
+				<button type="button" onclick="location.href='index.html';"
+					style="background: linear-gradient(45deg, #ff6b6b, #ee5a52); color: white; border: none; padding: 10px 20px; border-radius: 25px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3); transition: all 0.3s ease; font-size: 0.9em; flex-shrink: 0;">
+					🏠 回首頁
+				</button>
+			</div>
+		</div>
+
+		<div class="joystick-section">
+			<div class="section-title">🕹️ 雙搖桿控制</div>
+			<main class="flex-center">
+				<!-- Example of two JoyStick integrated in the page structure -->
+				<div id="row">
+					<div class="columnLeft">
+						<div style="text-align: center; margin-bottom: 15px;">
+							<h3 style="color: #667eea; margin: 0;">左搖桿</h3>
+							<p style="color: #888; font-size: 0.9em; margin: 5px 0;">控制 M1 馬達 (Y軸)</p>
+						</div>
+						<div id="joy1Div"></div>
+						<div style="text-align: center; margin-top: 10px; font-size: 0.8em; color: #666;">
+							<div>X: <span id="joy1DisplayX">0</span> | Y: <span id="joy1DisplayY">0</span></div>
+						</div>
+						<input type="hidden" id="joy1PosizioneX" type="text" />
+						<input type="hidden" id="joy1PosizioneY" type="text" />
+						<input type="hidden" id="joy1Direzione" type="text" />
+						<input type="hidden" id="joy1X" type="text" />
+						<input type="hidden" id="joy1Y" type="text" />
+					</div>
+
+					<div class="columnMedium">
+						<!-- 空的中間區域 -->
+					</div>
+
+					<div class="columnRight">
+						<div style="text-align: center; margin-bottom: 15px;">
+							<h3 style="color: #4d7fff; margin: 0;">右搖桿</h3>
+							<p style="color: #888; font-size: 0.9em; margin: 5px 0;">控制 M2 馬達 (Y軸)</p>
+						</div>
+						<div id="joy2Div"></div>
+						<div style="text-align: center; margin-top: 10px; font-size: 0.8em; color: #666;">
+							<div>X: <span id="joy2DisplayX">0</span> | Y: <span id="joy2DisplayY">0</span></div>
+						</div>
+						<input type="hidden" id="joy2PosizioneX" type="text" />
+						<input type="hidden" id="joy2PosizioneY" type="text" />
+						<input type="hidden" id="joy2Direzione" type="text" />
+						<input type="hidden" id="joy2X" type="text" />
+						<input type="hidden" id="joy2Y" type="text" />
+					</div>
+				</div>
+			</main>
+		</div>
+		<!--建立舵機的控制的slider-->
+		<div class="controls-section" style="padding: 15px; margin: 15px 0;">
+			<div class="section-title" style="margin-bottom: 12px; font-size: 1.1em;">🎛️ 舵機控制</div>
+			<div style="display: flex; gap: 10px; flex-wrap: wrap; max-width: 100%; box-sizing: border-box;">
+				<div
+					style="flex: 1; min-width: 250px; max-width: calc(50% - 5px); background: #f8f9fa; border-radius: 10px; padding: 10px; border-left: 3px solid #667eea; box-sizing: border-box;">
+					<h5 style="color: #333; margin: 0 0 8px 0; font-size: 0.85em; word-wrap: break-word;">🔧 舵機1
+						(0~180): <span id="servo1Value" style="color: #667eea; font-weight: bold;">90</span>°</h5>
+					<input type="range" onchange="ActionSliderFun_Servo1(this)" id="ActionSlider_Servo1" min="0"
+						max="180" value="90" step="1" class="slider"
+						style="width: 100%; height: 6px; border-radius: 3px; background: #ddd; outline: none; -webkit-appearance: none; appearance: none; box-sizing: border-box;">
+					<div class="fine-buttons">
+						<button type="button" class="fine-button" onclick="adjustServo(1, -5)">-5°</button>
+						<button type="button" class="fine-button" onclick="adjustServo(1, -1)">-1°</button>
+						<button type="button" class="fine-button" onclick="adjustServo(1, 1)">+1°</button>
+						<button type="button" class="fine-button" onclick="adjustServo(1, 5)">+5°</button>
+					</div>
+				</div>
+
+				<div
+					style="flex: 1; min-width: 250px; max-width: calc(50% - 5px); background: #f8f9fa; border-radius: 10px; padding: 10px; border-left: 3px solid #4d7fff; box-sizing: border-box;">
+					<h5 style="color: #333; margin: 0 0 8px 0; font-size: 0.85em; word-wrap: break-word;">🔧 舵機2
+						(0~180): <span id="servo2Value" style="color: #4d7fff; font-weight: bold;">90</span>°</h5>
+					<input type="range" onchange="ActionSliderFun_Servo2(this)" id="ActionSlider_Servo2" min="0"
+						max="180" value="90" step="1" class="slider"
+						style="width: 100%; height: 6px; border-radius: 3px; background: #ddd; outline: none; -webkit-appearance: none; appearance: none; box-sizing: border-box;">
+					<div class="fine-buttons">
+						<button type="button" class="fine-button" onclick="adjustServo(2, -5)">-5°</button>
+						<button type="button" class="fine-button" onclick="adjustServo(2, -1)">-1°</button>
+						<button type="button" class="fine-button" onclick="adjustServo(2, 1)">+1°</button>
+						<button type="button" class="fine-button" onclick="adjustServo(2, 5)">+5°</button>
+					</div>
+				</div>
+			</div>
+		</div>
+		<div class="controls-section" style="padding: 15px; margin: 15px 0;">
+			<div class="section-title" style="margin-bottom: 12px; font-size: 1.1em;">🎮 虛擬按鈕</div>
+			<div
+				style="display: flex; gap: 30px; justify-content: center; flex-wrap: nowrap !important; align-items: center;">
+				<div style="text-align: center; flex: 0 0 auto;">
+					<button id="Button1" class="vButton"
+						style="background: white; color: black; border: 3px solid #007bff; box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3); font-weight: bold; transition: all 0.3s ease; width: 70px; height: 70px; border-radius: 70px; font-size: 0.9em;">
+						OFF
+					</button>
+					<p style="color: #666; font-size: 0.85em; margin: 8px 0 0 0;">控制 M3 馬達</p>
+				</div>
+				<div style="text-align: center; flex: 0 0 auto;">
+					<button id="Button2" class="vButton"
+						style="background: white; color: black; border: 3px solid #007bff; box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3); font-weight: bold; transition: all 0.3s ease; width: 70px; height: 70px; border-radius: 70px; font-size: 0.9em;">
+						OFF
+					</button>
+					<p style="color: #666; font-size: 0.85em; margin: 8px 0 0 0;">控制 M4 馬達</p>
+				</div>
+			</div>
+		</div>
+
+		<!-- 馬達控制設定 -->
+		<div class="controls-section" style="padding: 15px; margin: 15px 0;">
+			<div class="section-title" style="margin-bottom: 12px; font-size: 1.1em;">⚙️ 馬達控制設定</div>
+			<div style="display: flex; gap: 10px; flex-wrap: wrap; max-width: 100%; box-sizing: border-box;">
+				<!-- M3 控制 -->
+				<div
+					style="flex: 1; min-width: 250px; max-width: calc(50% - 5px); background: #f8f9fa; border-radius: 10px; padding: 10px; border-left: 3px solid #ff6b6b; box-sizing: border-box;">
+					<div
+						style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+						<h5 style="color: #333; margin: 0; font-size: 0.85em;">🎯 M3 控制</h5>
+						<div class="mode-selector">
+							<div id="m3_mode_1" class="mode-option active" onclick="setMotorMode(3, 1)">動力</div>
+							<div id="m3_mode_2" class="mode-option" onclick="setMotorMode(3, 2)">角度</div>
+						</div>
+					</div>
+
+
+					<!-- M3 動力滑桿 -->
+					<div id="m3_power_container">
+						<h5 style="color: #666; margin: 0 0 8px 0; font-size: 0.8em;">PWM (-100~100): <span
+								id="M1PowerValue" style="color: #ff6b6b; font-weight: bold;">0</span></h5>
+						<input type="range" onchange="ActionSliderFun_ON_M1(this)" id="ActionSlider_ON_M1" min="-100"
+							max="100" value="0" step="1" class="slider"
+							style="width: 100%; height: 6px; border-radius: 3px; background: #ddd; outline: none; -webkit-appearance: none; appearance: none; box-sizing: border-box;">
+					</div>
+
+					<!-- M3 角度滑桿 -->
+					<div id="m3_angle_container" class="hidden">
+						<h5 style="color: #666; margin: 0 0 8px 0; font-size: 0.8em;">相對角度 (-180~180): <span
+								id="M3AngleValue" style="color: #ff9f43; font-weight: bold;">0</span>°</h5>
+						<input type="range" onchange="ActionSliderFun_Angle_M3(this)" id="ActionSlider_Angle_M3"
+							min="-180" max="180" value="0" step="1" class="slider"
+							style="width: 100%; height: 6px; border-radius: 3px; background: #ddd; outline: none; -webkit-appearance: none; appearance: none; box-sizing: border-box;">
+						<button type="button" onclick="zeroMotorAngle(3)"
+							style="margin-top: 8px; width: 100%; background: #ff9f43; color: white; border: none; padding: 8px; border-radius: 7px; cursor: pointer; font-size: 0.8em; font-weight: bold;">重設零點（目前位置 = 0°）</button>
+					</div>
+				</div>
+
+				<!-- M4 控制 -->
+				<div
+					style="flex: 1; min-width: 250px; max-width: calc(50% - 5px); background: #f8f9fa; border-radius: 10px; padding: 10px; border-left: 3px solid #4ecdc4; box-sizing: border-box;">
+					<div
+						style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+						<h5 style="color: #333; margin: 0; font-size: 0.85em;">🎯 M4 控制</h5>
+						<div class="mode-selector">
+							<div id="m4_mode_1" class="mode-option active" onclick="setMotorMode(4, 1)">動力</div>
+							<div id="m4_mode_2" class="mode-option" onclick="setMotorMode(4, 2)">角度</div>
+						</div>
+					</div>
+
+
+					<!-- M4 動力滑桿 -->
+					<div id="m4_power_container">
+						<h5 style="color: #666; margin: 0 0 8px 0; font-size: 0.8em;">PWM (-100~100): <span
+								id="M2PowerValue" style="color: #4ecdc4; font-weight: bold;">0</span></h5>
+						<input type="range" onchange="ActionSliderFun_ON_M2(this)" id="ActionSlider_ON_M2" min="-100"
+							max="100" value="0" step="1" class="slider"
+							style="width: 100%; height: 6px; border-radius: 3px; background: #ddd; outline: none; -webkit-appearance: none; appearance: none; box-sizing: border-box;">
+					</div>
+
+					<!-- M4 角度滑桿 -->
+					<div id="m4_angle_container" class="hidden">
+						<h5 style="color: #666; margin: 0 0 8px 0; font-size: 0.8em;">相對角度 (-180~180): <span
+								id="M4AngleValue" style="color: #ee5a52; font-weight: bold;">0</span>°</h5>
+						<input type="range" onchange="ActionSliderFun_Angle_M4(this)" id="ActionSlider_Angle_M4"
+							min="-180" max="180" value="0" step="1" class="slider"
+							style="width: 100%; height: 6px; border-radius: 3px; background: #ddd; outline: none; -webkit-appearance: none; appearance: none; box-sizing: border-box;">
+						<button type="button" onclick="zeroMotorAngle(4)"
+							style="margin-top: 8px; width: 100%; background: #ee5a52; color: white; border: none; padding: 8px; border-radius: 7px; cursor: pointer; font-size: 0.8em; font-weight: bold;">重設零點（目前位置 = 0°）</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- 編碼器實測（校正用） -->
+		<div class="controls-section" style="padding: 15px; margin: 15px 0;">
+			<div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; border-bottom: 2px solid #eee; padding-bottom: 10px;">
+				<div style="color: #333; font-size: 1.1em; font-weight: 600;">🔍 編碼器實測（校正用）</div>
+				<button type="button" id="encoderPanelToggle" onclick="toggleEncoderPanel()"
+					style="background: #f1f3f5; color: #333; border: none; padding: 7px 12px; border-radius: 7px; cursor: pointer; font-size: 0.8em; font-weight: bold;">展開</button>
+			</div>
+			<div id="encoderPanelBody" class="hidden">
+				<div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px;">
+					<label style="font-size: 0.85em; color: #333; display: flex; align-items: center; gap: 4px;">
+						<input type="checkbox" id="EncoderPollEnabled" onchange="setEncoderPolling(this.checked)">
+						輪詢
+					</label>
+					<label style="font-size: 0.85em; color: #333; display: flex; align-items: center; gap: 4px;">
+						<input type="checkbox" id="EncoderPollM3" onchange="onEncoderPollMotorChanged()" checked>
+						M3
+					</label>
+					<label style="font-size: 0.85em; color: #333; display: flex; align-items: center; gap: 4px;">
+						<input type="checkbox" id="EncoderPollM4" onchange="onEncoderPollMotorChanged()" checked>
+						M4
+					</label>
+					<button type="button" onclick="pollEncoderReadout(true)"
+						style="background: #4ecdc4; color: white; border: none; padding: 7px 12px; border-radius: 7px; cursor: pointer; font-size: 0.8em; font-weight: bold;">讀一次</button>
+					<span id="EncoderPollStatus" style="font-size: 0.8em; color: #666;">輪詢：關</span>
+				</div>
+				<p style="color: #666; font-size: 0.8em; margin: 0 0 12px 0; line-height: 1.5;">
+					校正 PPR：按「重設零點」→ 用手把<strong>輸出軸</strong>正轉整整一圈（360°）→ 看 ticks 增加多少。
+					該數值即為「每圈 ticks」，除以 360 就是 ticks/度。
+				</p>
+				<div style="display: flex; gap: 10px; flex-wrap: wrap;">
+				<div style="flex: 1; min-width: 200px; background: #f8f9fa; border-radius: 10px; padding: 12px; border-left: 3px solid #ff6b6b; box-sizing: border-box;">
+					<h5 style="margin: 0 0 8px 0; font-size: 0.9em; color: #333;">M3</h5>
+					<div style="font-size: 0.9em; margin-bottom: 4px;">ticks: <span id="M3Ticks" style="font-weight: bold; color: #ff6b6b;">—</span></div>
+					<div style="font-size: 0.85em; margin-bottom: 4px; color: #666;">
+						A(GPIO<span id="M3PinANum">35</span>): <span id="M3PinA">—</span> /
+						B(GPIO<span id="M3PinBNum">34</span>): <span id="M3PinB">—</span>
+					</div>
+					<div style="font-size: 0.9em; margin-bottom: 8px;">角度: <span id="M3DegRead" style="font-weight: bold; color: #ff6b6b;">—</span>°</div>
+					<button type="button" onclick="zeroMotorAngle(3)"
+						style="width: 100%; background: #ff6b6b; color: white; border: none; padding: 7px; border-radius: 7px; cursor: pointer; font-size: 0.8em; font-weight: bold;">重設零點</button>
+				</div>
+				<div style="flex: 1; min-width: 200px; background: #f8f9fa; border-radius: 10px; padding: 12px; border-left: 3px solid #4ecdc4; box-sizing: border-box;">
+					<h5 style="margin: 0 0 8px 0; font-size: 0.9em; color: #333;">M4</h5>
+					<div style="font-size: 0.9em; margin-bottom: 4px;">ticks: <span id="M4Ticks" style="font-weight: bold; color: #4ecdc4;">—</span></div>
+					<div style="font-size: 0.85em; margin-bottom: 4px; color: #666;">
+						A(GPIO<span id="M4PinANum">36</span>): <span id="M4PinA">—</span> /
+						B(GPIO<span id="M4PinBNum">39</span>): <span id="M4PinB">—</span>
+					</div>
+					<div style="font-size: 0.9em; margin-bottom: 8px;">角度: <span id="M4DegRead" style="font-weight: bold; color: #4ecdc4;">—</span>°</div>
+					<button type="button" onclick="zeroMotorAngle(4)"
+						style="width: 100%; background: #4ecdc4; color: white; border: none; padding: 7px; border-radius: 7px; cursor: pointer; font-size: 0.8em; font-weight: bold;">重設零點</button>
+				</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="controls-section" style="padding: 15px; margin: 15px 0;">
+			<div
+				style="background: linear-gradient(135deg, #4ecdc4, #44a08d); color: white; border-radius: 10px; padding: 15px;">
+				<h5 style="color: white; margin: 0 0 8px 0; font-size: 0.95em;">📖 操作說明</h5>
+				<p style="margin: 0; font-size: 0.85em; line-height: 1.4;">
+					1. 調整上方滑桿設定馬達動力或角度數值。
+					2. 點擊對應的虛擬按鈕啟動馬達。
+					3. 按鈕變ON表示馬達動作中，OFF表示停止。
+				</p>
+			</div>
+		</div>
+	</div>
+
+	<!-- <div>
+		<button id="update">韌體更新</button>
+	</div> -->
+</body>
+
+<script>
+	var gateway = `ws://${window.location.hostname}/ws`;
+	var websocket;
+	var button_state;
+
+	// var Button1_value, Button2_value, Button3_value = 0,
+	// 	Button4_value = 0;
+
+	var vButton1 = new VirtualButton('Button1'),
+		vButton2 = new VirtualButton('Button2');
+
+	var vButton1Value = 0, vButton2Value = 0;
+	var vButton1Type = 0, vButton2Type = 0;
+	var actionType_ON_M1 = 1, actionType_ON_M2 = 1;
+	var slider1Value = 90, slider2Value = 90;
+	var vM3AngleValue = 0, vM4AngleValue = 0;
+	var estopActive = false;
+	var encoderPollEnabled = false;
+	var encoderPollTimer = null;
+	var encoderPollIntervalMs = 1000;
+
+
+	// ----------------------------------------------------------------------------
+	// Initialization
+	// ----------------------------------------------------------------------------
+
+	window.addEventListener('load', onLoad);
+
+	function onLoad(event) {
+		initWebSocket();
+		//initButton();
+		//button_state=false;  //按鈕初始值設定
+	}
+
+	// ----------------------------------------------------------------------------
+	// WebSocket handling
+	// ----------------------------------------------------------------------------
+
+	function initWebSocket() {
+		console.log('Trying to open a WebSocket connection...');
+		websocket = new WebSocket(gateway);
+		websocket.onopen = onOpen;
+		websocket.onclose = onClose;
+		websocket.onmessage = onMessage;
+	}
+
+	function onOpen(event) {
+		console.log('Connection opened');
+	}
+
+	function onClose(event) {
+		console.log('Connection closed');
+		setTimeout(initWebSocket, 2000);
+	}
+
+	function onMessage(event) {
+		let data = JSON.parse(event.data);
+		if (data.type === "motor_read") {
+			updateMotorReadout(data);
+		}
+	}
+
+	function updateMotorReadout(data) {
+		var ticks = data.ticks == null ? "—" : data.ticks;
+		var deg = data.deg_centi == null ? "—" : (data.deg_centi / 100).toFixed(1);
+		if (data.motor === 3) {
+			document.getElementById("M3Ticks").textContent = ticks;
+			document.getElementById("M3DegRead").textContent = deg;
+			document.getElementById("M3PinANum").textContent = data.pin_a == null ? "35" : data.pin_a;
+			document.getElementById("M3PinBNum").textContent = data.pin_b == null ? "34" : data.pin_b;
+			document.getElementById("M3PinA").textContent = data.a == null ? "—" : data.a;
+			document.getElementById("M3PinB").textContent = data.b == null ? "—" : data.b;
+		} else if (data.motor === 4) {
+			document.getElementById("M4Ticks").textContent = ticks;
+			document.getElementById("M4DegRead").textContent = deg;
+			document.getElementById("M4PinANum").textContent = data.pin_a == null ? "36" : data.pin_a;
+			document.getElementById("M4PinBNum").textContent = data.pin_b == null ? "39" : data.pin_b;
+			document.getElementById("M4PinA").textContent = data.a == null ? "—" : data.a;
+			document.getElementById("M4PinB").textContent = data.b == null ? "—" : data.b;
+		}
+	}
+
+	function sendCommand(payload) {
+		if (websocket && websocket.readyState === WebSocket.OPEN) {
+			websocket.send(JSON.stringify(payload));
+		} else {
+			console.warn('WebSocket is not connected; command skipped:', payload);
+		}
+	}
+
+	function setText(id, value) {
+		var element = document.getElementById(id);
+		if (element) element.textContent = value;
+	}
+
+	function isEncoderPollMotorSelected(motor) {
+		var checkbox = document.getElementById(motor === 3 ? "EncoderPollM3" : "EncoderPollM4");
+		return checkbox && checkbox.checked;
+	}
+
+	function updateEncoderPollStatus() {
+		var selected = [];
+		if (isEncoderPollMotorSelected(3)) selected.push("M3");
+		if (isEncoderPollMotorSelected(4)) selected.push("M4");
+		var status = encoderPollEnabled ? "輪詢：開 " + (selected.length ? selected.join("/") : "未選馬達") : "輪詢：關";
+		setText("EncoderPollStatus", status);
+	}
+
+	function pollEncoderReadout(force) {
+		if (!force && !encoderPollEnabled) return;
+		if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+			updateEncoderPollStatus();
+			return;
+		}
+		if (isEncoderPollMotorSelected(3)) {
+			sendCommand({ "cmd": "read", "motor": 3 });
+		}
+		if (isEncoderPollMotorSelected(4)) {
+			sendCommand({ "cmd": "read", "motor": 4 });
+		}
+		updateEncoderPollStatus();
+	}
+
+	function startEncoderPolling() {
+		stopEncoderPolling();
+		encoderPollTimer = setInterval(function () {
+			pollEncoderReadout(false);
+		}, encoderPollIntervalMs);
+		pollEncoderReadout(false);
+	}
+
+	function stopEncoderPolling() {
+		if (encoderPollTimer) {
+			clearInterval(encoderPollTimer);
+			encoderPollTimer = null;
+		}
+	}
+
+	function setEncoderPolling(enabled) {
+		encoderPollEnabled = enabled;
+		if (enabled) {
+			startEncoderPolling();
+		} else {
+			stopEncoderPolling();
+		}
+		updateEncoderPollStatus();
+	}
+
+	function onEncoderPollMotorChanged() {
+		updateEncoderPollStatus();
+		if (encoderPollEnabled) {
+			pollEncoderReadout(false);
+		}
+	}
+
+	function toggleEncoderPanel() {
+		var body = document.getElementById("encoderPanelBody");
+		var button = document.getElementById("encoderPanelToggle");
+		if (!body || !button) return;
+		var collapsed = body.classList.toggle("hidden");
+		button.textContent = collapsed ? "展開" : "收合";
+	}
+
+	function clamp(value, min, max) {
+		return Math.max(min, Math.min(max, value));
+	}
+
+	function setServoValue(ch, deg, shouldSend) {
+		deg = clamp(parseInt(deg, 10) || 0, 0, 180);
+		if (ch === 1) {
+			slider1Value = deg;
+			document.getElementById("ActionSlider_Servo1").value = deg;
+			document.getElementById("servo1Value").textContent = deg;
+		} else if (ch === 2) {
+			slider2Value = deg;
+			document.getElementById("ActionSlider_Servo2").value = deg;
+			document.getElementById("servo2Value").textContent = deg;
+		}
+		if (shouldSend) {
+			sendCommand({ "cmd": "servo", "ch": ch, "deg": deg });
+		}
+	}
+
+	function adjustServo(ch, delta) {
+		var current = ch === 1 ? slider1Value : slider2Value;
+		setServoValue(ch, current + delta, true);
+	}
+
+	function sendMotorPwm(motor, value) {
+		value = clamp(parseInt(value, 10) || 0, -100, 100);
+		sendCommand({ "cmd": "pwm", "motor": motor, "duty": value });
+	}
+
+
+	function emergencyStop() {
+		estopActive = true;
+		["ActionSlider_ON_M1", "ActionSlider_ON_M2"].forEach(function (id) {
+			var slider = document.getElementById(id);
+			if (slider) slider.value = 0;
+		});
+		["M1PowerValue", "M2PowerValue"].forEach(function (id) {
+			var label = document.getElementById(id);
+			if (label) label.textContent = 0;
+		});
+		sendCommand({ "cmd": "stop" });
+	}
+
+	// ----------------------------------------------------------------------------
+	// Button handling
+	// ----------------------------------------------------------------------------
+
+	function initButton() {
+		document.getElementById('update').addEventListener('click', onUpdate);
+		// document.getElementById('addAction').addEventListener('click', addAction);
+		//document.getElementById('cleanAction').addEventListener('click', cleanAction);
+	}
+
+
+
+	function onUpdate(event) {
+		window.location.href = '/update';
+	}
+
+	function myButton1() {
+		//console.log("mybutton1");
+		//vButton1.buttonType=!vButton1.buttonType;
+		vButton1Type = !vButton1Type;
+		if (vButton1Type == 1) {
+			document.getElementById("setButton1").innerText = "復歸";
+		} else {
+			document.getElementById("setButton1").innerText = "自鎖";
+		}
+
+		vButton1.WriteButtonType(vButton1Type);
+	}
+
+	function myButton2() {
+		//console.log("mybutton2");
+		vButton2Type = !vButton2Type;
+		if (vButton2Type == 1) {
+			document.getElementById("setButton2").innerText = "復歸";
+		} else {
+			document.getElementById("setButton2").innerText = "自鎖";
+		}
+
+		vButton2.WriteButtonType(vButton2Type);
+	}
+
+
+	function selectActionType_ON_M1(event) {
+		//console.log(event);
+		//1:power 2:angle 3:speed
+		actionType_ON_M1 = event;
+		if (actionType_ON_M1 == '1') {
+			ActionSlider_ON_M1.min = -100;
+			ActionSlider_ON_M1.max = 100;
+			ActionSlider_ON_M1.value = 0;
+			document.getElementById("ActionSliderValue_ON_M1").value = 0;
+		} else if (actionType_ON_M1 == '2') {
+			ActionSlider_ON_M1.min = 0;
+			ActionSlider_ON_M1.max = 360;
+			ActionSlider_ON_M1.value = 0;
+			document.getElementById("ActionSliderValue_ON_M1").value = 0;
+		} else if (actionType_ON_M1 == '3') {
+			ActionSlider_ON_M1.min = -200;
+			ActionSlider_ON_M1.max = 200;
+			ActionSlider_ON_M1.value = 0;
+			document.getElementById("ActionSliderValue_ON_M1").value = 0;
+		}
+	}
+	function selectActionType_ON_M2(event) {
+		//console.log(event);
+		actionType_ON_M2 = event;
+
+		if (actionType_ON_M2 == '1') {
+			ActionSlider_ON_M2.min = -100;
+			ActionSlider_ON_M2.max = 100;
+			ActionSlider_ON_M2.value = 0;
+			document.getElementById("ActionSliderValue_ON_M2").value = 0;
+		} else if (actionType_ON_M2 == '2') {
+			ActionSlider_ON_M2.min = 0;
+			ActionSlider_ON_M2.max = 360;
+			ActionSlider_ON_M2.value = 0;
+			document.getElementById("ActionSliderValue_ON_M2").value = 0;
+		} else if (actionType_ON_M2 == '3') {
+			ActionSlider_ON_M2.min = -200;
+			ActionSlider_ON_M2.max = 200;
+			ActionSlider_ON_M2.value = 0;
+			document.getElementById("ActionSliderValue_ON_M2").value = 0;
+		}
+
+	}
+
+	function ActionSliderFun_Servo1(element) {
+		setServoValue(1, element.value, true);
+		console.log('Servo 1:', slider1Value);
+	}
+	function ActionSliderFun_Servo2(element) {
+		setServoValue(2, element.value, true);
+		console.log('Servo 2:', slider2Value);
+	}
+
+	function ActionSliderFun_ON_M1(element) {
+		var value = element.value;
+		document.getElementById("M1PowerValue").textContent = value;
+		if (!estopActive && vButton1.GetValue() === 1 && actionType_ON_M1 === 1) {
+			sendMotorPwm(3, value);
+		}
+		console.log('M3 PWM:', value);
+	}
+
+	function ActionSliderFun_ON_M2(element) {
+		var value = element.value;
+		document.getElementById("M2PowerValue").textContent = value;
+		if (!estopActive && vButton2.GetValue() === 1 && actionType_ON_M2 === 1) {
+			sendMotorPwm(4, value);
+		}
+		console.log('M4 PWM:', value);
+	}
+
+	function ActionSliderFun_Angle_M3(element) {
+		vM3AngleValue = parseInt(element.value);
+		document.getElementById("M3AngleValue").textContent = vM3AngleValue;
+		console.log('M3 angle target:', vM3AngleValue);
+	}
+
+	function ActionSliderFun_Angle_M4(element) {
+		vM4AngleValue = parseInt(element.value);
+		document.getElementById("M4AngleValue").textContent = vM4AngleValue;
+		console.log('M4 angle target:', vM4AngleValue);
+	}
+
+	function resetMotorAngleUi(motor) {
+		if (motor === 3) {
+			vM3AngleValue = 0;
+			document.getElementById("ActionSlider_Angle_M3").value = 0;
+			document.getElementById("M3AngleValue").textContent = 0;
+			document.getElementById("ActionSlider_ON_M1").value = 0;
+			document.getElementById("M1PowerValue").textContent = 0;
+		} else if (motor === 4) {
+			vM4AngleValue = 0;
+			document.getElementById("ActionSlider_Angle_M4").value = 0;
+			document.getElementById("M4AngleValue").textContent = 0;
+			document.getElementById("ActionSlider_ON_M2").value = 0;
+			document.getElementById("M2PowerValue").textContent = 0;
+		}
+	}
+
+	function zeroMotorAngle(motor) {
+		sendCommand({ "cmd": "zero", "motor": motor });
+		resetMotorAngleUi(motor);
+		console.log('Reset M' + motor + ' zero point (current position = 0 deg)');
+	}
+
+	function setMotorMode(motor, mode) {
+		sendCommand({ "cmd": "stop", "motor": motor });
+		if (motor === 3) {
+			actionType_ON_M1 = mode;
+			document.getElementById('m3_mode_1').classList.toggle('active', mode === 1);
+			document.getElementById('m3_mode_2').classList.toggle('active', mode === 2);
+			document.getElementById('m3_power_container').classList.toggle('hidden', mode !== 1);
+			document.getElementById('m3_angle_container').classList.toggle('hidden', mode !== 2);
+			if (mode === 2) {
+				sendCommand({ "cmd": "zero", "motor": 3 });
+				resetMotorAngleUi(3);
+			}
+		} else if (motor === 4) {
+			actionType_ON_M2 = mode;
+			document.getElementById('m4_mode_1').classList.toggle('active', mode === 1);
+			document.getElementById('m4_mode_2').classList.toggle('active', mode === 2);
+			document.getElementById('m4_power_container').classList.toggle('hidden', mode !== 1);
+			document.getElementById('m4_angle_container').classList.toggle('hidden', mode !== 2);
+			if (mode === 2) {
+				sendCommand({ "cmd": "zero", "motor": 4 });
+				resetMotorAngleUi(4);
+			}
+		}
+		console.log(`Motor ${motor} mode set to: ${mode}`);
+	}
+
+
+	setInterval(function () {
+		joy1X.value = Joy1.GetX();
+		joy1Y.value = Joy1.GetY();
+		joy2X.value = Joy2.GetX();
+		joy2Y.value = Joy2.GetY();
+
+		// 更新顯示數值
+		document.getElementById('joy1DisplayX').textContent = Joy1.GetX();
+		document.getElementById('joy1DisplayY').textContent = Joy1.GetY();
+		document.getElementById('joy2DisplayX').textContent = Joy2.GetX();
+		document.getElementById('joy2DisplayY').textContent = Joy2.GetY();
+
+		// 檢查按鈕狀態變化並更新顯示
+		var newButton1Value = vButton1.GetValue();
+		var newButton2Value = vButton2.GetValue();
+
+		if (newButton1Value !== vButton1Value) {
+			var button1 = document.getElementById("Button1");
+			if (newButton1Value === 1) {
+				button1.style.background = "white";
+				button1.style.color = "red";
+				button1.style.border = "3px solid #007bff";
+				button1.style.boxShadow = "0 4px 12px rgba(255, 0, 0, 0.3)";
+				button1.textContent = "ON";
+			} else {
+				button1.style.background = "white";
+				button1.style.color = "black";
+				button1.style.border = "3px solid #007bff";
+				button1.style.boxShadow = "0 4px 12px rgba(0, 123, 255, 0.3)";
+				button1.textContent = "OFF";
+				sendCommand({ "cmd": "stop", "motor": 3 });
+			}
+			if (!estopActive && newButton1Value === 1 && actionType_ON_M1 === 1) {
+				sendMotorPwm(3, document.getElementById("ActionSlider_ON_M1").value);
+			}
+		}
+
+		if (newButton2Value !== vButton2Value) {
+			var button2 = document.getElementById("Button2");
+			if (newButton2Value === 1) {
+				button2.style.background = "white";
+				button2.style.color = "red";
+				button2.style.border = "3px solid #007bff";
+				button2.style.boxShadow = "0 4px 12px rgba(255, 0, 0, 0.3)";
+				button2.textContent = "ON";
+			} else {
+				button2.style.background = "white";
+				button2.style.color = "black";
+				button2.style.border = "3px solid #007bff";
+				button2.style.boxShadow = "0 4px 12px rgba(0, 123, 255, 0.3)";
+				button2.textContent = "OFF";
+				sendCommand({ "cmd": "stop", "motor": 4 });
+			}
+			if (!estopActive && newButton2Value === 1 && actionType_ON_M2 === 1) {
+				sendMotorPwm(4, document.getElementById("ActionSlider_ON_M2").value);
+			}
+		}
+
+		if (estopActive) {
+			if (Joy1.GetY() === 0 && Joy2.GetY() === 0 && newButton1Value === 0 && newButton2Value === 0) {
+				estopActive = false;
+			} else {
+				joy1Y.value = 0;
+				joy2Y.value = 0;
+				newButton1Value = 0;
+				newButton2Value = 0;
+			}
+		}
+
+		vButton1Value = newButton1Value;
+		vButton2Value = newButton2Value;
+
+
+		var data = {
+			"mode": "joy",  // 新增mode屬性
+			"x1": joy1X.value,  //左搖桿X軸
+			"y1": joy1Y.value,  //左搖桿Y軸
+			"x2": joy2X.value,  //右搖桿X軸
+			"y2": joy2Y.value,  //右搖桿Y軸
+			//以下為組合的動作,
+			//由虛擬按鈕控制動作與否:0:不動作 1:動作
+			//工作模式:1:power 2:angle 
+			//工作數值:1:power(-254~254) 2:angle
+			"Button1": vButton1Value,	//虛擬按鈕1
+			"Button2": vButton2Value,	//虛擬按鈕2
+			"Action3": actionType_ON_M1,	//M1馬達的工作模式
+			"Action4": actionType_ON_M2,	//M2馬達的工作模式
+			"M3": document.getElementById("ActionSlider_ON_M1").value,	//M1馬達的工作數值
+			"M4": document.getElementById("ActionSlider_ON_M2").value,	//M2馬達的工作數值
+			"M3A": vM3AngleValue, // M3馬達的角度
+			"M4A": vM4AngleValue  // M4馬達的角度
+
+		};
+
+		data = JSON.stringify(data);
+		console.log(data);
+		if (websocket && websocket.readyState == 1) {
+			websocket.send(data);
+		}
+	}, 200);
+
+</script>
+
+<script>
+	// Create JoyStick object into the DIV 'joy1Div'
+	var joy1Param = {
+		"title": "joystick1",
+		"internalFillColor": "rgba(102,126,234,0.8)",
+		"internalStrokeColor": "rgba(77,127,255,0.9)",
+		"externalStrokeColor": "rgba(102,126,234,0.4)",
+		"autoReturnToCenter": true
+	};
+	var Joy1 = new JoyStick('joy1Div', joy1Param);
+
+	var joy1IinputPosX = document.getElementById("joy1PosizioneX");
+	var joy1InputPosY = document.getElementById("joy1PosizioneY");
+	var joy1Direzione = document.getElementById("joy1Direzione");
+	var joy1X = document.getElementById("joy1X");
+	var joy1Y = document.getElementById("joy1Y");
+
+	setInterval(function () {
+		joy1IinputPosX.value = Joy1.GetPosX();
+		joy1InputPosY.value = Joy1.GetPosY();
+		joy1Direzione.value = Joy1.GetDir();
+		joy1X.value = Joy1.GetX();
+		joy1Y.value = Joy1.GetY();
+	}, 50);
+
+	// Create JoyStick object into the DIV 'joy2Div'
+	var joy2Param = {
+		"title": "joystick2",
+		"internalFillColor": "rgba(77,127,255,0.8)",
+		"internalStrokeColor": "rgba(102,126,234,0.9)",
+		"externalStrokeColor": "rgba(77,127,255,0.4)",
+		"autoReturnToCenter": true
+	};
+	var Joy2 = new JoyStick('joy2Div', joy2Param);
+
+	var joy2IinputPosX = document.getElementById("joy2PosizioneX");
+	var joy2InputPosY = document.getElementById("joy2PosizioneY");
+	var joy2Direzione = document.getElementById("joy2Direzione");
+	var joy2X = document.getElementById("joy2X");
+	var joy2Y = document.getElementById("joy2Y");
+
+	setInterval(function () {
+		joy2IinputPosX.value = Joy2.GetPosX();
+		joy2InputPosY.value = Joy2.GetPosY();
+		joy2Direzione.value = Joy2.GetDir();
+		joy2X.value = Joy2.GetX();
+		joy2Y.value = Joy2.GetY();
+	}, 50);
+</script>
+
+</html>

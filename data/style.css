@@ -1,0 +1,68 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    text-align: center;
+  }
+  
+  h1 {
+    margin-bottom: 20px;
+  }
+  
+  
+  #blocklyDiv {
+    height: 600px;
+    width: 600px;
+    margin: 0 auto 20px auto;
+    border: 1px solid #ccc;
+  }
+  
+  button {
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+  }
+
+  #sendStatus {
+    margin-top: 10px;
+    color: #666;
+  }
+
+  #sensorOutput {
+    border: 1px solid #ccc;
+    padding: 10px;
+    margin: 0 auto 20px auto;
+    height: 10em;      /* 約顯示10行，視字體大小調整 */
+    overflow-y: auto;  /* 垂直捲軸 */
+    width: 600px;
+    line-height: 1.5em; /* 設定行高，比如 1.5 倍字體大小 */
+    text-align: left;   /* 內文靠左 */
+}
+
+#note{
+  margin: 0 auto 20px auto;
+  width: 600px;
+  color: #f74343;
+  font-size: 1em;
+  margin-top: 10px;
+  text-align: left;
+}
+
+
+.header-container {
+  text-align: center;
+  padding: 10px 20px;
+}
+
+.header-wrapper {
+  display: inline-flex;
+  align-items: center;
+}
+
+.header-wrapper h1 {
+  margin: 0;
+}
+
+.header-wrapper button {
+  margin-left: 1em;  /* 固定間距，約一個字的寬度 */
+}
+

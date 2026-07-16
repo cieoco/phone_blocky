@@ -1,0 +1,2239 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🔧 ESP32 機器人硬體功能檢測</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body { 
+      background: linear-gradient(135deg, #667eea 0%, #4d7fff 100%); 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      display: flex; 
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh; 
+      margin: 0; 
+      padding: 20px; 
+    }
+    
+    .container { 
+      background: rgba(255, 255, 255, 0.95); 
+      padding: 40px 48px; 
+      border-radius: 20px; 
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1); 
+      backdrop-filter: blur(10px); 
+      max-width: 900px; 
+      width: 100%; 
+      margin: 20px auto;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #e9ecef;
+    }
+    
+    .header h1 {
+      color: #2c3e50;
+      font-size: 2.2em;
+      margin-bottom: 10px;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .connection-status {
+      display: inline-block;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-weight: bold;
+      margin-bottom: 20px;
+    }
+    
+    .connection-status.connected {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    
+    .connection-status.disconnected {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+
+    .progress-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 15px;
+      margin-bottom: 30px;
+      border: 2px solid #e9ecef;
+    }
+
+    .progress-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 15px;
+      border-radius: 10px;
+      background: white;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      min-width: 120px;
+      transition: all 0.3s ease;
+    }
+
+    .progress-item.active {
+      background: linear-gradient(135deg, #74b9ff, #0984e3);
+      color: white;
+      transform: scale(1.05);
+      box-shadow: 0 5px 20px rgba(116, 185, 255, 0.4);
+    }
+
+    .progress-item.completed {
+      background: linear-gradient(135deg, #00b894, #00a085);
+      color: white;
+    }
+
+    .progress-item.failed {
+      background: linear-gradient(135deg, #e17055, #d63031);
+      color: white;
+    }
+
+    .progress-title {
+      font-weight: bold;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .progress-status {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    .progress-arrow {
+      font-size: 24px;
+      color: #74b9ff;
+      margin: 0 10px;
+    }
+
+    .test-section {
+      background: white;
+      border: 2px solid #e9ecef;
+      border-radius: 15px;
+      padding: 25px;
+      margin-bottom: 25px;
+      transition: all 0.3s ease;
+    }
+
+    .test-section.current-test {
+      border-color: #e74c3c;
+      box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.2);
+      animation: highlight 2s infinite;
+    }
+
+    @keyframes highlight {
+      0%, 100% { 
+        box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.2);
+      }
+      50% { 
+        box-shadow: 0 0 0 6px rgba(231, 76, 60, 0.4);
+      }
+    }
+
+    .test-item h3 {
+      color: #2c3e50;
+      margin-bottom: 15px;
+      font-size: 1.3em;
+    }
+
+    .instruction-box {
+      background: linear-gradient(135deg, #ffeaa7, #fdcb6e);
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 15px;
+      border-left: 5px solid #e17055;
+    }
+
+    .test-controls {
+      margin: 15px 0;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 25px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      margin: 5px;
+      text-transform: none;
+    }
+    
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+    }
+    
+    .btn-success {
+      background: linear-gradient(135deg, #00b894, #00a085);
+      color: white;
+    }
+    
+    .btn-danger {
+      background: linear-gradient(135deg, #e17055, #d63031);
+      color: white;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #74b9ff, #0984e3);
+      color: white;
+    }
+
+    .btn-secondary {
+      background: linear-gradient(135deg, #636e72, #2d3436);
+      color: white;
+    }
+
+    .status-box {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 10px;
+      padding: 15px;
+      margin: 10px 0;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-line;
+    }
+
+    .current-value-display {
+      background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+      border: 2px solid #2196f3;
+      border-radius: 12px;
+      padding: 15px;
+      margin: 10px 0;
+      text-align: center;
+    }
+
+    .current-value-display h5 {
+      margin: 0 0 10px 0;
+      color: #1976d2;
+      font-size: 16px;
+      font-weight: bold;
+    }
+
+    .value-box {
+      background: white;
+      border-radius: 8px;
+      padding: 12px 20px;
+      font-size: 20px;
+      font-weight: bold;
+      color: #333;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .digital-led {
+      font-size: 24px;
+      margin-right: 8px;
+      color: gray;
+    }
+
+    .percentage {
+      font-size: 16px;
+      color: #666;
+      font-weight: normal;
+    }
+
+    .confirmation-box {
+      background: linear-gradient(135deg, #a29bfe, #6c5ce7);
+      color: white;
+      padding: 20px;
+      border-radius: 15px;
+      margin: 15px 0;
+      text-align: center;
+    }
+
+    .confirmation-box p {
+      margin-bottom: 15px;
+      font-size: 16px;
+    }
+
+    .confirmation-box ul {
+      text-align: left;
+      margin-bottom: 20px;
+    }
+
+    .confirmation-box li {
+      margin: 8px 0;
+    }
+
+    .confirmation-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+
+    .results-section {
+      background: linear-gradient(135deg, #e8f5e8, #c8e6c9);
+      border: 2px solid #4caf50;
+      border-radius: 15px;
+      padding: 25px;
+      margin-top: 30px;
+    }
+
+    .result-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+      margin: 8px 0;
+      border-radius: 8px;
+      font-weight: bold;
+    }
+
+    .result-item.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+
+    .result-item.failed {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+
+    .action-buttons {
+      text-align: center;
+      margin-top: 30px;
+      padding-top: 20px;
+      border-top: 2px solid #e9ecef;
+    }
+
+    /* 整合式檢測面板樣式 */
+    .integrated-test-panel {
+      background: linear-gradient(145deg, #f8f9fa, #ffffff);
+      border: 2px solid #28a745;
+      border-radius: 20px;
+      padding: 25px;
+      margin: 20px 0;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 25px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #e9ecef;
+    }
+
+    .panel-header h2 {
+      color: #28a745;
+      margin: 0;
+      font-size: 1.4em;
+    }
+
+    .connection-info {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 5px;
+    }
+
+    .connection-indicator {
+      padding: 8px 15px;
+      border-radius: 20px;
+      font-weight: bold;
+      font-size: 0.9em;
+      transition: all 0.3s ease;
+    }
+
+    .connection-note {
+      font-size: 0.75em;
+      color: #6c757d;
+      text-align: right;
+      opacity: 0.8;
+      font-style: italic;
+      max-width: 250px;
+    }
+
+    .connection-note.connected {
+      color: #155724;
+    }
+
+    .connection-note.disconnected {
+      color: #721c24;
+      font-weight: 500;
+    }
+
+    .connection-retry-btn {
+      background: #6c757d;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 15px;
+      font-size: 0.8em;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      margin-top: 5px;
+    }
+
+    .connection-retry-btn:hover {
+      background: #5a6268;
+      transform: translateY(-1px);
+    }
+
+    .test-selection h3 {
+      color: #495057;
+      margin-bottom: 15px;
+      font-size: 1.1em;
+    }
+
+    .test-items {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 15px;
+      margin-bottom: 25px;
+    }
+
+    .test-item-card {
+      background: #ffffff;
+      border: 2px solid #e9ecef;
+      border-radius: 12px;
+      padding: 15px;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+
+    .test-item-card:hover {
+      border-color: #28a745;
+      box-shadow: 0 4px 15px rgba(40, 167, 69, 0.2);
+      transform: translateY(-2px);
+    }
+
+    .test-item-card.selected {
+      border-color: #28a745;
+      background: linear-gradient(135deg, #e8f5e8, #ffffff);
+    }
+
+    .test-item-card.testing {
+      border-color: #ffc107;
+      background: linear-gradient(135deg, #fff8e1, #ffffff);
+      animation: pulse 2s infinite;
+    }
+
+    .test-item-card.completed {
+      border-color: #28a745;
+      background: linear-gradient(135deg, #d4edda, #ffffff);
+    }
+
+    .test-item-card.failed {
+      border-color: #dc3545;
+      background: linear-gradient(135deg, #f8d7da, #ffffff);
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(255, 193, 7, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
+    }
+
+    .item-checkbox {
+      position: relative;
+    }
+
+    .item-checkbox input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+    }
+
+    .item-info {
+      flex: 1;
+    }
+
+    .item-title {
+      font-weight: bold;
+      font-size: 1.1em;
+      color: #495057;
+      margin-bottom: 4px;
+    }
+
+    .item-description {
+      color: #6c757d;
+      font-size: 0.9em;
+    }
+
+    .item-status {
+      padding: 6px 12px;
+      border-radius: 15px;
+      font-size: 0.8em;
+      font-weight: bold;
+      background: #f8f9fa;
+      color: #6c757d;
+      min-width: 80px;
+      text-align: center;
+    }
+
+    .item-status.waiting {
+      background: #e9ecef;
+      color: #6c757d;
+    }
+
+    .item-status.testing {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .item-status.success {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .item-status.failed {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .control-section {
+      margin: 25px 0;
+    }
+
+    .control-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+    }
+
+    .btn-primary-action {
+      background: linear-gradient(135deg, #28a745, #20c997);
+      color: white;
+      border: none;
+      padding: 15px 30px;
+      border-radius: 25px;
+      font-size: 1.1em;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+    }
+
+    .btn-primary-action:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+    }
+
+    .btn-secondary-action {
+      background: linear-gradient(135deg, #007bff, #0056b3);
+      color: white;
+      border: none;
+      padding: 15px 30px;
+      border-radius: 25px;
+      font-size: 1.1em;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+    }
+
+    .btn-secondary-action:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4);
+    }
+
+    .utility-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn-utility {
+      background: #6c757d;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 15px;
+      font-size: 0.9em;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .btn-utility:hover {
+      background: #5a6268;
+      transform: translateY(-1px);
+    }
+
+    .progress-section {
+      margin-top: 25px;
+    }
+
+    .progress-section h3 {
+      color: #495057;
+      margin-bottom: 10px;
+      font-size: 1.1em;
+    }
+
+    .progress-bar {
+      background: #e9ecef;
+      border-radius: 10px;
+      height: 20px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+
+    .progress-fill {
+      background: linear-gradient(90deg, #28a745, #20c997);
+      height: 100%;
+      width: 0%;
+      transition: width 0.5s ease;
+      border-radius: 10px;
+    }
+
+    .progress-text {
+      text-align: center;
+      color: #6c757d;
+      font-size: 0.9em;
+      font-weight: 500;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        padding: 20px;
+        margin: 10px;
+      }
+      
+      .header h1 {
+        font-size: 1.8em;
+      }
+      
+      .panel-header {
+        flex-direction: column;
+        gap: 15px;
+        text-align: center;
+      }
+      
+      .connection-info {
+        align-items: center;
+      }
+      
+      .connection-note {
+        text-align: center;
+        max-width: none;
+      }
+      
+      .test-items {
+        grid-template-columns: 1fr;
+      }
+      
+      .test-item-card {
+        flex-direction: column;
+        text-align: center;
+        gap: 10px;
+      }
+      
+      .control-buttons {
+        flex-direction: column;
+      }
+      
+      .utility-buttons {
+        flex-direction: column;
+      }
+      
+      .btn-primary-action,
+      .btn-secondary-action {
+        width: 100%;
+        margin: 5px 0;
+      }
+      
+      .btn-utility {
+        width: 100%;
+        margin: 2px 0;
+      }
+      
+      .confirmation-buttons {
+        flex-direction: column;
+      }
+      
+      .btn {
+        width: 100%;
+        margin: 5px 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <h1 style="margin: 0; flex: 1; text-align: center;">🔧 硬體功能檢測</h1>
+      <button type="button" onclick="window.location.href='index.html'" 
+              style="background: linear-gradient(45deg, #ff6b6b, #ee5a52); color: white; border: none; padding: 10px 20px; border-radius: 25px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3); transition: all 0.3s ease; font-size: 0.9em; flex-shrink: 0;">
+        🏠 回首頁
+      </button>
+    </div>
+
+    <!-- 整合式檢測控制面板 -->
+    <div class="integrated-test-panel">
+      <div class="panel-header">
+        <h2>🎯 硬體檢測控制面板</h2>
+        <div class="connection-info">
+          <div id="connectionStatus" class="connection-indicator">🔴 WebSocket 未連接</div>
+          <div class="connection-note" id="connectionNote">
+            📝 請確認 ESP32 已開機且網路連接正常
+          </div>
+          <button class="connection-retry-btn" onclick="retryConnection()" id="retryBtn" style="display: none;">
+            🔄 重新連接
+          </button>
+        </div>
+      </div>
+      
+      <!-- 檢測項目選擇區 -->
+      <div class="test-selection">
+        <h3>📋 檢測項目</h3>
+        <div class="test-items">
+          <div class="test-item-card" id="card-m1">
+            <div class="item-checkbox">
+              <input type="checkbox" id="check-m1" checked>
+              <label for="check-m1"></label>
+            </div>
+            <div class="item-info">
+              <div class="item-title">⚙️ M1 馬達</div>
+              <div class="item-description">測試 M1 馬達正反轉功能</div>
+            </div>
+            <div class="item-status" id="status-m1">等待中</div>
+          </div>
+          
+          <div class="test-item-card" id="card-m2">
+            <div class="item-checkbox">
+              <input type="checkbox" id="check-m2" checked>
+              <label for="check-m2"></label>
+            </div>
+            <div class="item-info">
+              <div class="item-title">⚙️ M2 馬達</div>
+              <div class="item-description">測試 M2 馬達正反轉功能</div>
+            </div>
+            <div class="item-status" id="status-m2">等待中</div>
+          </div>
+          
+          <div class="test-item-card" id="card-button">
+            <div class="item-checkbox">
+              <input type="checkbox" id="check-button" checked>
+              <label for="check-button"></label>
+            </div>
+            <div class="item-info">
+              <div class="item-title">🔘 LEGO 按鈕</div>
+              <div class="item-description">測試 GPIO4 按鈕回應</div>
+            </div>
+            <div class="item-status" id="status-button">等待中</div>
+          </div>
+          
+          <div class="test-item-card" id="card-ultrasonic">
+            <div class="item-checkbox">
+              <input type="checkbox" id="check-ultrasonic" checked>
+              <label for="check-ultrasonic"></label>
+            </div>
+            <div class="item-info">
+              <div class="item-title">📎 超音波測距</div>
+              <div class="item-description">測試 Trig:2/Echo:33 距離測量</div>
+            </div>
+            <div class="item-status" id="status-ultrasonic">等待中</div>
+          </div>
+          
+          <div class="test-item-card" id="card-digital">
+            <div class="item-checkbox">
+              <input type="checkbox" id="check-digital" checked>
+              <label for="check-digital"></label>
+            </div>
+            <div class="item-info">
+              <div class="item-title">🔢 數位讀值</div>
+              <div class="item-description">測試 GPIO15 數位訊號讀取</div>
+            </div>
+            <div class="item-status" id="status-digital">等待中</div>
+          </div>
+          
+          <div class="test-item-card" id="card-analog">
+            <div class="item-checkbox">
+              <input type="checkbox" id="check-analog" checked>
+              <label for="check-analog"></label>
+            </div>
+            <div class="item-info">
+              <div class="item-title">📈 類比讀值</div>
+              <div class="item-description">測試 GPIO32 類比訊號讀取</div>
+            </div>
+            <div class="item-status" id="status-analog">等待中</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 控制按鈕區 -->
+      <div class="control-section">
+        <div class="control-buttons">
+          <button class="btn-primary-action" onclick="startAllTests()">
+            🚀 開始全部檢測
+          </button>
+          <button class="btn-secondary-action" onclick="startSelectedTests()">
+            ✅ 開始勾選檢測
+          </button>
+        </div>
+        <div class="utility-buttons">
+          <button class="btn-utility" onclick="selectAllTests()">📝 全選</button>
+          <button class="btn-utility" onclick="deselectAllTests()">❌ 全不選</button>
+          <button class="btn-utility" onclick="resetAllTests()">🔄 重置</button>
+        </div>
+      </div>
+      
+      <!-- 進度顯示區 -->
+      <div class="progress-section">
+        <h3>📈 檢測進度</h3>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <div class="progress-text" id="progress-text">準備開始檢測...</div>
+      </div>
+    </div>
+
+    <!-- M1 馬達測試區域 -->
+    <div class="test-section test-item" id="m1-test-section">
+      <h3>⚙️ M1 馬達測試</h3>
+      <div class="instruction-box" id="m1-instruction">
+        <strong>🔍 請注意觀察 M1 馬達</strong><br>
+        準備進行自動測試：正轉增速→極速→停止→反轉增速→極速→停止
+      </div>
+      <div class="test-controls" id="m1-controls">
+        <button class="btn btn-success" onclick="startM1Test()">開始 M1 馬達測試</button>
+      </div>
+      <div class="status-box" id="m1Status">等待開始測試...</div>
+      <div class="confirmation-box" id="m1-confirmation" style="display: none;">
+        <p><strong>❓ M1 馬達是否按照以下順序正常運作？</strong></p>
+        <ul>
+          <li>✅ 先正轉，從慢速逐漸增加到極速</li>
+          <li>✅ 然後停止</li>
+          <li>✅ 再反轉，從慢速逐漸增加到極速</li>
+          <li>✅ 最後停止</li>
+        </ul>
+        <div class="confirmation-buttons">
+          <button class="btn btn-success" onclick="confirmM1(true)">✅ 是，運作正常</button>
+          <button class="btn btn-danger" onclick="confirmM1(false)">❌ 否，有問題</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- M2 馬達測試區域 -->
+    <div class="test-section test-item" id="m2-test-section">
+      <h3>⚙️ M2 馬達測試</h3>
+      <div class="instruction-box" id="m2-instruction">
+        <strong>🔍 請注意觀察 M2 馬達</strong><br>
+        準備進行自動測試：正轉增速→極速→停止→反轉增速→極速→停止
+      </div>
+      <div class="test-controls" id="m2-controls">
+        <button class="btn btn-success" onclick="startM2Test()">開始 M2 馬達測試</button>
+      </div>
+      <div class="status-box" id="m2Status">等待 M1 測試完成...</div>
+      <div class="confirmation-box" id="m2-confirmation" style="display: none;">
+        <p><strong>❓ M2 馬達是否按照以下順序正常運作？</strong></p>
+        <ul>
+          <li>✅ 先正轉，從慢速逐漸增加到極速</li>
+          <li>✅ 然後停止</li>
+          <li>✅ 再反轉，從慢速逐漸增加到極速</li>
+          <li>✅ 最後停止</li>
+        </ul>
+        <div class="confirmation-buttons">
+          <button class="btn btn-success" onclick="confirmM2(true)">✅ 是，運作正常</button>
+          <button class="btn btn-danger" onclick="confirmM2(false)">❌ 否，有問題</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- LEGO 按鈕測試區域 -->
+    <div class="test-section test-item" id="button-test-section">
+      <h3>🔘 LEGO 按鈕測試 (GPIO 4)</h3>
+      <div class="instruction-box" id="button-instruction">
+        <strong>🔍 請注意觀察按鈕回傳值</strong><br>
+        先查看初始值，然後按下 LEGO 按鈕，觀察數值變化
+      </div>
+      <div class="test-controls" id="button-controls">
+        <button class="btn btn-success" onclick="startButtonTest()">開始按鈕監測</button>
+        <button class="btn btn-danger" onclick="stopButtonTest()" style="display: none;">停止監測</button>
+      </div>
+      <div class="current-value-display">
+        <strong>📊 當前讀值：</strong>
+        <div class="value-box">
+          <span id="button-value">---</span>
+        </div>
+      </div>
+      <div class="status-box" id="buttonStatus">等待 M2 測試完成...</div>
+      <div class="confirmation-box" id="button-confirmation" style="display: none;">
+        <p><strong>❓ 按下 LEGO 按鈕時，數值是否有變化？</strong></p>
+        <ul>
+          <li>📊 <strong>初始值：</strong><span id="initial-value">---</span></li>
+          <li>📊 <strong>按下時：</strong><span id="pressed-value">---</span></li>
+          <li>✅ 正常情況：數值應該明顯不同</li>
+        </ul>
+        <div class="confirmation-buttons">
+          <button class="btn btn-success" onclick="confirmButton(true)">✅ 是，數值有變化</button>
+          <button class="btn btn-danger" onclick="confirmButton(false)">❌ 否，數值沒變化</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 超音波測距測試區域 -->
+    <div class="test-section test-item" id="ultrasonic-test-section">
+      <h3>📐 超音波測距測試 (Trig:2/Echo:33)</h3>
+      <div class="instruction-box" id="ultrasonic-instruction">
+        <strong>🤏 請用手掌在超音波感測器前方進行前後移動</strong><br>
+        測試將讀取超音波感測器的距離數據，觀察距離值隨手掌移動而變化
+      </div>
+      <div class="test-controls" id="ultrasonic-controls">
+        <button class="btn btn-success" onclick="startUltrasonicTest()">開始超音波測試</button>
+        <button class="btn btn-danger" onclick="stopUltrasonicTest()" style="display: none;">停止測試</button>
+      </div>
+      <div class="current-value-display">
+        <h5>📶 當前距離值</h5>
+        <div class="value-box">
+          <span id="ultrasonic-value">--- cm</span>
+        </div>
+      </div>
+      <div class="status-box" id="ultrasonicStatus">等待開始測試...</div>
+      <div class="confirmation-box" id="ultrasonic-confirmation" style="display: none;">
+        <p><strong>❓ 超音波測距是否正常運作？</strong></p>
+        <ul>
+          <li>📊 <strong>測得距離範圍：</strong><span id="distance-range">---</span> cm</li>
+          <li>📊 <strong>測量次數：</strong><span id="measurement-count">---</span></li>
+          <li>✅ 正常情況：距離值應該隨物體遠近變化</li>
+        </ul>
+        <div class="confirmation-buttons">
+          <button class="btn btn-success" onclick="confirmUltrasonic(true)">✅ 是，測距正常</button>
+          <button class="btn btn-danger" onclick="confirmUltrasonic(false)">❌ 否，測距異常</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 數位讀值測試區域 -->
+    <div class="test-section test-item" id="digital-test-section">
+      <h3>🔢 數位讀值測試 (GPIO 15)</h3>
+      <div class="instruction-box" id="digital-instruction">
+        <strong>� 請用手指觸碰紅外線感測器</strong><br>
+        測試將讀取 GPIO15 的數位訊號變化，觀察觸碰時 HIGH/LOW 狀態改變
+      </div>
+      <div class="test-controls" id="digital-controls">
+        <button class="btn btn-success" onclick="startDigitalTest()">開始數位讀值測試</button>
+        <button class="btn btn-danger" onclick="stopDigitalTest()" style="display: none;">停止測試</button>
+      </div>
+      <div class="current-value-display">
+        <h5>📡 當前數位值</h5>
+        <div class="value-box">
+          <span class="digital-led" id="digital-led">●</span>
+          <span id="digital-value">--- </span>
+        </div>
+      </div>
+      <div class="status-box" id="digitalStatus">等待開始測試...</div>
+      <div class="confirmation-box" id="digital-confirmation" style="display: none;">
+        <p><strong>❓ 數位讀值是否正常？</strong></p>
+        <ul>
+          <li>📊 <strong>初始讀值：</strong><span id="digital-initial">---</span></li>
+          <li>📊 <strong>檢測到的變化：</strong><span id="digital-changes">---</span></li>
+          <li>✅ 正常情況：應能讀取到 0 或 1 的數位訊號</li>
+        </ul>
+        <div class="confirmation-buttons">
+          <button class="btn btn-success" onclick="confirmDigital(true)">✅ 是，讀值正常</button>
+          <button class="btn btn-danger" onclick="confirmDigital(false)">❌ 否，讀值異常</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 類比讀值測試區域 -->
+    <div class="test-section test-item" id="analog-test-section">
+      <h3>📈 類比讀值測試 (GPIO 32)</h3>
+      <div class="instruction-box" id="analog-instruction">
+        <strong>🤏 請用手指慢慢接近紅外線感測器</strong><br>
+        測試將讀取 GPIO32 的類比訊號變化，觀察接近距離與數值(0-4095)的關係
+      </div>
+      <div class="test-controls" id="analog-controls">
+        <button class="btn btn-success" onclick="startAnalogTest()">開始類比讀值測試</button>
+        <button class="btn btn-danger" onclick="stopAnalogTest()" style="display: none;">停止測試</button>
+      </div>
+      <div class="current-value-display">
+        <h5>📈 當前類比值</h5>
+        <div class="value-box">
+          <span id="analog-value">---</span> 
+          <span class="percentage">(<span id="analog-percentage">---%</span>)</span>
+        </div>
+      </div>
+      <div class="status-box" id="analogStatus">等待開始測試...</div>
+      <div class="confirmation-box" id="analog-confirmation" style="display: none;">
+        <p><strong>❓ 類比讀值是否正常？</strong></p>
+        <ul>
+          <li>📊 <strong>讀值範圍：</strong><span id="analog-range">---</span></li>
+          <li>📊 <strong>平均值：</strong><span id="analog-average">---</span></li>
+          <li>✅ 正常情況：應能讀取到 0-4095 範圍的數值</li>
+        </ul>
+        <div class="confirmation-buttons">
+          <button class="btn btn-success" onclick="confirmAnalog(true)">✅ 是，讀值正常</button>
+          <button class="btn btn-danger" onclick="confirmAnalog(false)">❌ 否，讀值異常</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 測試結果區域 -->
+    <div class="results-section" id="results-section" style="display: none;">
+      <h3>📊 測試結果</h3>
+      <div id="results-container">
+        <!-- 結果將由 JavaScript 動態生成 -->
+      </div>
+      <div class="action-buttons">
+        <button class="btn btn-primary" onclick="restartTest()">🔄 重新測試</button>
+        <button class="btn btn-secondary" onclick="exportResults()">📥 匯出報告</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // WebSocket 連接
+    let socket;
+    let isConnected = false;
+    let currentTestStep = 0; // 0: 未開始, 1: M1測試, 2: M2測試, 3: 按鈕測試, 4: 完成
+    let testResults = {};
+    let buttonTestInterval = null;
+    let buttonReadings = [];
+    let initialButtonValue = null;
+
+    // 初始化 WebSocket 連接
+    function initWebSocket() {
+      const wsUrl = 'ws://' + window.location.hostname + '/ws';
+      socket = new WebSocket(wsUrl);
+      
+      socket.onopen = function(event) {
+        isConnected = true;
+        updateConnectionIndicator(true);
+        console.log('🟢 WebSocket 連接成功！', wsUrl);
+      };
+      
+      socket.onclose = function(event) {
+        isConnected = false;
+        updateConnectionIndicator(false);
+        console.log('🔴 WebSocket 連接已關閉，3秒後重試...');
+        setTimeout(initWebSocket, 3000);
+      };
+      
+      socket.onerror = function(error) {
+        isConnected = false;
+        updateConnectionIndicator(false);
+        console.log('❌ WebSocket 連接錯誤:', error);
+        console.log('嘗試連接的 URL:', wsUrl);
+      };
+      
+      socket.onmessage = function(event) {
+        try {
+          const data = JSON.parse(event.data);
+          handleWebSocketMessage(data);
+        } catch (e) {
+          console.log('收到非JSON數據:', event.data);
+        }
+      };
+    }
+
+
+
+    // 處理 WebSocket 訊息
+    function handleWebSocketMessage(data) {
+      // 處理回應訊息
+      console.log('收到訊息:', data);
+      
+      // 處理按鈕讀取數據
+      if (data.type === 'buttonData' && data.gpio === 4) {
+        const buttonValue = data.value;
+        const timestamp = new Date().toLocaleTimeString();
+        
+        // 記錄初始值
+        if (initialButtonValue === null) {
+          initialButtonValue = buttonValue;
+          document.getElementById('initial-value').textContent = buttonValue;
+          appendLog('buttonStatus', `📊 初始值: ${buttonValue}`);
+        }
+        
+        // 記錄所有讀取值
+        buttonReadings.push(buttonValue);
+        
+        // 即時顯示當前值
+        document.getElementById('button-value').textContent = buttonValue;
+        appendLog('buttonStatus', `[${timestamp}] GPIO 4 值: ${buttonValue}`);
+        
+        // 檢測數值變化
+        if (buttonValue !== initialButtonValue) {
+          document.getElementById('pressed-value').textContent = buttonValue;
+          appendLog('buttonStatus', `🔍 檢測到變化！初始: ${initialButtonValue} → 當前: ${buttonValue}`);
+        }
+      } 
+      // 處理超音波距離數據
+      else if (data.type === 'ultrasonicDistance') {
+        const distance = parseFloat(data.distance) || 0;
+        document.getElementById('ultrasonic-value').textContent = distance.toFixed(1) + ' cm';
+        
+        // 記錄讀數
+        ultrasonicReadings.push(distance);
+        if (distance < ultrasonicMinDistance) ultrasonicMinDistance = distance;
+        if (distance > ultrasonicMaxDistance) ultrasonicMaxDistance = distance;
+        
+        appendLog('ultrasonicStatus', `📏 距離: ${distance.toFixed(1)} cm`);
+      }
+      // 處理數位讀值數據
+      else if (data.type === 'digitalValue') {
+        const value = parseInt(data.value) || 0;
+        document.getElementById('digital-value').textContent = value ? '1 (HIGH)' : '0 (LOW)';
+        
+        // 記錄讀數
+        if (initialDigitalValue === null) {
+          initialDigitalValue = value;
+        } else {
+          const lastReading = digitalReadings[digitalReadings.length - 1];
+          if (lastReading !== undefined && lastReading !== value) {
+            digitalChanges++;
+          }
+        }
+        
+        digitalReadings.push(value);
+        
+        // 更新LED顏色
+        if (value) {
+          document.getElementById('digital-led').style.color = 'green';
+        } else {
+          document.getElementById('digital-led').style.color = 'gray';
+        }
+        
+        appendLog('digitalStatus', `📱 GPIO15: ${value ? 'HIGH' : 'LOW'}`);
+      }
+      // 處理類比讀值數據
+      else if (data.type === 'analogValue') {
+        const value = parseInt(data.value) || 0;
+        document.getElementById('analog-value').textContent = value;
+        
+        // 記錄讀數
+        analogReadings.push(value);
+        analogSum += value;
+        if (value < analogMin) analogMin = value;
+        if (value > analogMax) analogMax = value;
+        
+        // 計算百分比
+        const percentage = ((value / 4095) * 100).toFixed(1);
+        document.getElementById('analog-percentage').textContent = percentage + '%';
+        
+        appendLog('analogStatus', `📊 GPIO32: ${value} (${percentage}%)`);
+      }
+    }
+
+    // 發送命令到 ESP32
+    function sendCommand(command) {
+      if (isConnected && socket.readyState === WebSocket.OPEN) {
+        command.mode = 'hardwareTest';
+        socket.send(JSON.stringify(command));
+        return true;
+      } else {
+        alert('❌ WebSocket 未連接，無法控制馬達');
+        return false;
+      }
+    }
+
+    // 添加日誌
+    function appendLog(elementId, message) {
+      const element = document.getElementById(elementId);
+      const timestamp = new Date().toLocaleTimeString();
+      element.textContent += `[${timestamp}] ${message}\n`;
+      element.scrollTop = element.scrollHeight;
+    }
+
+    // 更新進度指示器
+    function updateProgress(step) {
+      const steps = ['progress-m1', 'progress-m2', 'progress-button', 'progress-complete'];
+      
+      // 重置所有步驟
+      steps.forEach(stepId => {
+        const element = document.getElementById(stepId);
+        element.classList.remove('active', 'completed', 'failed');
+      });
+      
+      // 設定當前步驟
+      if (step > 0 && step <= steps.length) {
+        const currentElement = document.getElementById(steps[step - 1]);
+        currentElement.classList.add('active');
+        
+        // 設定之前的步驟為完成
+        for (let i = 0; i < step - 1; i++) {
+          const prevElement = document.getElementById(steps[i]);
+          if (testResults[steps[i]] === true) {
+            prevElement.classList.add('completed');
+            prevElement.querySelector('.progress-status').textContent = '✅ 通過';
+          } else if (testResults[steps[i]] === false) {
+            prevElement.classList.add('failed');
+            prevElement.querySelector('.progress-status').textContent = '❌ 失敗';
+          }
+        }
+        
+        // 更新當前步驟狀態
+        currentElement.querySelector('.progress-status').textContent = '🔄 進行中';
+      }
+    }
+
+    // 高亮當前測試項目
+    function highlightCurrentTest(testId) {
+      // 移除所有高亮
+      document.querySelectorAll('.test-item').forEach(item => {
+        item.classList.remove('current-test');
+      });
+      
+      // 高亮當前測試
+      if (testId) {
+        document.getElementById(testId).classList.add('current-test');
+      }
+    }
+
+    // 啟用/禁用測試區塊
+    function setTestSectionEnabled(sectionId, enabled) {
+      const section = document.getElementById(sectionId);
+      if (enabled) {
+        section.style.opacity = '1';
+        section.style.pointerEvents = 'auto';
+      } else {
+        section.style.opacity = '0.5';
+        section.style.pointerEvents = 'none';
+      }
+    }
+
+    // M1 馬達測試
+    function startM1Test() {
+      currentTestStep = 1;
+      updateTestItemStatus('m1', 'testing');
+      updateProgressBar(25, '正在測試 M1 馬達...');
+      highlightCurrentTest('m1-test-section');
+      
+      appendLog('m1Status', '🎯 開始 M1 馬達自動測試序列...');
+      
+      // 隱藏開始按鈕
+      document.getElementById('m1-controls').style.display = 'none';
+      
+      // 執行測試序列
+      executeM1TestSequence();
+    }
+
+    function executeM1TestSequence() {
+      const steps = [
+        { action: '正轉慢速', speed: 80, duration: 1000 },
+        { action: '正轉加速', speed: 150, duration: 1000 },
+        { action: '正轉極速', speed: 255, duration: 1500 },
+        { action: '停止', speed: 0, duration: 1000 },
+        { action: '反轉慢速', speed: -80, duration: 1000 },
+        { action: '反轉加速', speed: -150, duration: 1000 },
+        { action: '反轉極速', speed: -255, duration: 1500 },
+        { action: '停止', speed: 0, duration: 500 }
+      ];
+      
+      let stepIndex = 0;
+      
+      function executeStep() {
+        if (stepIndex < steps.length) {
+          const step = steps[stepIndex];
+          appendLog('m1Status', `▶️ ${step.action} (速度: ${step.speed})`);
+          
+          sendCommand({
+            type: 'motorControl',
+            motor: 'M1',
+            speed: step.speed
+          });
+          
+          setTimeout(() => {
+            stepIndex++;
+            executeStep();
+          }, step.duration);
+        } else {
+          // 測試完成，顯示確認框
+          appendLog('m1Status', '✅ M1 馬達測試序列完成！請確認馬達動作是否正常。');
+          document.getElementById('m1-confirmation').style.display = 'block';
+        }
+      }
+      
+      executeStep();
+    }
+
+
+
+    // M2 馬達測試
+    function startM2Test() {
+      currentTestStep = 2;
+      updateTestItemStatus('m2', 'testing');
+      updateProgressBar(50, '正在測試 M2 馬達...');
+      highlightCurrentTest('m2-test-section');
+      
+      appendLog('m2Status', '🎯 開始 M2 馬達自動測試序列...');
+      
+      // 隱藏開始按鈕
+      document.getElementById('m2-controls').style.display = 'none';
+      
+      // 執行測試序列
+      executeM2TestSequence();
+    }
+
+    function executeM2TestSequence() {
+      const steps = [
+        { action: '正轉慢速', speed: 80, duration: 1000 },
+        { action: '正轉加速', speed: 150, duration: 1000 },
+        { action: '正轉極速', speed: 255, duration: 1500 },
+        { action: '停止', speed: 0, duration: 1000 },
+        { action: '反轉慢速', speed: -80, duration: 1000 },
+        { action: '反轉加速', speed: -150, duration: 1000 },
+        { action: '反轉極速', speed: -255, duration: 1500 },
+        { action: '停止', speed: 0, duration: 500 }
+      ];
+      
+      let stepIndex = 0;
+      
+      function executeStep() {
+        if (stepIndex < steps.length) {
+          const step = steps[stepIndex];
+          appendLog('m2Status', `▶️ ${step.action} (速度: ${step.speed})`);
+          
+          sendCommand({
+            type: 'motorControl',
+            motor: 'M2',
+            speed: step.speed
+          });
+          
+          setTimeout(() => {
+            stepIndex++;
+            executeStep();
+          }, step.duration);
+        } else {
+          // 測試完成，顯示確認框
+          appendLog('m2Status', '✅ M2 馬達測試序列完成！請確認馬達動作是否正常。');
+          document.getElementById('m2-confirmation').style.display = 'block';
+        }
+      }
+      
+      executeStep();
+    }
+
+
+
+    // LEGO 按鈕測試
+    function startButtonTest() {
+      currentTestStep = 3;
+      updateTestItemStatus('button', 'testing');
+      updateProgressBar(75, '正在測試 LEGO 按鈕...');
+      highlightCurrentTest('button-test-section');
+      
+      appendLog('buttonStatus', '🎯 開始 LEGO 按鈕監測...');
+      appendLog('buttonStatus', '📊 正在讀取 GPIO 4 初始值...');
+      appendLog('buttonStatus', '💡 請在測試期間按下並鬆開 LEGO 按鈕，系統會自動檢測數值變化');
+      
+      // 隱藏開始按鈕，顯示停止按鈕
+      document.getElementById('button-controls').querySelector('.btn-success').style.display = 'none';
+      document.getElementById('button-controls').querySelector('.btn-danger').style.display = 'inline-block';
+      
+      // 重置按鈕讀取數據
+      buttonReadings = [];
+      initialButtonValue = null;
+      
+      // 開始定期讀取按鈕狀態
+      buttonTestInterval = setInterval(() => {
+        sendCommand({
+          type: 'hardwareTest',
+          test: 'buttonReading',
+          gpio: 4
+        });
+      }, 200); // 每200ms讀取一次
+      
+      // 10秒後自動停止並顯示確認框
+      setTimeout(() => {
+        stopButtonTest();
+        showButtonConfirmation();
+      }, 10000);
+    }
+
+    function stopButtonTest() {
+      if (buttonTestInterval) {
+        clearInterval(buttonTestInterval);
+        buttonTestInterval = null;
+        appendLog('buttonStatus', '🛑 按鈕監測已停止');
+        
+        // 隱藏停止按鈕
+        document.getElementById('button-controls').querySelector('.btn-danger').style.display = 'none';
+      }
+    }
+
+    function showButtonConfirmation() {
+      appendLog('buttonStatus', '✅ 按鈕測試完成！請檢查上方顯示的數值變化。');
+      
+      // 顯示確認框
+      document.getElementById('button-confirmation').style.display = 'block';
+    }
+
+    // 超音波測距測試
+    let ultrasonicTestInterval = null;
+    let ultrasonicReadings = [];
+    let ultrasonicMinDistance = 999;
+    let ultrasonicMaxDistance = 0;
+
+    function startUltrasonicTest() {
+      currentTestStep = 4;
+      updateTestItemStatus('ultrasonic', 'testing');
+      updateProgressBar(60, '正在測試超音波測距...');
+      highlightCurrentTest('ultrasonic-test-section');
+      
+      appendLog('ultrasonicStatus', '🎯 開始超音波測距測試...');
+      appendLog('ultrasonicStatus', '� 請用手掌在感測器前方進行前後移動');
+      appendLog('ultrasonicStatus', '�📊 正在讀取距離數據...');
+      
+      // 隱藏開始按鈕，顯示停止按鈕
+      document.getElementById('ultrasonic-controls').querySelector('.btn-success').style.display = 'none';
+      document.getElementById('ultrasonic-controls').querySelector('.btn-danger').style.display = 'inline-block';
+      
+      // 重置超音波讀取數據
+      ultrasonicReadings = [];
+      ultrasonicMinDistance = 999;
+      ultrasonicMaxDistance = 0;
+      
+      // 開始定期讀取超音波距離
+      ultrasonicTestInterval = setInterval(() => {
+        sendCommand({
+          type: 'hardwareTest',
+          test: 'ultrasonicReading',
+          trig: 2,
+          echo: 33
+        });
+      }, 500); // 每500ms讀取一次
+      
+      // 15秒後自動停止並顯示確認框
+      setTimeout(() => {
+        stopUltrasonicTest();
+        showUltrasonicConfirmation();
+      }, 15000);
+    }
+
+    function stopUltrasonicTest() {
+      if (ultrasonicTestInterval) {
+        clearInterval(ultrasonicTestInterval);
+        ultrasonicTestInterval = null;
+        appendLog('ultrasonicStatus', '🛑 超音波測試已停止');
+        
+        // 隱藏停止按鈕
+        document.getElementById('ultrasonic-controls').querySelector('.btn-danger').style.display = 'none';
+      }
+    }
+
+    function showUltrasonicConfirmation() {
+      appendLog('ultrasonicStatus', '✅ 超音波測試完成！請檢查測得的距離數據。');
+      
+      // 更新顯示數據
+      document.getElementById('distance-range').textContent = `${ultrasonicMinDistance}-${ultrasonicMaxDistance}`;
+      document.getElementById('measurement-count').textContent = ultrasonicReadings.length;
+      
+      // 顯示確認框
+      document.getElementById('ultrasonic-confirmation').style.display = 'block';
+    }
+
+    function confirmUltrasonic(isNormal) {
+      testResults['ultrasonic'] = isNormal;
+      updateTestItemStatus('ultrasonic', isNormal ? 'success' : 'failed');
+      
+      if (isNormal) {
+        appendLog('ultrasonicStatus', '✅ 使用者確認：超音波測距運作正常');
+      } else {
+        appendLog('ultrasonicStatus', '❌ 使用者確認：超音波測距有問題');
+      }
+      
+      // 隱藏確認框
+      document.getElementById('ultrasonic-confirmation').style.display = 'none';
+      
+      if (autoTestMode) {
+        currentAutoTestIndex++;
+        setTimeout(() => {
+          executeNextAutoTest();
+        }, 1000);
+      } else {
+        completeAllTests();
+      }
+    }
+
+    // 數位讀值測試
+    let digitalTestInterval = null;
+    let digitalReadings = [];
+    let initialDigitalValue = null;
+    let digitalChanges = 0;
+
+    function startDigitalTest() {
+      currentTestStep = 5;
+      updateTestItemStatus('digital', 'testing');
+      updateProgressBar(70, '正在測試數位讀值...');
+      highlightCurrentTest('digital-test-section');
+      
+      appendLog('digitalStatus', '🎯 開始數位讀值測試...');
+      appendLog('digitalStatus', '� 請用手指觸碰紅外線感測器');
+      appendLog('digitalStatus', '�📊 正在讀取 GPIO15 數位訊號...');
+      
+      // 隱藏開始按鈕，顯示停止按鈕
+      document.getElementById('digital-controls').querySelector('.btn-success').style.display = 'none';
+      document.getElementById('digital-controls').querySelector('.btn-danger').style.display = 'inline-block';
+      
+      // 重置數位讀取數據
+      digitalReadings = [];
+      initialDigitalValue = null;
+      digitalChanges = 0;
+      
+      // 開始定期讀取數位訊號
+      digitalTestInterval = setInterval(() => {
+        sendCommand({
+          type: 'hardwareTest',
+          test: 'digitalReading',
+          gpio: 15
+        });
+      }, 300); // 每300ms讀取一次
+      
+      // 12秒後自動停止並顯示確認框
+      setTimeout(() => {
+        stopDigitalTest();
+        showDigitalConfirmation();
+      }, 12000);
+    }
+
+    function stopDigitalTest() {
+      if (digitalTestInterval) {
+        clearInterval(digitalTestInterval);
+        digitalTestInterval = null;
+        appendLog('digitalStatus', '🛑 數位讀值測試已停止');
+        
+        // 隱藏停止按鈕
+        document.getElementById('digital-controls').querySelector('.btn-danger').style.display = 'none';
+      }
+    }
+
+    function showDigitalConfirmation() {
+      appendLog('digitalStatus', '✅ 數位讀值測試完成！請檢查讀取的數位訊號。');
+      
+      // 更新顯示數據
+      document.getElementById('digital-initial').textContent = initialDigitalValue || '未讀取';
+      document.getElementById('digital-changes').textContent = digitalChanges;
+      
+      // 顯示確認框
+      document.getElementById('digital-confirmation').style.display = 'block';
+    }
+
+    function confirmDigital(isNormal) {
+      testResults['digital'] = isNormal;
+      updateTestItemStatus('digital', isNormal ? 'success' : 'failed');
+      
+      if (isNormal) {
+        appendLog('digitalStatus', '✅ 使用者確認：數位讀值運作正常');
+      } else {
+        appendLog('digitalStatus', '❌ 使用者確認：數位讀值有問題');
+      }
+      
+      // 隱藏確認框
+      document.getElementById('digital-confirmation').style.display = 'none';
+      
+      if (autoTestMode) {
+        currentAutoTestIndex++;
+        setTimeout(() => {
+          executeNextAutoTest();
+        }, 1000);
+      } else {
+        completeAllTests();
+      }
+    }
+
+    // 類比讀值測試
+    let analogTestInterval = null;
+    let analogReadings = [];
+    let analogSum = 0;
+    let analogMin = 4095;
+    let analogMax = 0;
+
+    function startAnalogTest() {
+      currentTestStep = 6;
+      updateTestItemStatus('analog', 'testing');
+      updateProgressBar(80, '正在測試類比讀值...');
+      highlightCurrentTest('analog-test-section');
+      
+      appendLog('analogStatus', '🎯 開始類比讀值測試...');
+      appendLog('analogStatus', '🤏 請用手指慢慢接近紅外線感測器');
+      appendLog('analogStatus', '📊 正在讀取 GPIO32 類比訊號...');
+      
+      // 隱藏開始按鈕，顯示停止按鈕
+      document.getElementById('analog-controls').querySelector('.btn-success').style.display = 'none';
+      document.getElementById('analog-controls').querySelector('.btn-danger').style.display = 'inline-block';
+      
+      // 重置類比讀取數據
+      analogReadings = [];
+      analogSum = 0;
+      analogMin = 4095;
+      analogMax = 0;
+      
+      // 開始定期讀取類比訊號
+      analogTestInterval = setInterval(() => {
+        sendCommand({
+          type: 'hardwareTest',
+          test: 'analogReading',
+          gpio: 32
+        });
+      }, 400); // 每400ms讀取一次
+      
+      // 12秒後自動停止並顯示確認框
+      setTimeout(() => {
+        stopAnalogTest();
+        showAnalogConfirmation();
+      }, 12000);
+    }
+
+    function stopAnalogTest() {
+      if (analogTestInterval) {
+        clearInterval(analogTestInterval);
+        analogTestInterval = null;
+        appendLog('analogStatus', '🛑 類比讀值測試已停止');
+        
+        // 隱藏停止按鈕
+        document.getElementById('analog-controls').querySelector('.btn-danger').style.display = 'none';
+      }
+    }
+
+    function showAnalogConfirmation() {
+      appendLog('analogStatus', '✅ 類比讀值測試完成！請檢查讀取的類比數值。');
+      
+      // 計算平均值
+      const average = analogReadings.length > 0 ? Math.round(analogSum / analogReadings.length) : 0;
+      
+      // 更新顯示數據
+      document.getElementById('analog-range').textContent = `${analogMin}-${analogMax}`;
+      document.getElementById('analog-average').textContent = average;
+      
+      // 顯示確認框
+      document.getElementById('analog-confirmation').style.display = 'block';
+    }
+
+    function confirmAnalog(isNormal) {
+      testResults['analog'] = isNormal;
+      updateTestItemStatus('analog', isNormal ? 'success' : 'failed');
+      
+      if (isNormal) {
+        appendLog('analogStatus', '✅ 使用者確認：類比讀值運作正常');
+      } else {
+        appendLog('analogStatus', '❌ 使用者確認：類比讀值有問題');
+      }
+      
+      // 隱藏確認框
+      document.getElementById('analog-confirmation').style.display = 'none';
+      
+      if (autoTestMode) {
+        currentAutoTestIndex++;
+        setTimeout(() => {
+          executeNextAutoTest();
+        }, 1000);
+      } else {
+        completeAllTests();
+      }
+    }
+
+    // 完成所有測試
+    function completeAllTests() {
+      currentTestStep = 7;
+      highlightCurrentTest(null);
+      updateProgressBar(100, '🎉 所有測試已完成！');
+      
+      // 顯示結果區域
+      document.getElementById('results-section').style.display = 'block';
+      generateTestReport();
+      
+      // 滾動到結果區域
+      document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // 生成測試報告
+    function generateTestReport() {
+      const container = document.getElementById('results-container');
+      
+      let reportHTML = '<h4>📊 測試結果摘要</h4>';
+      
+      // 測試項目映射
+      const testMapping = {
+        'm1': { icon: '⚙️', name: 'M1 馬達' },
+        'm2': { icon: '⚙️', name: 'M2 馬達' },
+        'button': { icon: '🔘', name: 'LEGO 按鈕' },
+        'ultrasonic': { icon: '📡', name: '超音波測距' },
+        'digital': { icon: '📱', name: '數位讀值 (GPIO15)' },
+        'analog': { icon: '📊', name: '類比讀值 (GPIO32)' }
+      };
+      
+      // 顯示每個測試結果
+      Object.keys(testMapping).forEach(testKey => {
+        const result = testResults[testKey];
+        const test = testMapping[testKey];
+        
+        if (result === true) {
+          reportHTML += `<div class="result-item success"><span>${test.icon} ${test.name}</span><span>✅ 測試通過</span></div>`;
+        } else if (result === false) {
+          reportHTML += `<div class="result-item failed"><span>${test.icon} ${test.name}</span><span>❌ 測試失敗</span></div>`;
+        } else {
+          reportHTML += `<div class="result-item"><span>${test.icon} ${test.name}</span><span>⏸️ 未執行</span></div>`;
+        }
+      });
+      
+      // 整體評估
+      const passCount = Object.values(testResults).filter(result => result === true).length;
+      const failCount = Object.values(testResults).filter(result => result === false).length;
+      const totalTests = passCount + failCount;
+      
+      reportHTML += `<hr><div style="text-align: center; padding: 15px;">`;
+      if (totalTests === 0) {
+        reportHTML += `<h3 style="color: #6c757d;">📝 無測試執行</h3>`;
+        reportHTML += `<p>請選擇測試項目並執行測試</p>`;
+      } else if (passCount === totalTests) {
+        reportHTML += `<h3 style="color: #28a745;">🎉 所有測試通過！</h3>`;
+        reportHTML += `<p>通過率: ${passCount}/${totalTests} (100%)</p>`;
+      } else {
+        reportHTML += `<h3 style="color: #dc3545;">⚠️ 部分測試失敗</h3>`;
+        reportHTML += `<p>通過率: ${passCount}/${totalTests} (${Math.round(passCount/totalTests*100)}%)</p>`;
+        if (failCount > 0) {
+          reportHTML += `<p style="color: #dc3545;">失敗項目: ${failCount} 個</p>`;
+        }
+      }
+      reportHTML += `<p>測試時間: ${new Date().toLocaleString()}</p></div>`;
+      
+      container.innerHTML = reportHTML;
+    }
+
+    // 重新開始測試
+    function restartTest() {
+      // 重置所有狀態
+      currentTestStep = 0;
+      testResults = {};
+      
+      // 重置進度指示器
+      document.querySelectorAll('.progress-item').forEach(item => {
+        item.classList.remove('active', 'completed', 'failed');
+        item.querySelector('.progress-status').textContent = '等待中';
+      });
+      
+      // 重置測試區域
+      document.getElementById('m1-controls').style.display = 'block';
+      document.getElementById('m2-controls').style.display = 'block';
+      document.getElementById('m1-confirmation').style.display = 'none';
+      document.getElementById('m2-confirmation').style.display = 'none';
+      
+      // 重置狀態顯示
+      document.getElementById('m1Status').textContent = '等待開始測試...';
+      document.getElementById('m2Status').textContent = '等待 M1 測試完成...';
+      
+      // 重置區域啟用狀態
+      setTestSectionEnabled('m1-test-section', true);
+      setTestSectionEnabled('m2-test-section', false);
+      
+      // 隱藏結果區域
+      document.getElementById('results-section').style.display = 'none';
+      
+      // 滾動回頂部
+      document.querySelector('.container').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // 匯出報告
+    function exportResults() {
+      const report = generateTextReport();
+      // 添加 UTF-8 BOM 以確保中文正確顯示
+      const BOM = '\uFEFF';
+      const blob = new Blob([BOM + report], { type: 'text/plain; charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `硬體測試報告_${new Date().toISOString().slice(0,10)}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function generateTextReport() {
+      let report = '=== ESP32 機器人硬體測試報告 ===\n\n';
+      report += `測試時間: ${new Date().toLocaleString()}\n`;
+      report += `測試設備: ${window.location.hostname}\n`;
+      report += `AP 名稱: 618 (${window.location.hostname})\n`;
+      report += `連線位址: http://${window.location.hostname}/hardware_test.html\n\n`;
+      
+      // 測試項目映射
+      const testMapping = {
+        'm1': { icon: '⚙️', name: 'M1 馬達' },
+        'm2': { icon: '⚙️', name: 'M2 馬達' },
+        'button': { icon: '🔘', name: 'LEGO 按鈕 (GPIO 4)' },
+        'ultrasonic': { icon: '📡', name: '超音波測距 (Trig:2/Echo:33)' },
+        'digital': { icon: '📱', name: '數位讀值 (GPIO 15)' },
+        'analog': { icon: '📊', name: '類比讀值 (GPIO 32)' }
+      };
+      
+      report += '測試結果:\n';
+      Object.keys(testMapping).forEach(testKey => {
+        const result = testResults[testKey];
+        const test = testMapping[testKey];
+        
+        if (result === true) {
+          report += `✅ ${test.name}: 測試通過\n`;
+        } else if (result === false) {
+          report += `❌ ${test.name}: 測試失敗\n`;
+        } else {
+          report += `⏸️ ${test.name}: 未執行\n`;
+        }
+      });
+      
+      const passCount = Object.values(testResults).filter(result => result === true).length;
+      const failCount = Object.values(testResults).filter(result => result === false).length;
+      const totalTests = passCount + failCount;
+      
+      report += '\n測試統計:\n';
+      report += `執行的測試項目: ${totalTests}\n`;
+      report += `通過項目: ${passCount}\n`;
+      report += `失敗項目: ${failCount}\n`;
+      if (totalTests > 0) {
+        report += `通過率: ${passCount}/${totalTests} (${Math.round(passCount/totalTests*100)}%)\n`;
+      } else {
+        report += `通過率: 無測試執行\n`;
+      }
+      
+      report += '\n結論:\n';
+      if (totalTests === 0) {
+        report += '尚未執行任何測試，請先進行硬體測試。\n';
+      } else if (passCount === totalTests) {
+        report += '🎉 所有硬體功能測試通過，系統運作正常！\n';
+      } else if (passCount === 0) {
+        report += '⚠️ 所有測試項目都失敗，請檢查硬體連接。\n';
+      } else {
+        report += `⚠️ 有 ${failCount} 個項目測試失敗，建議檢查相關硬體。\n`;
+      }
+      
+      report += '\n--- 報告結束 ---\n';
+      
+      return report;
+    }
+
+    // 檢測選項管理函數
+    let selectedTests = [];
+    let autoTestMode = false;
+    let currentAutoTestIndex = 0;
+
+    // 更新測試項目狀態
+    function updateTestItemStatus(testId, status) {
+      const card = document.getElementById(`card-${testId}`);
+      const statusElement = document.getElementById(`status-${testId}`);
+      
+      // 移除所有狀態類別
+      card.classList.remove('selected', 'testing', 'completed', 'failed');
+      statusElement.classList.remove('waiting', 'testing', 'success', 'failed');
+      
+      // 添加新狀態
+      switch(status) {
+        case 'testing':
+          card.classList.add('testing');
+          statusElement.classList.add('testing');
+          statusElement.textContent = '測試中...';
+          break;
+        case 'success':
+          card.classList.add('completed');
+          statusElement.classList.add('success');
+          statusElement.textContent = '✅ 通過';
+          break;
+        case 'failed':
+          card.classList.add('failed');
+          statusElement.classList.add('failed');
+          statusElement.textContent = '❌ 失敗';
+          break;
+        case 'waiting':
+        default:
+          statusElement.classList.add('waiting');
+          statusElement.textContent = '等待中';
+          break;
+      }
+    }
+
+    // 更新進度條
+    function updateProgressBar(percentage, text) {
+      const progressFill = document.getElementById('progress-fill');
+      const progressText = document.getElementById('progress-text');
+      
+      progressFill.style.width = percentage + '%';
+      progressText.textContent = text;
+    }
+
+    // 更新連接狀態指示器
+    function updateConnectionIndicator(isConnected) {
+      const indicator = document.querySelector('.connection-indicator');
+      const note = document.getElementById('connectionNote');
+      const retryBtn = document.getElementById('retryBtn');
+      
+      if (isConnected) {
+        indicator.textContent = '🟢 WebSocket 已連接';
+        indicator.style.background = '#d4edda';
+        indicator.style.color = '#155724';
+        
+        note.textContent = '✅ ESP32 連接正常，可以開始硬體檢測';
+        note.className = 'connection-note connected';
+        
+        // 隱藏重試按鈕
+        retryBtn.style.display = 'none';
+      } else {
+        indicator.textContent = '🔴 WebSocket 未連接';
+        indicator.style.background = '#f8d7da';
+        indicator.style.color = '#721c24';
+        
+        note.textContent = '⚠️ 請檢查：① ESP32是否開機 ② 網路連接是否正常 ③ 瀏覽器是否支援WebSocket';
+        note.className = 'connection-note disconnected';
+        
+        // 顯示重試按鈕
+        retryBtn.style.display = 'inline-block';
+      }
+    }
+
+    // 重置所有測試
+    function resetAllTests() {
+      // 重置測試狀態
+      updateTestItemStatus('m1', 'waiting');
+      updateTestItemStatus('m2', 'waiting');
+      updateTestItemStatus('button', 'waiting');
+      updateTestItemStatus('ultrasonic', 'waiting');
+      updateTestItemStatus('digital', 'waiting');
+      updateTestItemStatus('analog', 'waiting');
+      
+      // 重置進度條
+      updateProgressBar(0, '準備開始檢測...');
+      
+      // 重置變數
+      currentTestStep = 0;
+      testResults = {};
+      autoTestMode = false;
+      currentAutoTestIndex = 0;
+      
+      // 重置測試區域
+      setTestSectionEnabled('m1-test-section', false);
+      setTestSectionEnabled('m2-test-section', false);
+      setTestSectionEnabled('button-test-section', false);
+      setTestSectionEnabled('ultrasonic-test-section', false);
+      setTestSectionEnabled('digital-test-section', false);
+      setTestSectionEnabled('analog-test-section', false);
+      
+      // 隱藏所有確認框
+      document.getElementById('m1-confirmation').style.display = 'none';
+      document.getElementById('m2-confirmation').style.display = 'none';
+      document.getElementById('button-confirmation').style.display = 'none';
+      
+      // 隱藏結果區域
+      document.getElementById('results-section').style.display = 'none';
+    }
+
+    // 重新連接功能
+    function retryConnection() {
+      console.log('🔄 手動重新連接 WebSocket...');
+      
+      // 關閉現有連接
+      if (socket) {
+        socket.close();
+      }
+      
+      // 稍待然後重新連接
+      setTimeout(() => {
+        initWebSocket();
+      }, 500);
+    }
+
+    // 開始全部檢測
+    function startAllTests() {
+      // 選中所有項目
+      document.getElementById('check-m1').checked = true;
+      document.getElementById('check-m2').checked = true;
+      document.getElementById('check-button').checked = true;
+      document.getElementById('check-ultrasonic').checked = true;
+      document.getElementById('check-digital').checked = true;
+      document.getElementById('check-analog').checked = true;
+      
+      // 開始自動檢測
+      autoTestMode = true;
+      selectedTests = ['m1', 'm2', 'button', 'ultrasonic', 'digital', 'analog'];
+      currentAutoTestIndex = 0;
+      
+      appendLog('connectionStatus', '🚀 開始全部硬體檢測...');
+      
+      // 重設所有測試狀態
+      resetAllTestSections();
+      
+      // 開始第一個測試
+      executeNextAutoTest();
+    }
+
+    // 開始勾選檢測
+    function startSelectedTests() {
+      selectedTests = [];
+      
+      // 檢查選中的項目
+      if (document.getElementById('check-m1').checked) {
+        selectedTests.push('m1');
+      }
+      if (document.getElementById('check-m2').checked) {
+        selectedTests.push('m2');
+      }
+      if (document.getElementById('check-button').checked) {
+        selectedTests.push('button');
+      }
+      if (document.getElementById('check-ultrasonic').checked) {
+        selectedTests.push('ultrasonic');
+      }
+      if (document.getElementById('check-digital').checked) {
+        selectedTests.push('digital');
+      }
+      if (document.getElementById('check-analog').checked) {
+        selectedTests.push('analog');
+      }
+      
+      if (selectedTests.length === 0) {
+        alert('❌ 請至少選擇一個檢測項目！');
+        return;
+      }
+      
+      autoTestMode = true;
+      currentAutoTestIndex = 0;
+      
+      appendLog('connectionStatus', `✅ 開始勾選檢測，共 ${selectedTests.length} 個項目...`);
+      
+      // 重設測試狀態
+      resetSelectedTestSections();
+      
+      // 開始第一個測試
+      executeNextAutoTest();
+    }
+
+    // 執行下一個自動測試
+    function executeNextAutoTest() {
+      if (!autoTestMode || currentAutoTestIndex >= selectedTests.length) {
+        // 所有測試完成
+        autoTestMode = false;
+        appendLog('connectionStatus', '🎉 所有選定的檢測項目已完成！');
+        completeAllTests(); // 顯示完成狀態和測試報告
+        return;
+      }
+      
+      const currentTest = selectedTests[currentAutoTestIndex];
+      
+      switch(currentTest) {
+        case 'm1':
+          appendLog('connectionStatus', `📋 [${currentAutoTestIndex + 1}/${selectedTests.length}] 開始 M1 馬達測試`);
+          startM1Test();
+          break;
+        case 'm2':
+          appendLog('connectionStatus', `📋 [${currentAutoTestIndex + 1}/${selectedTests.length}] 開始 M2 馬達測試`);
+          startM2Test();
+          break;
+        case 'button':
+          appendLog('connectionStatus', `📋 [${currentAutoTestIndex + 1}/${selectedTests.length}] 開始 LEGO 按鈕測試`);
+          startButtonTest();
+          break;
+        case 'ultrasonic':
+          appendLog('connectionStatus', `📋 [${currentAutoTestIndex + 1}/${selectedTests.length}] 開始超音波測距測試`);
+          startUltrasonicTest();
+          break;
+        case 'digital':
+          appendLog('connectionStatus', `📋 [${currentAutoTestIndex + 1}/${selectedTests.length}] 開始數位讀值測試`);
+          startDigitalTest();
+          break;
+        case 'analog':
+          appendLog('connectionStatus', `📋 [${currentAutoTestIndex + 1}/${selectedTests.length}] 開始類比讀值測試`);
+          startAnalogTest();
+          break;
+      }
+    }
+
+    // 重設所有測試區域
+    function resetAllTestSections() {
+      setTestSectionEnabled('m1-test-section', false);
+      setTestSectionEnabled('m2-test-section', false);
+      setTestSectionEnabled('button-test-section', false);
+      
+      // 重設進度
+      updateProgress(0);
+      
+      // 清空測試結果
+      testResults = {};
+    }
+
+    // 重設選定的測試區域
+    function resetSelectedTestSections() {
+      // 根據選中項目啟用對應區域
+      setTestSectionEnabled('m1-test-section', selectedTests.includes('m1'));
+      setTestSectionEnabled('m2-test-section', selectedTests.includes('m2'));
+      setTestSectionEnabled('button-test-section', selectedTests.includes('button'));
+      setTestSectionEnabled('ultrasonic-test-section', selectedTests.includes('ultrasonic'));
+      setTestSectionEnabled('digital-test-section', selectedTests.includes('digital'));
+      setTestSectionEnabled('analog-test-section', selectedTests.includes('analog'));
+      
+      // 重設進度
+      updateProgress(0);
+      
+      // 清空測試結果
+      testResults = {};
+    }
+
+    // 全選
+    function selectAllTests() {
+      document.getElementById('check-m1').checked = true;
+      document.getElementById('check-m2').checked = true;
+      document.getElementById('check-button').checked = true;
+      document.getElementById('check-ultrasonic').checked = true;
+      document.getElementById('check-digital').checked = true;
+      document.getElementById('check-analog').checked = true;
+    }
+
+    // 全不選
+    function deselectAllTests() {
+      document.getElementById('check-m1').checked = false;
+      document.getElementById('check-m2').checked = false;
+      document.getElementById('check-button').checked = false;
+      document.getElementById('check-ultrasonic').checked = false;
+      document.getElementById('check-digital').checked = false;
+      document.getElementById('check-analog').checked = false;
+    }
+
+    // 修改原有的確認函數以支持自動模式
+    function confirmM1(isNormal) {
+      testResults['m1'] = isNormal;
+      
+      // 更新狀態指示器
+      updateTestItemStatus('m1', isNormal ? 'success' : 'failed');
+      
+      if (isNormal) {
+        appendLog('m1Status', '✅ 使用者確認：M1 馬達運作正常');
+      } else {
+        appendLog('m1Status', '❌ 使用者確認：M1 馬達有問題');
+      }
+      
+      // 隱藏確認框
+      document.getElementById('m1-confirmation').style.display = 'none';
+      
+      if (autoTestMode) {
+        // 自動模式：繼續下一個測試
+        currentAutoTestIndex++;
+        setTimeout(() => {
+          executeNextAutoTest();
+        }, 1000);
+      } else {
+        // 手動模式：啟用 M2
+        setTestSectionEnabled('m2-test-section', true);
+        document.getElementById('m2Status').textContent = '準備開始 M2 馬達測試...';
+        highlightCurrentTest(null);
+        updateProgressBar(50, '準備 M2 馬達測試...');
+      }
+    }
+
+    function confirmM2(isNormal) {
+      testResults['m2'] = isNormal;
+      
+      // 更新狀態指示器
+      updateTestItemStatus('m2', isNormal ? 'success' : 'failed');
+      
+      if (isNormal) {
+        appendLog('m2Status', '✅ 使用者確認：M2 馬達運作正常');
+      } else {
+        appendLog('m2Status', '❌ 使用者確認：M2 馬達有問題');
+      }
+      
+      // 隱藏確認框
+      document.getElementById('m2-confirmation').style.display = 'none';
+      
+      if (autoTestMode) {
+        // 自動模式：繼續下一個測試
+        currentAutoTestIndex++;
+        setTimeout(() => {
+          executeNextAutoTest();
+        }, 1000);
+      } else {
+        // 手動模式：啟用按鈕測試
+        setTestSectionEnabled('button-test-section', true);
+        document.getElementById('buttonStatus').textContent = '準備開始 LEGO 按鈕測試...';
+        highlightCurrentTest(null);
+        updateProgressBar(75, '準備 LEGO 按鈕測試...');
+      }
+    }
+
+    function confirmButton(isNormal) {
+      testResults['button'] = isNormal;
+      
+      // 更新狀態指示器
+      updateTestItemStatus('button', isNormal ? 'success' : 'failed');
+      
+      if (isNormal) {
+        appendLog('buttonStatus', '✅ 使用者確認：LEGO 按鈕運作正常');
+      } else {
+        appendLog('buttonStatus', '❌ 使用者確認：LEGO 按鈕有問題');
+      }
+      
+      // 隱藏確認框
+      document.getElementById('button-confirmation').style.display = 'none';
+      
+      if (autoTestMode) {
+        // 自動模式：繼續下一個測試（應該是完成）
+        currentAutoTestIndex++;
+        setTimeout(() => {
+          executeNextAutoTest();
+        }, 1000);
+      } else {
+        // 手動模式：完成測試
+        completeAllTests();
+      }
+    }
+
+    // 頁面載入時初始化
+    window.onload = function() {
+      initWebSocket();
+      
+      // 初始化連接狀態指示器
+      updateConnectionIndicator(false);
+      
+      // 初始化測試項目狀態
+      updateTestItemStatus('m1', 'waiting');
+      updateTestItemStatus('m2', 'waiting');
+      updateTestItemStatus('button', 'waiting');
+      updateTestItemStatus('ultrasonic', 'waiting');
+      updateTestItemStatus('digital', 'waiting');
+      updateTestItemStatus('analog', 'waiting');
+      
+      // 初始化進度條
+      updateProgressBar(0, '準備開始檢測...');
+      
+      // 初始狀態：所有測試區域都禁用，等待用戶選擇檢測模式
+      setTestSectionEnabled('m1-test-section', false);
+      setTestSectionEnabled('m2-test-section', false);
+      setTestSectionEnabled('button-test-section', false);
+      setTestSectionEnabled('ultrasonic-test-section', false);
+      setTestSectionEnabled('digital-test-section', false);
+      setTestSectionEnabled('analog-test-section', false);
+    };
+
+    // 頁面卸載時清理
+    window.onbeforeunload = function() {
+      // 停止所有馬達
+      if (isConnected) {
+        sendCommand({ type: 'motorControl', motor: 'M1', speed: 0 });
+        sendCommand({ type: 'motorControl', motor: 'M2', speed: 0 });
+      }
+      if (socket) {
+        socket.close();
+      }
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Blockly 自動驗證</title>
+  <style>
+    :root{--blue:#4d7fff;--ink:#17212f;--muted:#617084;--line:#dce5f0;--ok:#11885b;--bad:#c83d4b;--wait:#a66b00}
+    *{box-sizing:border-box}body{margin:0;background:#f2f6fb;color:var(--ink);font-family:"Noto Sans TC",system-ui,sans-serif;padding:18px}.wrap{max-width:900px;margin:auto}.head{display:flex;align-items:center;gap:12px;margin-bottom:16px}.head h1{margin:0;font-size:24px}.back{margin-left:auto;color:var(--blue);font-weight:700;text-decoration:none}.notice{padding:12px 15px;background:#fff5dd;border:1px solid #f0d489;border-radius:10px;color:#725500;font-size:14px}.toolbar{display:flex;flex-wrap:wrap;gap:9px;margin:16px 0}.btn{border:0;border-radius:8px;padding:10px 14px;background:var(--blue);color:#fff;font-weight:700;cursor:pointer}.btn.alt{background:#e6eefb;color:#254c85}.btn:disabled{opacity:.5;cursor:wait}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:15px;box-shadow:0 2px 9px #243b5910}.card h2{font-size:16px;margin:0 0 6px}.card p{margin:0;color:var(--muted);font-size:13px;min-height:38px}.result{display:flex;align-items:center;gap:7px;margin-top:12px;padding-top:10px;border-top:1px solid #edf1f6;font-size:14px;font-weight:700}.dot{width:10px;height:10px;border-radius:50%;background:#94a3b8}.pending .dot{background:var(--wait)}.pass .dot{background:var(--ok)}.fail .dot{background:var(--bad)}#log{margin-top:16px;background:#101923;color:#c7d4e3;border-radius:10px;padding:12px;min-height:120px;max-height:260px;overflow:auto;font:12px ui-monospace,Consolas,monospace;white-space:pre-wrap}@media(max-width:560px){body{padding:10px}.head h1{font-size:20px}.toolbar .btn{width:100%}}
+  </style>
+</head>
+<body><main class="wrap">
+  <div class="head"><h1>🧪 Blockly 自動驗證</h1><a class="back" href="blockly.html">← 回 Blockly</a></div>
+  <div class="notice">「程式解譯器測試」會暫時停止目前正在執行的程式，但<strong>不會修改 NVS 存檔</strong>；測試結束後會停止測試程式。</div>
+  <div class="toolbar"><button class="btn" id="safeRun">執行安全自動測試</button><button class="btn alt" id="programRun">執行程式解譯器測試</button><button class="btn alt" id="exportBtn">匯出結果</button><button class="btn alt" id="clearBtn">清除結果</button></div>
+  <section class="grid">
+    <article class="card" data-test="ws"><h2>WebSocket 連線</h2><p>送出既有 <code>ping</code>，等待 <code>pong</code>。</p><div class="result"><span class="dot"></span><span>未測</span></div></article>
+    <article class="card" data-test="store"><h2>NVS 存檔讀取</h2><p>讀取 <code>/api/program</code>；不寫入、不覆蓋任何程式。</p><div class="result"><span class="dot"></span><span>未測</span></div></article>
+    <article class="card" data-test="ultrasonic"><h2>超音波感測器</h2><p>以既有硬體測試 API 讀取 Trig 2 / Echo 33。</p><div class="result"><span class="dot"></span><span>未測</span></div></article>
+    <article class="card" data-test="expression"><h2>變數、算術、if / else</h2><p>驗證 <code>x=7</code>、<code>x×3=21</code> 與比較分支。</p><div class="result"><span class="dot"></span><span>未測</span></div></article>
+    <article class="card" data-test="condition"><h2>if / else 分支</h2><p>驗證 <code>21 == 21</code> 時會走 then 分支。</p><div class="result"><span class="dot"></span><span>未測</span></div></article>
+    <article class="card" data-test="plot"><h2>Plot 資料格式</h2><p>驗證程式輸出 <code>type: "plot"</code> 與數值 21。</p><div class="result"><span class="dot"></span><span>未測</span></div></article>
+  </section>
+  <div id="log">等待測試…</div>
+</main>
+<script>
+  const results={}, pending=new Map(); let ws, interpreterTest=false;
+  const logEl=document.getElementById('log');
+  function log(s){logEl.textContent+=`\n[${new Date().toLocaleTimeString()}] ${s}`;logEl.scrollTop=logEl.scrollHeight}
+  function mark(id,status,text){results[id]={status,text,time:new Date().toISOString()};const c=document.querySelector(`[data-test="${id}"]`),r=c.querySelector('.result');r.className=`result ${status}`;r.innerHTML=`<span class="dot"></span><span>${text}</span>`;localStorage.setItem('blocklyTestResults',JSON.stringify(results))}
+  function waitFor(id,match,ms=3500){mark(id,'pending','測試中…');return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{pending.delete(id);mark(id,'fail','逾時，未收到預期回覆');reject(new Error(id+' timeout'))},ms);pending.set(id,{match,resolve:v=>{clearTimeout(timer);pending.delete(id);mark(id,'pass',v);resolve(v)}})})}
+  function send(o){if(!ws||ws.readyState!==WebSocket.OPEN)throw new Error('WebSocket 未連線');ws.send(JSON.stringify(o));log('送出 '+JSON.stringify(o))}
+  function onMessage(raw){let d;try{d=JSON.parse(raw)}catch{return}log('收到 '+raw);for(const [id,p] of pending){const text=p.match(d);if(text)p.resolve(text)}if(d.message&&d.message!=='指令已接收')send({mode:'PROG',message_success:true})}
+  function connect(){ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');ws.onopen=()=>{log('WebSocket 已連線')};ws.onmessage=e=>onMessage(e.data);ws.onclose=()=>{log('WebSocket 中斷，2 秒後重連');setTimeout(connect,2000)};ws.onerror=()=>ws.close()}
+  async function testPing(){const w=waitFor('ws',d=>d.type==='pong'?'已收到 pong':false);send({cmd:'ping'});return w}
+  async function testStore(){mark('store','pending','讀取中…');try{const r=await fetch('/api/program',{cache:'no-store'});const d=await r.json();if(!d.ok)throw new Error('API ok=false');mark('store','pass',d.has_program?'NVS 存檔可讀取':'API 正常，目前沒有存檔');log('存檔 API 正常')}catch(e){mark('store','fail','讀取失敗：'+e.message);throw e}}
+  async function testUltrasonic(){const w=waitFor('ultrasonic',d=>d.type==='ultrasonicDistance'?(d.distance>=0?`距離 ${d.distance.toFixed(1)} cm`:'感測器逾時（-1）'):false,5000);send({mode:'hardwareTest',test:'ultrasonicReading',trig:2,echo:33});return w}
+  function testProgram(){return {mode:'PROG',setup:[],loop:[
+    {command:'variable_set',variableName:'__test_x',value:{command:'math_number',number:7}},
+    {command:'variable_set',variableName:'__test_y',value:{command:'math_arithmetic',operator:'MULTIPLY',left:{command:'variable_get',variableName:'__test_x'},right:{command:'math_number',number:3}}},
+    {command:'message_print',content:{command:'variable_get',variableName:'__test_y'}},
+    {command:'delay',delayTime:75},
+    {command:'if',condition:{command:'logic_compare',operator:'EQ',left:{command:'variable_get',variableName:'__test_y'},right:{command:'math_number',number:21}},then:[{command:'message_print',content:{command:'math_number',number:1}}],else:[{command:'message_print',content:{command:'math_number',number:0}}]},
+    {command:'plot_print',series:'__test_calc',unit:'',value:{command:'variable_get',variableName:'__test_y'}},
+    {command:'delay',delayTime:100}
+  ]}}
+  async function testInterpreter(){if(!confirm('這會停止目前執行中的程式，並短暫執行測試程式。確定繼續？'))return;interpreterTest=true;const expr=waitFor('expression',d=>d.message==='__test_y=21'?'變數與算術結果為 21':false,5000);const condition=waitFor('condition',d=>d.message==='math_number=1'?'if 條件正確走 then 分支':false,5000);const plot=waitFor('plot',d=>d.type==='plot'&&d.series==='__test_calc'&&Number(d.value)===21?'收到 type: plot、值為 21':false,5000);send(testProgram());try{await Promise.all([expr,condition,plot])}finally{interpreterTest=false;send({mode:'PROG',setup:[],loop:[]});log('已停止測試程式')}}
+  async function safeSuite(){document.getElementById('safeRun').disabled=true;try{await testPing();await testStore();await testUltrasonic()}catch(e){log('安全測試未完全通過：'+e.message)}finally{document.getElementById('safeRun').disabled=false}}
+  document.getElementById('safeRun').onclick=safeSuite;document.getElementById('programRun').onclick=()=>testInterpreter().catch(e=>log('程式測試失敗：'+e.message));document.getElementById('clearBtn').onclick=()=>{Object.keys(results).forEach(k=>delete results[k]);localStorage.removeItem('blocklyTestResults');document.querySelectorAll('.result').forEach(r=>{r.className='result';r.innerHTML='<span class="dot"></span><span>未測</span>'});logEl.textContent='結果已清除'};document.getElementById('exportBtn').onclick=()=>{const b=new Blob([JSON.stringify({exportedAt:new Date().toISOString(),results},null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='phone_blocky_test_results.json';a.click();URL.revokeObjectURL(a.href)};try{Object.assign(results,JSON.parse(localStorage.getItem('blocklyTestResults')||'{}'));Object.entries(results).forEach(([id,v])=>mark(id,v.status,v.text))}catch(_){}connect();
+</script></body></html>

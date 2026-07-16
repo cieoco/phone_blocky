@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>📡 相關設定</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: linear-gradient(135deg, #667eea 0%, #4d7fff 100%);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+    }
+
+    .container {
+      background: rgba(255, 255, 255, 0.95);
+      padding: 40px 48px;
+      border-radius: 20px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      backdrop-filter: blur(10px);
+      text-align: center;
+      min-width: 320px;
+      max-width: 95vw;
+      box-sizing: border-box;
+    }
+
+    h2 {
+      margin-bottom: 32px;
+      background: linear-gradient(45deg, #667eea, #4d7fff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: 2px;
+      font-size: 2.5em;
+      font-weight: 600;
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    label {
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 4px;
+      text-align: left;
+      font-size: 1.1em;
+    }
+
+    input[type="text"],
+    input[type="password"],
+    input[type="number"] {
+      padding: 14px;
+      border: 1.5px solid #bfc9d1;
+      border-radius: 8px;
+      font-size: 1.2em;
+      outline: none;
+      transition: border 0.2s;
+      width: 100%;
+      box-sizing: border-box;
+      background: #f7faff;
+    }
+
+    input[type="text"]:focus,
+    input[type="password"]:focus,
+    input[type="number"]:focus {
+      border: 2px solid #2d5be3;
+      background: #fff;
+    }
+
+    input[type="submit"] {
+      background: linear-gradient(45deg, #667eea, #4d7fff);
+      color: #fff;
+      border: none;
+      border-radius: 15px;
+      padding: 16px;
+      font-size: 1.2em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      margin-top: 10px;
+      box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+    }
+
+    input[type="submit"]:hover {
+      background: linear-gradient(45deg, #4d7fff, #667eea);
+      box-shadow: 0 12px 25px rgba(0, 0, 0, 0.15);
+      transform: translateY(-3px);
+    }
+
+    input[type="submit"]:active {
+      transform: translateY(-1px);
+    }
+
+    @media (max-width: 600px) {
+      .container {
+        padding: 18px 4vw;
+        min-width: unset;
+        border-radius: 10px;
+      }
+
+      .header {
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 10px;
+      }
+
+      .header h2 {
+        font-size: 1.2em !important;
+        margin: 0 !important;
+        flex: 1 !important;
+      }
+
+      .header button {
+        font-size: 0.8em !important;
+        padding: 8px 12px !important;
+        min-width: 70px !important;
+      }
+
+      input[type="text"],
+      input[type="password"],
+      input[type="number"],
+      input[type="submit"] {
+        font-size: 1em;
+        padding: 12px;
+      }
+
+      label {
+        font-size: 1em;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="header"
+      style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <h2 style="margin: 0; flex: 1; text-align: center;">📡 相關設定</h2>
+      <button type="button" onclick="window.location.href='index.html'"
+        style="background: linear-gradient(45deg, #ff6b6b, #ee5a52); color: white; border: none; padding: 10px 20px; border-radius: 25px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3); transition: all 0.3s ease; font-size: 0.9em; flex-shrink: 0;">
+        🏠 回首頁
+      </button>
+    </div>
+    <!-- 設定項目選擇 -->
+    <div style="background: #f8f9fa; border-radius: 10px; padding: 20px; margin-bottom: 25px;">
+      <h3 style="margin: 0 0 15px 0; color: #333; font-size: 1.1em;">⚙️ 選擇要修改的設定項目</h3>
+
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <label
+          style="display: flex; align-items: center; cursor: pointer; padding: 8px; border-radius: 8px; transition: background-color 0.2s;"
+          onmouseover="this.style.backgroundColor='#e9ecef'" onmouseout="this.style.backgroundColor='transparent'">
+          <input type="checkbox" id="enableWifi" checked style="margin-right: 10px; transform: scale(1.2);">
+          <span style="font-weight: 500;">📡 修改 WiFi 連線設定</span>
+        </label>
+
+        <label
+          style="display: flex; align-items: center; cursor: pointer; padding: 8px; border-radius: 8px; transition: background-color 0.2s;"
+          onmouseover="this.style.backgroundColor='#e9ecef'" onmouseout="this.style.backgroundColor='transparent'">
+          <input type="checkbox" id="enableName" checked style="margin-right: 10px; transform: scale(1.2);">
+          <span style="font-weight: 500;">🏷️ 修改控制板名稱</span>
+        </label>
+
+        <label
+          style="display: flex; align-items: center; cursor: pointer; padding: 8px; border-radius: 8px; transition: background-color 0.2s;"
+          onmouseover="this.style.backgroundColor='#e9ecef'" onmouseout="this.style.backgroundColor='transparent'">
+          <input type="checkbox" id="enablePID" style="margin-right: 10px; transform: scale(1.2);">
+          <span style="font-weight: 500;">🎯 馬達 PID 與硬體設定</span>
+        </label>
+      </div>
+
+      <div id="settingDescription"
+        style="margin-top: 15px; padding: 12px; background: #d1ecf1; border-radius: 6px; border-left: 4px solid #bee5eb;">
+        <p style="margin: 0; color: #0c5460; font-size: 0.9em; line-height: 1.4;">
+          <strong>💡 說明：</strong><br>
+          • <strong>WiFi 設定：</strong>修改後 ESP32 將連接到新的 WiFi 網路<br>
+          • <strong>控制板名稱：</strong>修改 AP 熱點名稱<br>
+          • <strong>PID 與硬體：</strong>設定馬達 PID 參數與編碼器/減速比硬體參數
+        </p>
+      </div>
+    </div>
+
+    <!-- PID 設定區域 (初始隱藏) -->
+    <div id="pidSettings"
+      style="display: none; background: #fff5f5; border-radius: 10px; padding: 20px; margin-bottom: 25px; border: 1px solid #feb2b2; text-align: left;">
+      <h3 style="margin: 0 0 15px 0; color: #c53030; font-size: 1.1em;">🎯 馬達 PID 與硬體設定</h3>
+
+      <!-- ① 馬達種類 -->
+      <div style="background:#fff; border-radius:8px; padding:15px; margin-bottom:15px; border:1px solid #feb2b2;">
+        <h5 style="margin:0 0 10px 0; color:#333; font-size:0.95em;">① 馬達種類</h5>
+        <div style="display:flex; gap:24px; margin-bottom:8px;">
+          <label style="display:flex; align-items:center; cursor:pointer; font-size:0.95em; font-weight:normal;">
+            <input type="radio" name="motorType" value="lego" checked style="margin-right:8px; transform:scale(1.2);" onchange="selectMotorType('lego')">
+            🧱 樂高馬達
+          </label>
+          <label style="display:flex; align-items:center; cursor:pointer; font-size:0.95em; font-weight:normal;">
+            <input type="radio" name="motorType" value="hall" style="margin-right:8px; transform:scale(1.2);" onchange="selectMotorType('hall')">
+            ⚙️ 霍爾馬達
+          </label>
+        </div>
+        <p id="motorTypeDesc" style="margin:0; color:#718096; font-size:0.82em; line-height:1.5;">
+          樂高馬達：編碼器在輸出軸，角度用查找表，PPR 填輸出軸每圈脈衝數。
+        </p>
+      </div>
+
+      <!-- ② 硬體參數 -->
+      <div style="background:#fff; border-radius:8px; padding:15px; margin-bottom:15px; border:1px solid #feb2b2;">
+        <h5 style="margin:0 0 12px 0; color:#333; font-size:0.95em;">② 硬體參數</h5>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:12px;">
+          <div>
+            <label style="font-size:0.9em;">編碼器 PPR：</label>
+            <input type="number" id="hw_ppr" step="1" value="360">
+          </div>
+          <div id="hw_ratio_row" style="display:none;">
+            <label style="font-size:0.9em;">減速比 (Ratio)：</label>
+            <input type="number" id="hw_ratio" step="0.1" value="48.0">
+          </div>
+        </div>
+        <!-- encoderPos 與 posCtrlMode 由馬達種類自動設定 -->
+        <div style="display:none;">
+          <input type="radio" name="encoderPos" value="1" checked>
+          <input type="radio" name="encoderPos" value="0">
+          <input type="radio" name="posCtrlMode" value="0" checked>
+          <input type="radio" name="posCtrlMode" value="1">
+        </div>
+        <div id="hw_status" style="display:none; font-size:0.85em; margin-bottom:10px; padding:7px 10px; border-radius:6px; font-weight:bold;"></div>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
+          <button type="button" onclick="hwFetch()"
+            style="background:#3182ce; color:white; border:none; padding:10px 6px; border-radius:7px; cursor:pointer; font-size:0.9em; font-weight:bold;">🔄 讀取</button>
+          <button type="button" onclick="hwSave()"
+            style="background:#e53e3e; color:white; border:none; padding:10px 6px; border-radius:7px; cursor:pointer; font-size:0.9em; font-weight:bold;">💾 寫入 NVS</button>
+          <button type="button" onclick="hwReset()"
+            style="background:#718096; color:white; border:none; padding:10px 6px; border-radius:7px; cursor:pointer; font-size:0.9em; font-weight:bold;">🏭 叫回預設</button>
+        </div>
+        <p style="margin:8px 0 0 0; color:#718096; font-size:0.78em;">寫入 NVS 需輸入下方管理密碼。樂高預設：PPR 360；霍爾預設：PPR 22、減速比 21.3。</p>
+      </div>
+
+      <!-- ③ 角度控制 -->
+      <div style="background:#fff; border-radius:8px; padding:15px; margin-bottom:15px; border:1px solid #feb2b2;">
+        <h5 style="margin:0 0 10px 0; color:#333; font-size:0.95em;">③ 角度控制</h5>
+        <div id="lego_angle_info"
+          style="background:#ebf8ff; border-radius:6px; padding:10px; font-size:0.85em; color:#2c5282; border-left:3px solid #3182ce;">
+          📋 查找表模式（自動）：樂高馬達使用固定查找表對應角度，不需要位置 PID 參數。
+        </div>
+        <div id="posPIDSection" style="display:none;">
+          <div style="background:#c6f6d5; border-radius:6px; padding:9px; margin-bottom:12px; font-size:0.82em; color:#276749;">
+            💡 建議先從 Kp=1.0、Ki=0、Kd=0 開始；加大 Kp 使馬達快速到位，出現震盪再加 Kd。
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+            <div><label style="font-size:0.9em;">位置 Kp：</label><input type="number" id="pos_kp" step="0.1" value="1.0"></div>
+            <div><label style="font-size:0.9em;">位置 Ki：</label><input type="number" id="pos_ki" step="0.01" value="0.0"></div>
+            <div><label style="font-size:0.9em;">位置 Kd：</label><input type="number" id="pos_kd" step="0.01" value="0.05"></div>
+            <div><label style="font-size:0.9em;">最大 PWM%：</label><input type="number" id="pos_max_duty" value="60" min="10" max="100"></div>
+          </div>
+          <div><label style="font-size:0.9em;">到達容許誤差 (°)：</label><input type="number" id="pos_tolerance" step="0.5" value="3.0"></div>
+          <div id="angle_status" style="display:none; font-size:0.85em; margin:10px 0 0 0; padding:7px 10px; border-radius:6px; font-weight:bold;"></div>
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:6px; margin-top:10px;">
+            <button type="button" onclick="fetchPID('angle_status')"
+              style="background:#3182ce; color:white; border:none; padding:8px 4px; border-radius:7px; cursor:pointer; font-size:0.8em; font-weight:bold;">🔄 讀取</button>
+            <button type="button" onclick="applyPIDToRAM('angle_status')"
+              style="background:#38a169; color:white; border:none; padding:8px 4px; border-radius:7px; cursor:pointer; font-size:0.8em; font-weight:bold;">🔧 應用RAM</button>
+            <button type="button" onclick="hwSave('angle_status')"
+              style="background:#e53e3e; color:white; border:none; padding:8px 4px; border-radius:7px; cursor:pointer; font-size:0.8em; font-weight:bold;">💾 寫NVS</button>
+            <button type="button" onclick="resetAnglePID()"
+              style="background:#718096; color:white; border:none; padding:8px 4px; border-radius:7px; cursor:pointer; font-size:0.8em; font-weight:bold;">🏭 預設</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ③-2 角度保持 (Hold) -->
+      <div style="background:#fff; border-radius:8px; padding:15px; margin-bottom:15px; border:1px solid #feb2b2;">
+        <h5 style="margin:0 0 10px 0; color:#333; font-size:0.95em;">③-2 角度保持 (Hold)</h5>
+        <div style="background:#e6fffa; border-radius:6px; padding:9px; margin-bottom:12px; font-size:0.82em; color:#234e52; border-left:3px solid #38b2ac;">
+          💡 joy 角度模式到位後「咬住角度」的伺服式保持，樂高與霍爾都適用。被推離超過死區時靠積分慢慢加力夾回；進死區即放鬆。
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div><label style="font-size:0.9em;">死區 settle (°)：</label><input type="number" id="hold_settle" step="0.1" value="1.5" min="0.2" max="10"></div>
+          <div><label style="font-size:0.9em;">創爬 KI：</label><input type="number" id="hold_ki" step="0.5" value="8.0" min="0" max="50"></div>
+          <div><label style="font-size:0.9em;">夾持上限 PWM%：</label><input type="number" id="hold_max" value="60" min="10" max="100"></div>
+        </div>
+        <p style="margin:0 0 10px 0; color:#718096; font-size:0.78em;">收斂太慢→KI 調大；目標附近頂過頭/獵動→KI 調小或 settle 加大；夾不住→上限調大。</p>
+        <div id="hold_status" style="display:none; font-size:0.85em; margin:0 0 8px 0; padding:7px 10px; border-radius:6px; font-weight:bold;"></div>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:6px;">
+          <button type="button" onclick="fetchPID('hold_status')"
+            style="background:#3182ce; color:white; border:none; padding:8px 4px; border-radius:7px; cursor:pointer; font-size:0.8em; font-weight:bold;">🔄 讀取</button>
+          <button type="button" onclick="applyPIDToRAM('hold_status')"
+            style="background:#38a169; color:white; border:none; padding:8px 4px; border-radius:7px; cursor:pointer; font-size:0.8em; font-weight:bold;">🔧 應用RAM</button>
+          <button type="button" onclick="hwSave('hold_status')"
+            style="background:#e53e3e; color:white; border:none; padding:8px 4px; border-radius:7px; cursor:pointer; font-size:0.8em; font-weight:bold;">💾 寫NVS</button>
+          <button type="button" onclick="resetHold()"
+            style="background:#718096; color:white; border:none; padding:8px 4px; border-radius:7px; cursor:pointer; font-size:0.8em; font-weight:bold;">🏭 預設</button>
+        </div>
+      </div>
+
+      <!-- ④ 速度控制 PID -->
+      <div style="background:#fff; border-radius:8px; padding:15px; margin-bottom:15px; border:1px solid #feb2b2;">
+        <h5 style="margin:0 0 12px 0; color:#333; font-size:0.95em;">④ 速度控制 PID</h5>
+        <div style="background:#fffaf0; border-radius:6px; padding:9px; margin-bottom:12px; font-size:0.82em; color:#7b341e; border-left:3px solid #ed8936;">
+          💡 Kp/Ki/Kd 調整速度指令（cmd:speed）精準度。最小動力：克服啟動摩擦力，若馬達有聲音卻不轉請調大。
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:12px;">
+          <div><label style="font-size:0.9em;">Kp (比例)：</label><input type="number" id="pid_kp" step="0.1" value="2.0"></div>
+          <div><label style="font-size:0.9em;">Ki (積分)：</label><input type="number" id="pid_ki" step="0.01" value="0.0"></div>
+          <div><label style="font-size:0.9em;">Kd (微分)：</label><input type="number" id="pid_kd" step="0.1" value="0.1"></div>
+          <div><label style="font-size:0.9em;">最小動力 (PWM)：</label><input type="number" id="pid_min" value="60"></div>
+        </div>
+        <div id="speed_status" style="display:none; font-size:0.85em; margin:0 0 8px 0; padding:7px 10px; border-radius:6px; font-weight:bold;"></div>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:6px;">
+          <button type="button" onclick="fetchPID('speed_status')"
+            style="background:#3182ce; color:white; border:none; padding:8px 4px; border-radius:7px; cursor:pointer; font-size:0.8em; font-weight:bold;">🔄 讀取</button>
+          <button type="button" onclick="applyPIDToRAM('speed_status')"
+            style="background:#38a169; color:white; border:none; padding:8px 4px; border-radius:7px; cursor:pointer; font-size:0.8em; font-weight:bold;">🔧 應用RAM</button>
+          <button type="button" onclick="hwSave('speed_status')"
+            style="background:#e53e3e; color:white; border:none; padding:8px 4px; border-radius:7px; cursor:pointer; font-size:0.8em; font-weight:bold;">💾 寫NVS</button>
+          <button type="button" onclick="resetSpeedPID()"
+            style="background:#718096; color:white; border:none; padding:8px 4px; border-radius:7px; cursor:pointer; font-size:0.8em; font-weight:bold;">🏭 預設</button>
+        </div>
+        <p style="margin:6px 0 0 0; color:#718096; font-size:0.78em;">應用RAM：立即生效，重開機後恢復原值。寫NVS：持久儲存，需下方管理密碼。預設：只重設本區欄位。</p>
+      </div>
+
+      <hr style="border: 0; border-top: 1px solid #feb2b2; margin: 20px 0;">
+
+      <h4 style="margin: 0 0 10px 0; color: #333;">🧪 SysId 系統識別測試</h4>
+      <div
+        style="background: #ebf8ff; border-radius: 8px; padding: 12px; margin-bottom: 15px; border-left: 4px solid #3182ce;">
+        <p style="margin: 0; color: #2c5282; font-size: 0.85em; line-height: 1.5;">
+          <strong>💡 SysId 測試步驟：</strong><br>
+          1. 確保馬達機構可自由轉動，無阻礙。<br>
+          2. 設定測試 PWM (建議 100-150)。<br>
+          3. 點擊「開始測試」，馬達將轉動 3 秒。<br>
+          4. 測試結束後，數據將直接顯示在下方。
+        </p>
+      </div>
+
+      <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+        <select id="sysid_motor" style="flex: 1; padding: 8px; border-radius: 5px;">
+          <option value="3">馬達 M3</option>
+          <option value="4">馬達 M4</option>
+        </select>
+        <input type="number" id="sysid_voltage" value="100" placeholder="PWM"
+          style="width: 80px; padding: 8px; border-radius: 5px; border: 1px solid #ccc;">
+        <button type="button" id="sysid_btn" onclick="runSysId()"
+          style="background: #3182ce; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold;">開始測試</button>
+      </div>
+
+      <!-- 倒數計時與結果顯示 -->
+      <div id="sysid_status" style="display: none; text-align: center; margin-bottom: 15px;">
+        <div id="sysid_countdown" style="font-size: 2em; font-weight: bold; color: #3182ce;">3</div>
+        <div style="color: #4a5568; font-size: 0.9em;">測試進行中，請稍候...</div>
+      </div>
+
+      <div id="sysid_results_area" style="display: none;">
+        <label style="font-size: 0.9em; color: #4a5568;">測試結果 (Time, Ticks)：</label>
+        <textarea id="sysid_results" readonly
+          style="width: 100%; height: 150px; font-family: monospace; font-size: 0.85em; padding: 10px; border-radius: 8px; border: 1px solid #bee5eb; background: #f0f9ff; margin-top: 5px;"></textarea>
+      </div>
+    </div>
+
+    <form id="settingsForm" action="/setwifi" method="post">
+      <div id="wifiSettings">
+        <label for="ssid">WiFi SSID：</label>
+        <input type="text" id="ssid" name="ssid" placeholder="請輸入 SSID" required>
+
+        <label for="password">WiFi 密碼：</label>
+        <input type="password" id="password" name="password" placeholder="請輸入密碼" required>
+      </div>
+
+      <div id="nameSettings">
+        <label for="name">控制板(AP)名稱：</label>
+        <input type="text" id="name" name="name" placeholder="預設為 ESP32-末四碼">
+      </div>
+
+      <!-- 管理密碼欄位 -->
+      <label for="adminPassword">管理密碼：</label>
+      <input type="password" id="adminPassword" name="adminPassword" placeholder="請輸入管理密碼" required>
+
+      <input type="submit" id="submitBtn" value="儲存設定">
+    </form>
+  </div>
+
+  <script>
+    function updateSettingVisibility() {
+      const enableWifi = document.getElementById('enableWifi').checked;
+      const enableName = document.getElementById('enableName').checked;
+      const enablePID = document.getElementById('enablePID').checked;
+      const wifiSettings = document.getElementById('wifiSettings');
+      const pidSettings = document.getElementById('pidSettings');
+      const nameField = document.getElementById('nameSettings');
+      const submitBtn = document.getElementById('submitBtn');
+      const form = document.getElementById('settingsForm');
+      const description = document.getElementById('settingDescription');
+
+      // 顯示/隱藏 WiFi 設定區域
+      if (enableWifi) {
+        wifiSettings.style.display = 'block';
+        document.getElementById('ssid').required = true;
+        document.getElementById('password').required = true;
+      } else {
+        wifiSettings.style.display = 'none';
+        document.getElementById('ssid').required = false;
+        document.getElementById('password').required = false;
+      }
+
+      // 顯示/隱藏名稱設定
+      if (nameField) {
+        nameField.style.display = enableName ? 'block' : 'none';
+      }
+
+      // 顯示/隱藏 PID 設定區域
+      pidSettings.style.display = enablePID ? 'block' : 'none';
+      if (enablePID) {
+        fetchPID();
+      }
+
+      // 更新按鈕文字和表單動作
+      if (enableWifi && enableName) {
+        submitBtn.value = '儲存 WiFi 與名稱設定';
+        form.action = '/setwifi';
+        description.innerHTML = `
+          <p style="margin: 0; color: #0c5460; font-size: 0.9em; line-height: 1.4;">
+            <strong>💡 當前選擇：</strong>將同時更新 WiFi 連線設定和控制板名稱<br>
+            ESP32 將重新啟動並嘗試連接新的 WiFi 網路
+          </p>
+        `;
+      } else if (enableWifi && !enableName) {
+        submitBtn.value = '儲存 WiFi 設定';
+        form.action = '/setwifi';
+        description.innerHTML = `
+          <p style="margin: 0; color: #0c5460; font-size: 0.9em; line-height: 1.4;">
+            <strong>💡 當前選擇：</strong>僅更新 WiFi 連線設定<br>
+            控制板名稱將保持不變
+          </p>
+        `;
+      } else if (!enableWifi && enableName) {
+        submitBtn.value = '儲存控制板名稱';
+        form.action = '/setnameonly';
+        description.innerHTML = `
+          <p style="margin: 0; color: #0c5460; font-size: 0.9em; line-height: 1.4;">
+            <strong>💡 當前選擇：</strong>僅更新控制板名稱<br>
+            WiFi 連線設定將保持不變
+          </p>
+        `;
+      } else if (!enableWifi && !enableName && enablePID) {
+        submitBtn.value = 'PID 調校模式 (請使用上方儲存按鈕)';
+        submitBtn.disabled = true;
+        form.action = '#';
+        description.innerHTML = `
+          <p style="margin: 0; color: #0c5460; font-size: 0.9em; line-height: 1.4;">
+            <strong>💡 當前選擇：</strong>馬達 PID 調校模式<br>
+            請直接在下方的 PID 區塊進行設定與儲存
+          </p>
+        `;
+      } else {
+        submitBtn.value = '請選擇設定項目';
+        submitBtn.disabled = true;
+        description.innerHTML = `
+          <p style="margin: 0; color: #dc3545; font-size: 0.9em; line-height: 1.4;">
+            <strong>⚠️ 請至少選擇一個設定項目</strong>
+          </p>
+        `;
+        return;
+      }
+
+      if (!enablePID || enableWifi || enableName) {
+        submitBtn.disabled = false;
+      }
+    }
+
+    function applyPIDToRAM(statusId) {
+      statusId = statusId || 'hw_status';
+      const data = {
+        kp: parseFloat(document.getElementById('pid_kp').value),
+        ki: parseFloat(document.getElementById('pid_ki').value),
+        kd: parseFloat(document.getElementById('pid_kd').value),
+        minSpeed: parseInt(document.getElementById('pid_min').value),
+        posCtrlMode: parseInt(document.querySelector('input[name="posCtrlMode"]:checked').value),
+        posKp: parseFloat(document.getElementById('pos_kp').value),
+        posKi: parseFloat(document.getElementById('pos_ki').value),
+        posKd: parseFloat(document.getElementById('pos_kd').value),
+        posMaxDuty: parseInt(document.getElementById('pos_max_duty').value),
+        posToleranceDeg: parseFloat(document.getElementById('pos_tolerance').value),
+        holdSettleDeg: parseFloat(document.getElementById('hold_settle').value),
+        holdKi: parseFloat(document.getElementById('hold_ki').value),
+        holdMaxDuty: parseInt(document.getElementById('hold_max').value)
+      };
+      fetch('/api/motor/pid/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+        .then(r => r.text())
+        .then(t => showStatus(statusId, '✅ ' + t, 'success'))
+        .catch(err => showStatus(statusId, '❌ 應用失敗：' + err, 'error'));
+    }
+
+    function selectMotorType(type) {
+      const isLego = type === 'lego';
+      document.querySelector(`input[name="motorType"][value="${type}"]`).checked = true;
+      document.getElementById('motorTypeDesc').textContent = isLego
+        ? '樂高馬達：編碼器在輸出軸，角度用查找表，PPR 填輸出軸每圈脈衝數。'
+        : '霍爾馬達：霍爾感測器在馬達軸，需填入馬達軸 PPR 與正確減速比。';
+      document.querySelector(`input[name="encoderPos"][value="${isLego ? '1' : '0'}"]`).checked = true;
+      document.querySelector(`input[name="posCtrlMode"][value="${isLego ? '0' : '1'}"]`).checked = true;
+      document.getElementById('hw_ratio_row').style.display = isLego ? 'none' : 'block';
+      document.getElementById('lego_angle_info').style.display = isLego ? 'block' : 'none';
+      document.getElementById('posPIDSection').style.display = isLego ? 'none' : 'block';
+    }
+
+    // PID 相關函式
+    function fetchPID(statusId) {
+      fetch('/api/motor/pid')
+        .then(response => response.json())
+        .then(data => {
+          document.getElementById('pid_kp').value = data.kp;
+          document.getElementById('pid_ki').value = data.ki;
+          document.getElementById('pid_kd').value = data.kd;
+          document.getElementById('pid_min').value = data.minSpeed;
+          document.getElementById('hw_ratio').value = data.gearRatio;
+          document.getElementById('hw_ppr').value = data.encoderPPR;
+
+          // 位置 PID
+          if (data.posKp !== undefined) {
+            document.getElementById('pos_kp').value = data.posKp;
+            document.getElementById('pos_ki').value = data.posKi;
+            document.getElementById('pos_kd').value = data.posKd;
+            document.getElementById('pos_max_duty').value = data.posMaxDuty;
+            document.getElementById('pos_tolerance').value = data.posToleranceDeg;
+          }
+
+          // 角度保持 (hold)
+          if (data.holdSettleDeg !== undefined) {
+            document.getElementById('hold_settle').value = data.holdSettleDeg;
+            document.getElementById('hold_ki').value = data.holdKi;
+            document.getElementById('hold_max').value = data.holdMaxDuty;
+          }
+
+          // 依回傳參數判斷馬達種類並更新 UI
+          const motorType = (data.posCtrlMode == 1 || data.encoderPos == 0) ? 'hall' : 'lego';
+          selectMotorType(motorType);
+          if (statusId) showStatus(statusId, '✅ 已從裝置讀取參數', 'success');
+        })
+        .catch(err => {
+          console.error('無法取得 PID 參數:', err);
+          if (statusId) showStatus(statusId, '❌ 讀取失敗：' + err, 'error');
+        });
+    }
+
+    function showStatus(targetId, msg, type) {
+      const el = document.getElementById(targetId);
+      if (!el) return;
+      const bg = { success: '#c6f6d5', error: '#fed7d7', info: '#bee3f8' };
+      const color = { success: '#276749', error: '#9b2c2c', info: '#2a4a8a' };
+      el.style.background = bg[type] || '#eee';
+      el.style.color = color[type] || '#333';
+      el.textContent = msg;
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 4000);
+    }
+
+    function hwShowStatus(msg, type) { showStatus('hw_status', msg, type); }
+
+    function resetSpeedPID() {
+      document.getElementById('pid_kp').value = 2.0;
+      document.getElementById('pid_ki').value = 0.0;
+      document.getElementById('pid_kd').value = 0.1;
+      document.getElementById('pid_min').value = 60;
+      showStatus('speed_status', 'ℹ️ 已還原速度 PID 預設（尚未應用或寫入）', 'info');
+    }
+
+    function resetAnglePID() {
+      document.getElementById('pos_kp').value = 1.0;
+      document.getElementById('pos_ki').value = 0.0;
+      document.getElementById('pos_kd').value = 0.05;
+      document.getElementById('pos_max_duty').value = 60;
+      document.getElementById('pos_tolerance').value = 3.0;
+      showStatus('angle_status', 'ℹ️ 已還原角度 PID 預設（尚未應用或寫入）', 'info');
+    }
+
+    function resetHold() {
+      document.getElementById('hold_settle').value = 1.5;
+      document.getElementById('hold_ki').value = 8.0;
+      document.getElementById('hold_max').value = 60;
+      showStatus('hold_status', 'ℹ️ 已還原角度保持預設（尚未應用或寫入）', 'info');
+    }
+
+    function hwGetFields() {
+      let encPos = 1;
+      for (const r of document.getElementsByName('encoderPos')) {
+        if (r.checked) { encPos = parseInt(r.value); break; }
+      }
+      return {
+        gearRatio: parseFloat(document.getElementById('hw_ratio').value),
+        encoderPPR: parseFloat(document.getElementById('hw_ppr').value),
+        encoderPos: encPos
+      };
+    }
+
+    function hwFetch() {
+      fetch('/api/motor/pid')
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById('hw_ratio').value = data.gearRatio;
+          document.getElementById('hw_ppr').value = data.encoderPPR;
+          const motorType = (data.posCtrlMode == 1 || data.encoderPos == 0) ? 'hall' : 'lego';
+          selectMotorType(motorType);
+          hwShowStatus('✅ 已從裝置讀取目前機械參數', 'success');
+        })
+        .catch(err => hwShowStatus('❌ 讀取失敗：' + err, 'error'));
+    }
+
+    function hwApply() {
+      fetch('/api/motor/hw/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(hwGetFields())
+      })
+        .then(r => r.text())
+        .then(t => hwShowStatus('✅ ' + t, 'success'))
+        .catch(err => hwShowStatus('❌ 應用失敗：' + err, 'error'));
+    }
+
+    function hwSave(statusId) {
+      statusId = statusId || 'hw_status';
+      const pwd = document.getElementById('adminPassword').value;
+      if (pwd !== '123456') {
+        showStatus(statusId, '❌ 管理密碼錯誤，請在下方輸入管理密碼後再試', 'error');
+        document.getElementById('adminPassword').focus();
+        return;
+      }
+      const hw = hwGetFields();
+      const data = {
+        kp: parseFloat(document.getElementById('pid_kp').value),
+        ki: parseFloat(document.getElementById('pid_ki').value),
+        kd: parseFloat(document.getElementById('pid_kd').value),
+        minSpeed: parseInt(document.getElementById('pid_min').value),
+        gearRatio: hw.gearRatio,
+        encoderPPR: hw.encoderPPR,
+        encoderPos: hw.encoderPos,
+        posCtrlMode: parseInt(document.querySelector('input[name="posCtrlMode"]:checked').value),
+        posKp: parseFloat(document.getElementById('pos_kp').value),
+        posKi: parseFloat(document.getElementById('pos_ki').value),
+        posKd: parseFloat(document.getElementById('pos_kd').value),
+        posMaxDuty: parseInt(document.getElementById('pos_max_duty').value),
+        posToleranceDeg: parseFloat(document.getElementById('pos_tolerance').value),
+        holdSettleDeg: parseFloat(document.getElementById('hold_settle').value),
+        holdKi: parseFloat(document.getElementById('hold_ki').value),
+        holdMaxDuty: parseInt(document.getElementById('hold_max').value),
+        adminPassword: pwd
+      };
+      fetch('/api/motor/pid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+        .then(r => r.text())
+        .then(t => showStatus(statusId, '✅ ' + t, 'success'))
+        .catch(err => showStatus(statusId, '❌ 寫入 NVS 失敗：' + err, 'error'));
+    }
+
+    function hwReset() {
+      selectMotorType('lego');
+      document.getElementById('hw_ppr').value = 360;
+      document.getElementById('hw_ratio').value = 48.0;
+      hwShowStatus('ℹ️ 已還原為樂高預設值（PPR 360，尚未寫入）', 'info');
+    }
+
+    function savePID() {
+      var pwd = document.getElementById('adminPassword').value;
+      var correctPwd = '123456';
+      if (pwd !== correctPwd) {
+        alert('管理密碼錯誤，請重新確認');
+        document.getElementById('adminPassword').value = '';
+        document.getElementById('adminPassword').focus();
+        return;
+      }
+
+      // 取得選中的編碼器位置
+      let encPos = 1;
+      const radios = document.getElementsByName('encoderPos');
+      for (let radio of radios) {
+        if (radio.checked) {
+          encPos = parseInt(radio.value);
+          break;
+        }
+      }
+
+      const posCtrlMode = parseInt(document.querySelector('input[name="posCtrlMode"]:checked').value);
+      const data = {
+        kp: parseFloat(document.getElementById('pid_kp').value),
+        ki: parseFloat(document.getElementById('pid_ki').value),
+        kd: parseFloat(document.getElementById('pid_kd').value),
+        minSpeed: parseInt(document.getElementById('pid_min').value),
+        gearRatio: parseFloat(document.getElementById('hw_ratio').value),
+        encoderPPR: parseFloat(document.getElementById('hw_ppr').value),
+        encoderPos: encPos,
+        posCtrlMode: posCtrlMode,
+        posKp: parseFloat(document.getElementById('pos_kp').value),
+        posKi: parseFloat(document.getElementById('pos_ki').value),
+        posKd: parseFloat(document.getElementById('pos_kd').value),
+        posMaxDuty: parseInt(document.getElementById('pos_max_duty').value),
+        posToleranceDeg: parseFloat(document.getElementById('pos_tolerance').value),
+        holdSettleDeg: parseFloat(document.getElementById('hold_settle').value),
+        holdKi: parseFloat(document.getElementById('hold_ki').value),
+        holdMaxDuty: parseInt(document.getElementById('hold_max').value),
+        adminPassword: pwd
+      };
+
+      fetch('/api/motor/pid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+        .then(response => response.text())
+        .then(text => alert(text))
+        .catch(err => alert('儲存失敗: ' + err));
+    }
+
+    function runSysId() {
+      const motor = parseInt(document.getElementById('sysid_motor').value);
+      const voltage = parseInt(document.getElementById('sysid_voltage').value);
+      const btn = document.getElementById('sysid_btn');
+      const statusDiv = document.getElementById('sysid_status');
+      const countdownDiv = document.getElementById('sysid_countdown');
+      const resultsArea = document.getElementById('sysid_results_area');
+      const resultsText = document.getElementById('sysid_results');
+
+      if (confirm(`確定要對馬達 M${motor} 進行 SysId 測試嗎？馬達將轉動 3 秒！`)) {
+        // 隱藏舊結果，顯示倒數
+        resultsArea.style.display = 'none';
+        statusDiv.style.display = 'block';
+        btn.disabled = true;
+        btn.style.background = '#a0aec0';
+
+        fetch('/api/motor/sysid', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ motor: motor, voltage: voltage, start: true })
+        })
+          .then(response => response.text())
+          .then(text => {
+            console.log(text);
+            // 開始網頁倒數
+            let timeLeft = 3;
+            countdownDiv.innerText = timeLeft;
+
+            const timer = setInterval(() => {
+              timeLeft--;
+              if (timeLeft > 0) {
+                countdownDiv.innerText = timeLeft;
+              } else {
+                clearInterval(timer);
+                statusDiv.style.display = 'none';
+                btn.disabled = false;
+                btn.style.background = '#3182ce';
+                fetchSysIdResults();
+              }
+            }, 1000);
+          })
+          .catch(err => {
+            alert('測試啟動失敗: ' + err);
+            statusDiv.style.display = 'none';
+            btn.disabled = false;
+            btn.style.background = '#3182ce';
+          });
+      }
+    }
+
+    function fetchSysIdResults() {
+      const resultsArea = document.getElementById('sysid_results_area');
+      const resultsText = document.getElementById('sysid_results');
+
+      fetch('/api/motor/sysid/results')
+        .then(response => response.json())
+        .then(data => {
+          if (data.results && data.results.length > 0) {
+            let formatted = "Time(ms), Ticks\n";
+            data.results.forEach(p => {
+              formatted += `${p.t}, ${p.v}\n`;
+            });
+            resultsText.value = formatted;
+            resultsArea.style.display = 'block';
+          } else {
+            alert("未取得測試數據，請檢查馬達與編碼器連線。");
+          }
+        })
+        .catch(err => console.error('無法取得 SysId 結果:', err));
+    }
+
+    document.getElementById('settingsForm').addEventListener('submit', function (e) {
+      const enableWifi = document.getElementById('enableWifi').checked;
+      const enableName = document.getElementById('enableName').checked;
+
+      // 檢查是否至少選擇一個項目
+      if (!enableWifi && !enableName) {
+        e.preventDefault();
+        alert('請至少選擇一個設定項目！');
+        return;
+      }
+
+      // 檢查管理密碼 (建議與 config.h 中的 CONFIG_ADMIN_PASSWORD 同步)
+      var pwd = document.getElementById('adminPassword').value;
+      var correctPwd = '123456';
+      if (pwd !== correctPwd) {
+        e.preventDefault();
+        alert('管理密碼錯誤，請重新確認');
+        document.getElementById('adminPassword').value = '';
+        document.getElementById('adminPassword').focus();
+        return;
+      }
+
+      // 如果選擇了名稱設定，檢查名稱是否有填寫
+      if (enableName) {
+        var name = document.getElementById('name').value.trim();
+        if (!name) {
+          e.preventDefault();
+          alert('請輸入控制板名稱');
+          document.getElementById('name').focus();
+          return;
+        }
+      }
+    });
+
+    // 綁定選擇框變更事件
+    document.getElementById('enableWifi').addEventListener('change', updateSettingVisibility);
+    document.getElementById('enableName').addEventListener('change', updateSettingVisibility);
+    document.getElementById('enablePID').addEventListener('change', updateSettingVisibility);
+
+    // 初始化顯示
+    updateSettingVisibility();
+  </script>
+</body>
+
+</html>

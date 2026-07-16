@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0, user-scalable=yes">
+  <title>可程式積木控制器</title>
+  <!-- 載入 Blockly -->
+  <script src="blockly.min.js"></script>
+  <!-- 載入客戶端邏輯 -->
+  <script src="appBlock.js?v=1.3.40-plotter3"></script>
+  <script src="appIr.js?v=1.3.40-plotter3"></script>
+  <script src="appJson.js?v=1.3.40-plotter3"></script>
+  <script src="app.js?v=1.3.40-plotter4"></script>
+  <style>
+    /* 極簡佈局 - 確保座標系統完全原生 */
+    body {
+      background: #4d7fff;
+      margin: 0;
+      padding: 10px;
+      font-family: sans-serif;
+    }
+
+    .main-container {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .header {
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .header h1 {
+      margin: 0;
+      color: #333;
+    }
+
+    .btn {
+      background: #4d7fff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      padding: 10px 15px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .blockly-section {
+      margin: 20px 0;
+    }
+
+    #blocklyDiv {
+      height: 600px;
+      width: 100%;
+      /* 用 outline 取代 border：border 會把 Blockly 內部 SVG 原點推移 1px，
+         造成點擊與參數輸入框落點偏移；outline 畫在版面框外、不影響座標。 */
+      outline: 1px solid #ccc;
+    }
+
+    .info-section {
+      margin: 20px 0;
+      padding: 15px;
+      border: 1px solid #eee;
+      border-radius: 5px;
+    }
+
+    .section-title {
+      font-weight: bold;
+      margin-bottom: 10px;
+      border-bottom: 1px solid #eee;
+    }
+
+    /* 手機版：壓縮上下 chrome，讓積木工作區佔滿螢幕 */
+    @media (max-width: 768px) {
+      body {
+        padding: 4px;
+      }
+
+      .main-container {
+        padding: 10px;
+        border-radius: 8px;
+        max-width: 100%;
+      }
+
+      .header {
+        margin-bottom: 8px;
+      }
+
+      .header h1 {
+        font-size: 1.2em;
+      }
+
+      /* 版本字串在手機上隱藏以省空間 */
+      .header p {
+        display: none;
+      }
+
+      .blockly-section {
+        margin: 10px 0;
+      }
+
+      #blocklyDiv {
+        height: 70vh;
+        /* 動態視窗高度：扣掉標題/執行列後撐滿；100dvh 會排除手機瀏覽器工具列 */
+        height: calc(100dvh - 160px);
+        min-height: 320px;
+      }
+
+      .info-section {
+        margin: 10px 0;
+        padding: 10px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="loadingOverlay"
+    style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 9999;">
+    <div style="background: white; padding: 20px; border-radius: 5px; text-align: center;">
+      <h3>正在載入...</h3>
+      <div id="progressFill" style="height: 10px; background: #4d7fff; width: 5%;"></div>
+    </div>
+  </div>
+
+  <div class="main-container">
+    <div class="header">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="flex: 1;">
+          <h1>🧩 積木程式設計</h1>
+          <p>v1.3.39 (2026-01-23) - 訊息數量限制 (Message Log Limit)</p>
+        </div>
+        <button id="homeBtn" onclick="resetAndGoHome()" class="btn" style="background: #ee5a52;">🏠 回首頁</button>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+      <button class="btn" id="resetBtn" style="flex: 1;">⏹️ 停止程式</button>
+      <button class="btn" id="runBtn" style="flex: 1;">▶️ 執行程式</button>
+    </div>
+
+    <div class="blockly-section">
+      <div id="blocklyDiv"></div>
+    </div>
+
+    <div class="info-section">
+      <div class="section-title">🎮 程式操作</div>
+      <button class="btn" id="saveBtn">💾 儲存</button>
+      <button class="btn" id="saveAsNewBtn">📁 另存</button>
+      <button class="btn" id="openFileBtn">📂 開啟</button>
+    </div>
+
+    <div class="info-section" id="sensorOutput">
+      <div class="section-title">📱 系統訊息</div>
+    </div>
+
+    <div class="info-section">
+      <div class="section-title">📈 Plotter</div>
+      <button class="btn" onclick="window.open('plotter.html','phoneBlockyPlotter')">↗ 開啟獨立 Plotter</button>
+    </div>
+  </div>
+
+  <xml id="toolbox" style="display: none">
+    <category name="Arduino" colour="120">
+      <block type="arduino_setup"></block>
+      <block type="arduino_loop"></block>
+      <block type="arduino_digitalWrite"></block>
+      <block type="arduino_digitalRead"></block>
+      <block type="arduino_analogWrite"></block>
+      <block type="arduino_analogRead"></block>
+      <block type="arduino_delay"></block>
+      <block type="message_print"></block>
+      <block type="plot_print"></block>
+      <block type="arduino_millis"></block>
+    </category>
+    <category name="流程控制" colour="210">
+      <block type="controls_if"></block>
+    </category>
+    <category name="數學" colour="230">
+      <block type="math_number">
+        <field name="NUM">0</field>
+      </block>
+      <block type="math_arithmetic"></block>
+    </category>
+    <category name="邏輯" colour="210">
+      <block type="logic_boolean"></block>
+      <block type="logic_compare"></block>
+      <block type="logic_negate"></block>
+    </category>
+    <category name="變數" colour="330" custom="VARIABLE"></category>
+    <category name="感測器" colour="390">
+      <block type="arduino_ultrasonic"></block>
+      <block type="lego_button"></block>
+    </category>
+    <category name="馬達模組" colour="290">
+      <block type="motor_pwm"></block>
+      <block type="motor_stop"></block>
+      <block type="motor_speed"></block>
+      <block type="motor_zero"></block>
+      <block type="motor_position"></block>
+      <block type="motor_move_by"></block>
+      <block type="servo_set"></block>
+      <sep></sep>
+      <block type="馬達"></block>
+      <block type="舵機"></block>
+    </category>
+  </xml>
+
+  <script>
+    if (typeof Blockly !== 'undefined') {
+      Blockly.Msg["VARIABLES_SET"] = "設定 %1 為 %2";
+      Blockly.Msg["MATH_CHANGE_TITLE"] = "將 %1 增加 %2";
+      Blockly.Msg["DUPLICATE_BLOCK"] = "複製積木";
+      Blockly.Msg["DELETE_BLOCK"] = "刪除積木";
+      Blockly.Msg["CLEAN_UP"] = "整理積木";
+
+      if (Blockly.Workspace && Blockly.Workspace.prototype) {
+        Blockly.Workspace.prototype.getVariable = function (name, type) {
+          return this.getVariableMap().getVariable(name, type);
+        };
+        Blockly.Workspace.prototype.getAllVariables = function () {
+          return this.getVariableMap().getAllVariables();
+        };
+      }
+    }
+
+    (function () {
+      let p = 5;
+      const fill = document.getElementById('progressFill');
+      const interval = setInterval(() => {
+        p += 20;
+        if (fill) fill.style.width = p + '%';
+        if (p >= 100) {
+          clearInterval(interval);
+          setTimeout(() => {
+            document.getElementById('loadingOverlay').style.display = 'none';
+            // 遮罩移除後版面才真正定位，重新整理 Blockly 座標快取避免點擊跳位
+            if (typeof Blockly !== 'undefined' && typeof workspace !== 'undefined' && workspace) {
+              Blockly.svgResize(workspace);
+            }
+          }, 300);
+        }
+      }, 100);
+    })();
+  </script>
+</body>
+
+</html>

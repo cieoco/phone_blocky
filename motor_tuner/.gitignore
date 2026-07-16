@@ -1,0 +1,7 @@
+# 虛擬環境與快取（由 run.bat 自動建立，不納入版控）
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+build/
+dist/

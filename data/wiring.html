@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>🔌 接線說明</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; min-height: 100%; }
+    body {
+      background: linear-gradient(135deg, #667eea 0%, #4d7fff 100%);
+      background-attachment: fixed;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 16px;
+    }
+    .card {
+      background: rgba(255,255,255,0.96);
+      border-radius: 18px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.12);
+      padding: 28px 32px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      gap: 12px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.8em;
+      font-weight: 700;
+      background: linear-gradient(45deg, #667eea, #4d7fff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .back-btn {
+      background: linear-gradient(45deg, #ff6b6b, #ee5a52);
+      color: white; border: none;
+      padding: 9px 18px; border-radius: 20px;
+      cursor: pointer; font-weight: bold;
+      font-size: 0.88em; white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(255,107,107,0.3);
+      flex-shrink: 0;
+    }
+
+    /* 板子圖 */
+    .board-wrap {
+      text-align: center;
+      margin-bottom: 24px;
+      background: #f8f9fa;
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .board-wrap img {
+      max-width: 100%;
+      max-height: 320px;
+      object-fit: contain;
+    }
+    .board-wrap p {
+      margin: 8px 0 0 0;
+      font-size: 0.82em;
+      color: #718096;
+    }
+
+    /* 各區塊 */
+    .section {
+      margin-bottom: 20px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1.5px solid #e2e8f0;
+    }
+    .section-header {
+      padding: 10px 16px;
+      font-weight: 700;
+      font-size: 0.98em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-body { padding: 0 4px 4px 4px; }
+
+    /* 顏色主題 */
+    .motor   .section-header { background:#fff3e0; color:#b45309; }
+    .servo   .section-header { background:#e8f5e9; color:#276749; }
+    .encoder .section-header { background:#f3e8ff; color:#6b21a8; }
+    .user    .section-header { background:#e8f4fd; color:#1a56a0; }
+    .lego    .section-header { background:#fef9e7; color:#7d6608; }
+    .forbidden .section-header { background:#fff5f5; color:#c53030; }
+
+    /* 表格 */
+    table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+    th {
+      background: #f7faff;
+      padding: 7px 10px;
+      text-align: left;
+      font-weight: 600;
+      color: #4a5568;
+      border-bottom: 1.5px solid #e2e8f0;
+    }
+    td {
+      padding: 7px 10px;
+      border-bottom: 1px solid #f0f0f0;
+      color: #2d3748;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f7faff; }
+    .gpio {
+      font-family: monospace;
+      font-weight: 700;
+      background: #edf2f7;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .pin-dot {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      margin-right: 5px;
+      vertical-align: middle;
+    }
+
+    /* LEGO 接線圖 */
+    .rj12-wrap {
+      padding: 12px 16px;
+    }
+    .rj12-grid {
+      display: grid;
+      grid-template-columns: 40px 60px 90px 1fr;
+      gap: 0;
+      font-size: 0.88em;
+    }
+    .rj12-head {
+      font-weight: 700;
+      color: #718096;
+      padding: 5px 8px;
+      background: #f7faff;
+      border-bottom: 1.5px solid #e2e8f0;
+    }
+    .rj12-cell {
+      padding: 6px 8px;
+      border-bottom: 1px solid #f0f0f0;
+      display: flex;
+      align-items: center;
+    }
+    .color-swatch {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border-radius: 3px;
+      border: 1px solid rgba(0,0,0,0.15);
+      margin-right: 6px;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+    .note {
+      background: #fffbeb;
+      border-left: 4px solid #f59e0b;
+      padding: 10px 14px;
+      border-radius: 0 6px 6px 0;
+      font-size: 0.85em;
+      color: #78350f;
+      margin: 8px 16px 8px 16px;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 600px) {
+      .card { padding: 16px 14px; }
+      h1 { font-size: 1.3em; }
+      .rj12-grid { grid-template-columns: 36px 52px 80px 1fr; font-size: 0.82em; }
+    }
+  </style>
+</head>
+<body>
+<div class="card">
+
+  <div class="header">
+    <h1>🔌 接線說明</h1>
+    <button class="back-btn" onclick="location.href='index.html'">🏠 回首頁</button>
+  </div>
+
+  <!-- 板子圖 -->
+  <div class="board-wrap">
+    <img src="wemos.jpg" alt="WeMos D1 R32 (ESP32)">
+    <p>WeMos D1 R32（ESP32）— 本系統使用的控制板</p>
+  </div>
+
+  <!-- 舵機 -->
+  <div class="section servo">
+    <div class="section-header">🟢 舵機 Servo</div>
+    <div class="section-body">
+      <table>
+        <tr><th>通道</th><th>GPIO</th><th>脈衝範圍</th><th>LEDC 通道</th></tr>
+        <tr><td>S1（Servo 1）</td><td><span class="gpio">5</span></td><td>500–2500 µs</td><td>ch 14</td></tr>
+        <tr><td>S2（Servo 2）</td><td><span class="gpio">13</span></td><td>500–2500 µs</td><td>ch 15</td></tr>
+      </table>
+      <div class="note">指令格式：<code>{"cmd":"servo","ch":1,"deg":90}</code>，角度範圍 0–180°。</div>
+    </div>
+  </div>
+
+  <!-- 編碼器 -->
+  <div class="section encoder">
+    <div class="section-header">🟣 編碼器（M3 / M4）</div>
+    <div class="section-body">
+      <table>
+        <tr><th>馬達</th><th>相</th><th>GPIO</th><th>備註</th></tr>
+        <tr><td>M3</td><td>A</td><td><span class="gpio">35</span></td><td rowspan="2">輸入專用腳（無法輸出、無內部上拉）</td></tr>
+        <tr><td>M3</td><td>B</td><td><span class="gpio">34</span></td></tr>
+        <tr><td>M4</td><td>A</td><td><span class="gpio">36</span></td><td rowspan="2">輸入專用腳（無法輸出、無內部上拉）</td></tr>
+        <tr><td>M4</td><td>B</td><td><span class="gpio">39</span></td></tr>
+      </table>
+      <div class="note">GPIO 34/35/36/39 為 ESP32 輸入專用（Input Only）腳位，需自行加上拉電阻（3.3V ↔ 10kΩ ↔ 訊號腳）。2X 解碼模式，每度 = 2 ticks（預設 PPR=360）。</div>
+    </div>
+  </div>
+
+  <!-- 使用者可用腳位 -->
+  <div class="section user">
+    <div class="section-header">🔵 使用者可用腳位（Blockly / 感測器）</div>
+    <div class="section-body">
+      <table>
+        <tr><th>GPIO</th><th>類型</th><th>預設功能</th><th>備註</th></tr>
+        <tr><td><span class="gpio">2</span></td><td>數位 I/O</td><td>數位輸出 / 超音波 Trig</td><td>也是板子 LED；開機時低電位</td></tr>
+        <tr><td><span class="gpio">4</span></td><td>數位輸入</td><td>樂高按鈕</td><td>INPUT_PULLUP</td></tr>
+        <tr><td><span class="gpio">15</span></td><td>數位輸入</td><td>數位讀取</td><td>Strapping pin，開機勿強拉</td></tr>
+        <tr><td><span class="gpio">26</span></td><td>數位輸出 / PWM / DAC</td><td>PWM / 類比輸出</td><td>支援 DAC 輸出</td></tr>
+        <tr><td><span class="gpio">32</span></td><td>數位輸入 / ADC</td><td>類比讀取</td><td>可改作 I2C SDA</td></tr>
+        <tr><td><span class="gpio">33</span></td><td>數位輸入 / ADC</td><td>超音波 Echo</td><td>可改作 I2C SCL</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- LEGO NXT 馬達接頭 -->
+  <div class="section lego">
+    <div class="section-header">🧱 樂高 NXT/EV3 馬達接頭（RJ12 6P6C）</div>
+    <div class="section-body">
+      <div class="rj12-wrap">
+        <div class="rj12-grid">
+          <div class="rj12-head">腳位</div>
+          <div class="rj12-head">線色</div>
+          <div class="rj12-head">訊號</div>
+          <div class="rj12-head">說明</div>
+
+          <div class="rj12-cell">Pin 1</div>
+          <div class="rj12-cell"><span class="color-swatch" style="background:#fff;border-color:#999;"></span>白</div>
+          <div class="rj12-cell">MA0</div>
+          <div class="rj12-cell">馬達電源端 A → 接馬達驅動板 OUT1</div>
+
+          <div class="rj12-cell">Pin 2</div>
+          <div class="rj12-cell"><span class="color-swatch" style="background:#222;"></span>黑</div>
+          <div class="rj12-cell">MA1</div>
+          <div class="rj12-cell">馬達電源端 B → 接馬達驅動板 OUT2</div>
+
+          <div class="rj12-cell">Pin 3</div>
+          <div class="rj12-cell"><span class="color-swatch" style="background:#e53e3e;"></span>紅</div>
+          <div class="rj12-cell">GND</div>
+          <div class="rj12-cell">編碼器與邏輯接地 → 接系統 GND</div>
+
+          <div class="rj12-cell">Pin 4</div>
+          <div class="rj12-cell"><span class="color-swatch" style="background:#38a169;"></span>綠</div>
+          <div class="rj12-cell">VCC</div>
+          <div class="rj12-cell">編碼器電源 4.3–5V → 接 5V 或 3.3V（視編碼器規格）</div>
+
+          <div class="rj12-cell">Pin 5</div>
+          <div class="rj12-cell"><span class="color-swatch" style="background:#d69e2e;"></span>黃</div>
+          <div class="rj12-cell">TA（A相）</div>
+          <div class="rj12-cell">正交編碼器 A → GPIO 35（M3）/ GPIO 36（M4）</div>
+
+          <div class="rj12-cell">Pin 6</div>
+          <div class="rj12-cell"><span class="color-swatch" style="background:#3182ce;"></span>藍</div>
+          <div class="rj12-cell">TB（B相）</div>
+          <div class="rj12-cell">正交編碼器 B → GPIO 34（M3）/ GPIO 39（M4）</div>
+        </div>
+      </div>
+      <div class="note">水晶頭正面（金屬片朝上、卡榫朝下）由左至右為 Pin 1→6。<br>
+        NXT 馬達每圈約 360 脈衝（馬達軸），2X 解碼後每圈 720 ticks。<br>
+        MA0/MA1 直流馬達電壓最高 9V，請透過馬達驅動板（L298N、TB6612FNG 或 AFMotor Shield）控制。</div>
+    </div>
+  </div>
+
+  <!-- 禁用腳位 -->
+  <div class="section forbidden">
+    <div class="section-header">🚫 禁止外接（已被系統佔用）</div>
+    <div class="section-body">
+      <table>
+        <tr><th>GPIO</th><th>佔用原因</th></tr>
+        <tr><td><span class="gpio">12 14 16 17 19 23 25 27</span></td><td>AFMotor Shield 74HCT595 + 馬達 M1–M4 PWM（系統保留）</td></tr>
+        <tr><td><span class="gpio">5 13</span></td><td>Servo S1 / S2</td></tr>
+        <tr><td><span class="gpio">34 35 36 39</span></td><td>M3/M4 編碼器（輸入專用腳）</td></tr>
+      </table>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
