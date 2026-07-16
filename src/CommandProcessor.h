@@ -1455,6 +1455,46 @@ public:
         motorCtrl.controlMotor(1, speed > 0 ? 'F' : (speed < 0 ? 'B' : 'R'), abs(speed));
       } else if (strcmp(motor, "M2") == 0) {
         motorCtrl.controlMotor(2, speed > 0 ? 'F' : (speed < 0 ? 'B' : 'R'), abs(speed));
+      } else if (strcmp(motor, "M3") == 0) {
+        motorCtrl.controlMotor(3, speed > 0 ? 'F' : (speed < 0 ? 'B' : 'R'), abs(speed));
+      } else if (strcmp(motor, "M4") == 0) {
+        motorCtrl.controlMotor(4, speed > 0 ? 'F' : (speed < 0 ? 'B' : 'R'), abs(speed));
+      }
+    } else if (strcmp(test, "servoTest") == 0 || strcmp(type, "servoTest") == 0) {
+      int ch = doc["servo"] | (doc["ch"] | 1);
+      int angle = doc["angle"] | (doc["deg"] | 90);
+      angle = constrain(angle, 0, 180);
+      if (ch == 1 || ch == 2) {
+        servoDeg[ch] = angle;
+        servoCtrl.controlServo(ch, angle);
+      }
+      if (sendJsonResponseCallback) {
+        DynamicJsonDocument responseDoc(256);
+        responseDoc["type"] = "servoAck";
+        responseDoc["servo"] = ch;
+        responseDoc["angle"] = angle;
+        responseDoc["timestamp"] = millis();
+        sendJsonResponseCallback(responseDoc, replyChannel);
+      }
+    } else if (strcmp(test, "encoderReading") == 0 || strcmp(type, "encoderReading") == 0) {
+      const char *motor = doc["motor"] | "M3";
+      bool doReset = doc["reset"] | false;
+      long ticks = 0;
+      if (strcmp(motor, "M4") == 0) {
+        if (doReset && encoder) encoder->resetM4();
+        ticks = encoder ? encoder->getM4Ticks() : 0;
+      } else {
+        if (doReset && encoder) encoder->resetM3();
+        ticks = encoder ? encoder->getM3Ticks() : 0;
+      }
+      if (sendJsonResponseCallback) {
+        DynamicJsonDocument responseDoc(256);
+        responseDoc["type"] = "encoderValue";
+        responseDoc["motor"] = motor;
+        responseDoc["ticks"] = ticks;
+        responseDoc["deg"] = ticks / TICKS_PER_DEGREE;
+        responseDoc["timestamp"] = millis();
+        sendJsonResponseCallback(responseDoc, replyChannel);
       }
     } else if (strcmp(test, "buttonReading") == 0 || strcmp(type, "buttonReading") == 0) {
       int gpio = doc["gpio"] | USER_LEGO_BUTTON_PIN;

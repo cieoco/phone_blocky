@@ -732,7 +732,43 @@
             </div>
             <div class="item-status" id="status-m2">等待中</div>
           </div>
-          
+
+          <div class="test-item-card" id="card-m3">
+            <div class="item-checkbox">
+              <input type="checkbox" id="check-m3" checked>
+              <label for="check-m3"></label>
+            </div>
+            <div class="item-info">
+              <div class="item-title">⚙️ M3 馬達 + 編碼器</div>
+              <div class="item-description">正反轉並同步驗證編碼器計數 (A=35/B=34)</div>
+            </div>
+            <div class="item-status" id="status-m3">等待中</div>
+          </div>
+
+          <div class="test-item-card" id="card-m4">
+            <div class="item-checkbox">
+              <input type="checkbox" id="check-m4" checked>
+              <label for="check-m4"></label>
+            </div>
+            <div class="item-info">
+              <div class="item-title">⚙️ M4 馬達 + 編碼器</div>
+              <div class="item-description">正反轉並同步驗證編碼器計數 (A=36/B=39)</div>
+            </div>
+            <div class="item-status" id="status-m4">等待中</div>
+          </div>
+
+          <div class="test-item-card" id="card-servo">
+            <div class="item-checkbox">
+              <input type="checkbox" id="check-servo" checked>
+              <label for="check-servo"></label>
+            </div>
+            <div class="item-info">
+              <div class="item-title">🦾 舵機 S1/S2</div>
+              <div class="item-description">S1(GPIO5)/S2(GPIO13) 角度掃描測試</div>
+            </div>
+            <div class="item-status" id="status-servo">等待中</div>
+          </div>
+
           <div class="test-item-card" id="card-button">
             <div class="item-checkbox">
               <input type="checkbox" id="check-button" checked>
@@ -858,6 +894,100 @@
         <div class="confirmation-buttons">
           <button class="btn btn-success" onclick="confirmM2(true)">✅ 是，運作正常</button>
           <button class="btn btn-danger" onclick="confirmM2(false)">❌ 否，有問題</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- M3 馬達 + 編碼器測試區域 -->
+    <div class="test-section test-item" id="m3-test-section">
+      <h3>⚙️ M3 馬達 + 編碼器測試</h3>
+      <div class="instruction-box" id="m3-instruction">
+        <strong>🔍 請注意觀察 M3 馬達與下方編碼器計數</strong><br>
+        自動測試：正轉增速→極速→停止→反轉增速→極速→停止。馬達轉動時編碼器計數應隨之變化。
+      </div>
+      <div class="test-controls" id="m3-controls">
+        <button class="btn btn-success" onclick="startM3Test()">開始 M3 馬達測試</button>
+      </div>
+      <div class="current-value-display">
+        <h5>🔄 編碼器即時計數</h5>
+        <div class="value-box">
+          <span id="m3-enc-value">--- ticks</span>
+        </div>
+      </div>
+      <div class="status-box" id="m3Status">等待開始測試...</div>
+      <div class="confirmation-box" id="m3-confirmation" style="display: none;">
+        <p><strong>❓ M3 馬達與編碼器是否正常運作？</strong></p>
+        <ul>
+          <li>✅ 馬達先正轉再反轉，皆從慢速增至極速</li>
+          <li>📊 <strong>編碼器計數範圍：</strong><span id="m3-enc-range">---</span></li>
+          <li>📊 <strong>計數總變化量：</strong><span id="m3-enc-span">---</span> ticks</li>
+          <li>✅ 正常情況：馬達轉動時計數應明顯變化</li>
+        </ul>
+        <div class="confirmation-buttons">
+          <button class="btn btn-success" onclick="confirmM3(true)">✅ 是，運作正常</button>
+          <button class="btn btn-danger" onclick="confirmM3(false)">❌ 否，有問題</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- M4 馬達 + 編碼器測試區域 -->
+    <div class="test-section test-item" id="m4-test-section">
+      <h3>⚙️ M4 馬達 + 編碼器測試</h3>
+      <div class="instruction-box" id="m4-instruction">
+        <strong>🔍 請注意觀察 M4 馬達與下方編碼器計數</strong><br>
+        自動測試：正轉增速→極速→停止→反轉增速→極速→停止。馬達轉動時編碼器計數應隨之變化。
+      </div>
+      <div class="test-controls" id="m4-controls">
+        <button class="btn btn-success" onclick="startM4Test()">開始 M4 馬達測試</button>
+      </div>
+      <div class="current-value-display">
+        <h5>🔄 編碼器即時計數</h5>
+        <div class="value-box">
+          <span id="m4-enc-value">--- ticks</span>
+        </div>
+      </div>
+      <div class="status-box" id="m4Status">等待開始測試...</div>
+      <div class="confirmation-box" id="m4-confirmation" style="display: none;">
+        <p><strong>❓ M4 馬達與編碼器是否正常運作？</strong></p>
+        <ul>
+          <li>✅ 馬達先正轉再反轉，皆從慢速增至極速</li>
+          <li>📊 <strong>編碼器計數範圍：</strong><span id="m4-enc-range">---</span></li>
+          <li>📊 <strong>計數總變化量：</strong><span id="m4-enc-span">---</span> ticks</li>
+          <li>✅ 正常情況：馬達轉動時計數應明顯變化</li>
+        </ul>
+        <div class="confirmation-buttons">
+          <button class="btn btn-success" onclick="confirmM4(true)">✅ 是，運作正常</button>
+          <button class="btn btn-danger" onclick="confirmM4(false)">❌ 否，有問題</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 舵機 S1/S2 測試區域 -->
+    <div class="test-section test-item" id="servo-test-section">
+      <h3>🦾 舵機 S1/S2 測試</h3>
+      <div class="instruction-box" id="servo-instruction">
+        <strong>🔍 請注意觀察兩顆舵機是否依序轉動</strong><br>
+        自動測試：S1 掃描 0°→90°→180°→回中，接著 S2 掃描 0°→90°→180°→回中。
+      </div>
+      <div class="test-controls" id="servo-controls">
+        <button class="btn btn-success" onclick="startServoTest()">開始舵機測試</button>
+      </div>
+      <div class="current-value-display">
+        <h5>📐 當前指令角度</h5>
+        <div class="value-box">
+          <span id="servo-value">---</span>
+        </div>
+      </div>
+      <div class="status-box" id="servoStatus">等待開始測試...</div>
+      <div class="confirmation-box" id="servo-confirmation" style="display: none;">
+        <p><strong>❓ 兩顆舵機是否都正常轉動到位？</strong></p>
+        <ul>
+          <li>✅ S1 依序轉到 0° / 90° / 180° 並回中</li>
+          <li>✅ S2 依序轉到 0° / 90° / 180° 並回中</li>
+        </ul>
+        <div class="confirmation-buttons">
+          <button class="btn btn-success" onclick="confirmServo(true)">✅ 是，運作正常</button>
+          <button class="btn btn-danger" onclick="confirmServo(false)">❌ 否，有問題</button>
         </div>
       </div>
     </div>
@@ -1137,6 +1267,21 @@
         
         appendLog('analogStatus', `📊 GPIO32: ${value} (${percentage}%)`);
       }
+      // 處理編碼器讀值數據（M3/M4 馬達帶動驗證）
+      else if (data.type === 'encoderValue') {
+        const motor = data.motor || 'M3';
+        const id = motor.toLowerCase();
+        const ticks = parseInt(data.ticks) || 0;
+        const deg = parseFloat(data.deg) || 0;
+        const st = encoderMotorState[motor];
+        if (st) {
+          st.readings.push(ticks);
+          if (st.min === null || ticks < st.min) st.min = ticks;
+          if (st.max === null || ticks > st.max) st.max = ticks;
+        }
+        const valEl = document.getElementById(`${id}-enc-value`);
+        if (valEl) valEl.textContent = `${ticks} ticks (${deg.toFixed(1)}°)`;
+      }
     }
 
     // 發送命令到 ESP32
@@ -1329,6 +1474,199 @@
     }
 
 
+
+    // M3/M4 馬達 + 編碼器測試（馬達帶動驗證）
+    let encoderMotorState = {
+      M3: { interval: null, min: null, max: null, readings: [] },
+      M4: { interval: null, min: null, max: null, readings: [] }
+    };
+
+    function startEncoderMotorTest(motor) {
+      const id = motor.toLowerCase(); // 'm3' / 'm4'
+      updateTestItemStatus(id, 'testing');
+      updateProgressBar(40, `正在測試 ${motor} 馬達 + 編碼器...`);
+      highlightCurrentTest(`${id}-test-section`);
+
+      appendLog(`${id}Status`, `🎯 開始 ${motor} 馬達 + 編碼器自動測試序列...`);
+
+      // 隱藏開始按鈕
+      document.getElementById(`${id}-controls`).style.display = 'none';
+
+      // 重置編碼器統計並將硬體計數歸零
+      const st = encoderMotorState[motor];
+      st.min = null;
+      st.max = null;
+      st.readings = [];
+      document.getElementById(`${id}-enc-value`).textContent = '--- ticks';
+      sendCommand({ type: 'hardwareTest', test: 'encoderReading', motor: motor, reset: true });
+
+      // 測試期間持續輪詢編碼器計數
+      st.interval = setInterval(() => {
+        sendCommand({ type: 'hardwareTest', test: 'encoderReading', motor: motor });
+      }, 200);
+
+      // 執行馬達動作序列
+      const steps = [
+        { action: '正轉慢速', speed: 80, duration: 1000 },
+        { action: '正轉加速', speed: 150, duration: 1000 },
+        { action: '正轉極速', speed: 255, duration: 1500 },
+        { action: '停止', speed: 0, duration: 1000 },
+        { action: '反轉慢速', speed: -80, duration: 1000 },
+        { action: '反轉加速', speed: -150, duration: 1000 },
+        { action: '反轉極速', speed: -255, duration: 1500 },
+        { action: '停止', speed: 0, duration: 500 }
+      ];
+
+      let stepIndex = 0;
+
+      function executeStep() {
+        if (stepIndex < steps.length) {
+          const step = steps[stepIndex];
+          appendLog(`${id}Status`, `▶️ ${step.action} (速度: ${step.speed})`);
+
+          sendCommand({
+            type: 'motorControl',
+            motor: motor,
+            speed: step.speed
+          });
+
+          setTimeout(() => {
+            stepIndex++;
+            executeStep();
+          }, step.duration);
+        } else {
+          // 停止編碼器輪詢並統計結果
+          if (st.interval) {
+            clearInterval(st.interval);
+            st.interval = null;
+          }
+          appendLog(`${id}Status`, `✅ ${motor} 測試序列完成！請確認馬達動作與編碼器計數是否正常。`);
+
+          const span = (st.min === null) ? 0 : (st.max - st.min);
+          document.getElementById(`${id}-enc-range`).textContent =
+            (st.min === null) ? '未讀取' : `${st.min} ~ ${st.max}`;
+          document.getElementById(`${id}-enc-span`).textContent = span;
+
+          document.getElementById(`${id}-confirmation`).style.display = 'block';
+        }
+      }
+
+      executeStep();
+    }
+
+    function startM3Test() { startEncoderMotorTest('M3'); }
+    function startM4Test() { startEncoderMotorTest('M4'); }
+
+    function confirmEncoderMotor(motor, isNormal) {
+      const id = motor.toLowerCase();
+      testResults[id] = isNormal;
+      updateTestItemStatus(id, isNormal ? 'success' : 'failed');
+
+      if (isNormal) {
+        appendLog(`${id}Status`, `✅ 使用者確認：${motor} 馬達 + 編碼器運作正常`);
+      } else {
+        appendLog(`${id}Status`, `❌ 使用者確認：${motor} 馬達 + 編碼器有問題`);
+      }
+
+      // 保險：停止馬達與輪詢
+      sendCommand({ type: 'motorControl', motor: motor, speed: 0 });
+      const st = encoderMotorState[motor];
+      if (st && st.interval) {
+        clearInterval(st.interval);
+        st.interval = null;
+      }
+
+      document.getElementById(`${id}-confirmation`).style.display = 'none';
+
+      if (autoTestMode) {
+        currentAutoTestIndex++;
+        setTimeout(() => {
+          executeNextAutoTest();
+        }, 1000);
+      } else {
+        completeAllTests();
+      }
+    }
+
+    function confirmM3(isNormal) { confirmEncoderMotor('M3', isNormal); }
+    function confirmM4(isNormal) { confirmEncoderMotor('M4', isNormal); }
+
+    // 舵機 S1/S2 測試
+    let servoTestTimeouts = [];
+
+    function startServoTest() {
+      updateTestItemStatus('servo', 'testing');
+      updateProgressBar(45, '正在測試舵機 S1/S2...');
+      highlightCurrentTest('servo-test-section');
+
+      appendLog('servoStatus', '🎯 開始舵機 S1/S2 掃描測試...');
+
+      // 隱藏開始按鈕
+      document.getElementById('servo-controls').style.display = 'none';
+
+      // 掃描序列：S1 先，S2 後
+      const seq = [
+        { ch: 1, angle: 0,   label: 'S1 → 0°' },
+        { ch: 1, angle: 90,  label: 'S1 → 90°' },
+        { ch: 1, angle: 180, label: 'S1 → 180°' },
+        { ch: 1, angle: 90,  label: 'S1 → 回中 90°' },
+        { ch: 2, angle: 0,   label: 'S2 → 0°' },
+        { ch: 2, angle: 90,  label: 'S2 → 90°' },
+        { ch: 2, angle: 180, label: 'S2 → 180°' },
+        { ch: 2, angle: 90,  label: 'S2 → 回中 90°' }
+      ];
+
+      servoTestTimeouts = [];
+      let i = 0;
+
+      function step() {
+        if (i < seq.length) {
+          const s = seq[i];
+          appendLog('servoStatus', `▶️ ${s.label}`);
+          document.getElementById('servo-value').textContent = `S${s.ch} = ${s.angle}°`;
+
+          sendCommand({
+            type: 'hardwareTest',
+            test: 'servoTest',
+            servo: s.ch,
+            angle: s.angle
+          });
+
+          const t = setTimeout(() => {
+            i++;
+            step();
+          }, 900);
+          servoTestTimeouts.push(t);
+        } else {
+          appendLog('servoStatus', '✅ 舵機測試序列完成！請確認兩顆舵機是否都正常轉動。');
+          document.getElementById('servo-confirmation').style.display = 'block';
+        }
+      }
+
+      step();
+    }
+
+    function confirmServo(isNormal) {
+      testResults['servo'] = isNormal;
+      updateTestItemStatus('servo', isNormal ? 'success' : 'failed');
+
+      if (isNormal) {
+        appendLog('servoStatus', '✅ 使用者確認：舵機運作正常');
+      } else {
+        appendLog('servoStatus', '❌ 使用者確認：舵機有問題');
+      }
+
+      document.getElementById('servo-confirmation').style.display = 'none';
+
+      if (autoTestMode) {
+        currentAutoTestIndex++;
+        setTimeout(() => {
+          executeNextAutoTest();
+        }, 1000);
+      } else {
+        completeAllTests();
+      }
+    }
 
     // LEGO 按鈕測試
     function startButtonTest() {
@@ -1671,12 +2009,15 @@
       const testMapping = {
         'm1': { icon: '⚙️', name: 'M1 馬達' },
         'm2': { icon: '⚙️', name: 'M2 馬達' },
+        'm3': { icon: '⚙️', name: 'M3 馬達 + 編碼器' },
+        'm4': { icon: '⚙️', name: 'M4 馬達 + 編碼器' },
+        'servo': { icon: '🦾', name: '舵機 S1/S2' },
         'button': { icon: '🔘', name: 'LEGO 按鈕' },
         'ultrasonic': { icon: '📡', name: '超音波測距' },
         'digital': { icon: '📱', name: '數位讀值 (GPIO15)' },
         'analog': { icon: '📊', name: '類比讀值 (GPIO32)' }
       };
-      
+
       // 顯示每個測試結果
       Object.keys(testMapping).forEach(testKey => {
         const result = testResults[testKey];
@@ -1775,6 +2116,9 @@
       const testMapping = {
         'm1': { icon: '⚙️', name: 'M1 馬達' },
         'm2': { icon: '⚙️', name: 'M2 馬達' },
+        'm3': { icon: '⚙️', name: 'M3 馬達 + 編碼器 (A=35/B=34)' },
+        'm4': { icon: '⚙️', name: 'M4 馬達 + 編碼器 (A=36/B=39)' },
+        'servo': { icon: '🦾', name: '舵機 S1/S2 (GPIO 5/13)' },
         'button': { icon: '🔘', name: 'LEGO 按鈕 (GPIO 4)' },
         'ultrasonic': { icon: '📡', name: '超音波測距 (Trig:2/Echo:33)' },
         'digital': { icon: '📱', name: '數位讀值 (GPIO 15)' },
@@ -1907,33 +2251,47 @@
       // 重置測試狀態
       updateTestItemStatus('m1', 'waiting');
       updateTestItemStatus('m2', 'waiting');
+      updateTestItemStatus('m3', 'waiting');
+      updateTestItemStatus('m4', 'waiting');
+      updateTestItemStatus('servo', 'waiting');
       updateTestItemStatus('button', 'waiting');
       updateTestItemStatus('ultrasonic', 'waiting');
       updateTestItemStatus('digital', 'waiting');
       updateTestItemStatus('analog', 'waiting');
-      
+
       // 重置進度條
       updateProgressBar(0, '準備開始檢測...');
-      
+
       // 重置變數
       currentTestStep = 0;
       testResults = {};
       autoTestMode = false;
       currentAutoTestIndex = 0;
-      
+
       // 重置測試區域
       setTestSectionEnabled('m1-test-section', false);
       setTestSectionEnabled('m2-test-section', false);
+      setTestSectionEnabled('m3-test-section', false);
+      setTestSectionEnabled('m4-test-section', false);
+      setTestSectionEnabled('servo-test-section', false);
       setTestSectionEnabled('button-test-section', false);
       setTestSectionEnabled('ultrasonic-test-section', false);
       setTestSectionEnabled('digital-test-section', false);
       setTestSectionEnabled('analog-test-section', false);
-      
+
       // 隱藏所有確認框
       document.getElementById('m1-confirmation').style.display = 'none';
       document.getElementById('m2-confirmation').style.display = 'none';
+      document.getElementById('m3-confirmation').style.display = 'none';
+      document.getElementById('m4-confirmation').style.display = 'none';
+      document.getElementById('servo-confirmation').style.display = 'none';
       document.getElementById('button-confirmation').style.display = 'none';
-      
+
+      // 還原新測試區的起始按鈕（供重跑）
+      document.getElementById('m3-controls').style.display = 'block';
+      document.getElementById('m4-controls').style.display = 'block';
+      document.getElementById('servo-controls').style.display = 'block';
+
       // 隱藏結果區域
       document.getElementById('results-section').style.display = 'none';
     }
@@ -1956,16 +2314,11 @@
     // 開始全部檢測
     function startAllTests() {
       // 選中所有項目
-      document.getElementById('check-m1').checked = true;
-      document.getElementById('check-m2').checked = true;
-      document.getElementById('check-button').checked = true;
-      document.getElementById('check-ultrasonic').checked = true;
-      document.getElementById('check-digital').checked = true;
-      document.getElementById('check-analog').checked = true;
-      
+      selectAllTests();
+
       // 開始自動檢測
       autoTestMode = true;
-      selectedTests = ['m1', 'm2', 'button', 'ultrasonic', 'digital', 'analog'];
+      selectedTests = ['m1', 'm2', 'm3', 'm4', 'servo', 'button', 'ultrasonic', 'digital', 'analog'];
       currentAutoTestIndex = 0;
       
       appendLog('connectionStatus', '🚀 開始全部硬體檢測...');
@@ -1987,6 +2340,15 @@
       }
       if (document.getElementById('check-m2').checked) {
         selectedTests.push('m2');
+      }
+      if (document.getElementById('check-m3').checked) {
+        selectedTests.push('m3');
+      }
+      if (document.getElementById('check-m4').checked) {
+        selectedTests.push('m4');
+      }
+      if (document.getElementById('check-servo').checked) {
+        selectedTests.push('servo');
       }
       if (document.getElementById('check-button').checked) {
         selectedTests.push('button');
@@ -2039,6 +2401,18 @@
           appendLog('connectionStatus', `📋 [${currentAutoTestIndex + 1}/${selectedTests.length}] 開始 M2 馬達測試`);
           startM2Test();
           break;
+        case 'm3':
+          appendLog('connectionStatus', `📋 [${currentAutoTestIndex + 1}/${selectedTests.length}] 開始 M3 馬達 + 編碼器測試`);
+          startM3Test();
+          break;
+        case 'm4':
+          appendLog('connectionStatus', `📋 [${currentAutoTestIndex + 1}/${selectedTests.length}] 開始 M4 馬達 + 編碼器測試`);
+          startM4Test();
+          break;
+        case 'servo':
+          appendLog('connectionStatus', `📋 [${currentAutoTestIndex + 1}/${selectedTests.length}] 開始舵機 S1/S2 測試`);
+          startServoTest();
+          break;
         case 'button':
           appendLog('connectionStatus', `📋 [${currentAutoTestIndex + 1}/${selectedTests.length}] 開始 LEGO 按鈕測試`);
           startButtonTest();
@@ -2062,11 +2436,14 @@
     function resetAllTestSections() {
       setTestSectionEnabled('m1-test-section', false);
       setTestSectionEnabled('m2-test-section', false);
+      setTestSectionEnabled('m3-test-section', false);
+      setTestSectionEnabled('m4-test-section', false);
+      setTestSectionEnabled('servo-test-section', false);
       setTestSectionEnabled('button-test-section', false);
-      
+
       // 重設進度
       updateProgress(0);
-      
+
       // 清空測試結果
       testResults = {};
     }
@@ -2076,6 +2453,9 @@
       // 根據選中項目啟用對應區域
       setTestSectionEnabled('m1-test-section', selectedTests.includes('m1'));
       setTestSectionEnabled('m2-test-section', selectedTests.includes('m2'));
+      setTestSectionEnabled('m3-test-section', selectedTests.includes('m3'));
+      setTestSectionEnabled('m4-test-section', selectedTests.includes('m4'));
+      setTestSectionEnabled('servo-test-section', selectedTests.includes('servo'));
       setTestSectionEnabled('button-test-section', selectedTests.includes('button'));
       setTestSectionEnabled('ultrasonic-test-section', selectedTests.includes('ultrasonic'));
       setTestSectionEnabled('digital-test-section', selectedTests.includes('digital'));
@@ -2092,6 +2472,9 @@
     function selectAllTests() {
       document.getElementById('check-m1').checked = true;
       document.getElementById('check-m2').checked = true;
+      document.getElementById('check-m3').checked = true;
+      document.getElementById('check-m4').checked = true;
+      document.getElementById('check-servo').checked = true;
       document.getElementById('check-button').checked = true;
       document.getElementById('check-ultrasonic').checked = true;
       document.getElementById('check-digital').checked = true;
@@ -2102,6 +2485,9 @@
     function deselectAllTests() {
       document.getElementById('check-m1').checked = false;
       document.getElementById('check-m2').checked = false;
+      document.getElementById('check-m3').checked = false;
+      document.getElementById('check-m4').checked = false;
+      document.getElementById('check-servo').checked = false;
       document.getElementById('check-button').checked = false;
       document.getElementById('check-ultrasonic').checked = false;
       document.getElementById('check-digital').checked = false;
@@ -2206,17 +2592,23 @@
       // 初始化測試項目狀態
       updateTestItemStatus('m1', 'waiting');
       updateTestItemStatus('m2', 'waiting');
+      updateTestItemStatus('m3', 'waiting');
+      updateTestItemStatus('m4', 'waiting');
+      updateTestItemStatus('servo', 'waiting');
       updateTestItemStatus('button', 'waiting');
       updateTestItemStatus('ultrasonic', 'waiting');
       updateTestItemStatus('digital', 'waiting');
       updateTestItemStatus('analog', 'waiting');
-      
+
       // 初始化進度條
       updateProgressBar(0, '準備開始檢測...');
-      
+
       // 初始狀態：所有測試區域都禁用，等待用戶選擇檢測模式
       setTestSectionEnabled('m1-test-section', false);
       setTestSectionEnabled('m2-test-section', false);
+      setTestSectionEnabled('m3-test-section', false);
+      setTestSectionEnabled('m4-test-section', false);
+      setTestSectionEnabled('servo-test-section', false);
       setTestSectionEnabled('button-test-section', false);
       setTestSectionEnabled('ultrasonic-test-section', false);
       setTestSectionEnabled('digital-test-section', false);
@@ -2229,6 +2621,8 @@
       if (isConnected) {
         sendCommand({ type: 'motorControl', motor: 'M1', speed: 0 });
         sendCommand({ type: 'motorControl', motor: 'M2', speed: 0 });
+        sendCommand({ type: 'motorControl', motor: 'M3', speed: 0 });
+        sendCommand({ type: 'motorControl', motor: 'M4', speed: 0 });
       }
       if (socket) {
         socket.close();
