@@ -81,6 +81,16 @@ AP 密碼與管理密碼亦定義於 `config.h`，正式部署請自行更換。
 
 `ai.html` 需搭配 `ai-relay/` 的 Python 服務（Azure OpenAI）。設定方式見 [ai-relay/README.md](ai-relay/README.md)。
 
+## 桌面調校工具（motor_tuner，選用）
+
+[`motor_tuner/`](motor_tuner/) 是一個跑在 PC 上的 **PyQt6 桌面應用**，用於較深入的單馬達調參：
+單馬達測試、速度/位置環 **PID 調校**、**自動估 PID**、即時 **RPM/位置曲線圖**、換板複製參數與內建燒錄。
+走 phone_blocky 的 `cmd:` 協定，**WiFi(WS) 與 USB 序列**兩種傳輸等價。
+
+- 網頁 UI（`data/`）跑在 ESP32 上、供手機快速驗證；motor_tuner 是 PC 端的工程調參工具，兩者互補。
+- 閉迴路（轉速/位置）與曲線只對有編碼器的 **M3/M4** 有意義。
+- 執行：雙擊 `motor_tuner/run.bat`（首次自動建 `.venv`），詳見 [motor_tuner/README.md](motor_tuner/README.md)。
+
 ## 文件
 
 | 文件 | 說明 |
