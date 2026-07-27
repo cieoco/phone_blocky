@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <style>
+      .title{font:700 38px "Noto Sans TC","Microsoft JhengHei",sans-serif;fill:#152033}
+      .subtitle{font:500 18px "Noto Sans TC","Microsoft JhengHei",sans-serif;fill:#526175}
+      .h2{font:700 24px "Noto Sans TC","Microsoft JhengHei",sans-serif;fill:#152033}
+      .h3{font:700 19px "Noto Sans TC","Microsoft JhengHei",sans-serif;fill:#152033}
+      .body{font:500 16px "Noto Sans TC","Microsoft JhengHei",sans-serif;fill:#253246}
+      .small{font:500 14px "Noto Sans TC","Microsoft JhengHei",sans-serif;fill:#34445b}
+      .pin{font:700 15px Consolas,"Microsoft JhengHei",sans-serif;fill:#172033}
+      .white{fill:#fff}
+      .card{fill:#fff;stroke:#ced7e4;stroke-width:2}
+      .wire-power{fill:none;stroke:#e53935;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+      .wire-gnd{fill:none;stroke:#263238;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+      .wire-a{fill:none;stroke:#f5ad00;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+      .wire-b{fill:none;stroke:#1976d2;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+      .wire-sig{fill:none;stroke:#ef6c00;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+      .wire-servo{fill:none;stroke:#7b1fa2;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+      .wire-motor{fill:none;stroke:#00897b;stroke-width:7;stroke-linecap:round;stroke-linejoin:round}
+      .dot{stroke:#fff;stroke-width:2}
+    </style>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#1d2b3d" flood-opacity=".16"/>
+    </filter>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="#48617e"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="1000" fill="#f5f8fc"/>
+  <text x="70" y="62" class="title">phone_blocky 控制板接線總覽</text>
+  <text x="70" y="94" class="subtitle">WeMos D1 R32 ＋ DK Electronics v1.0 L293D Motor Shield｜課程用邏輯接線圖</text>
+
+  <!-- Stacking relationship -->
+  <g filter="url(#shadow)">
+    <rect x="570" y="135" width="460" height="145" rx="22" fill="#1478b8" stroke="#0c527e" stroke-width="3"/>
+    <text x="800" y="175" text-anchor="middle" class="h2 white">L293D Motor Shield</text>
+    <text x="800" y="205" text-anchor="middle" class="body white">馬達輸出 M1／M2／M3／M4</text>
+    <text x="800" y="233" text-anchor="middle" class="small white">以 Arduino 相容排針疊在 D1 R32 上方</text>
+    <rect x="620" y="305" width="360" height="470" rx="30" fill="#20262d" stroke="#0e1115" stroke-width="4"/>
+    <rect x="720" y="435" width="160" height="215" rx="12" fill="#c7d0d5"/>
+    <text x="800" y="355" text-anchor="middle" class="h2 white">WeMos D1 R32</text>
+    <text x="800" y="385" text-anchor="middle" class="body white">ESP32 控制器</text>
+    <text x="800" y="545" text-anchor="middle" class="h3">ESP32</text>
+    <text x="800" y="575" text-anchor="middle" class="small">Wi-Fi AP</text>
+  </g>
+  <path d="M800 280 L800 300" stroke="#48617e" stroke-width="5" marker-end="url(#arrow)"/>
+
+  <!-- Shield terminals -->
+  <g>
+    <rect x="530" y="150" width="48" height="42" rx="7" fill="#eaf8f5" stroke="#00897b" stroke-width="3"/><text x="554" y="177" text-anchor="middle" class="pin">M1</text>
+    <rect x="530" y="208" width="48" height="42" rx="7" fill="#eaf8f5" stroke="#00897b" stroke-width="3"/><text x="554" y="235" text-anchor="middle" class="pin">M2</text>
+    <rect x="1022" y="150" width="48" height="42" rx="7" fill="#eaf8f5" stroke="#00897b" stroke-width="3"/><text x="1046" y="177" text-anchor="middle" class="pin">M4</text>
+    <rect x="1022" y="208" width="48" height="42" rx="7" fill="#eaf8f5" stroke="#00897b" stroke-width="3"/><text x="1046" y="235" text-anchor="middle" class="pin">M3</text>
+  </g>
+
+  <!-- D1 logical pin rails -->
+  <g>
+    <rect x="590" y="330" width="54" height="34" rx="6" fill="#fff"/><text x="617" y="352" text-anchor="middle" class="pin">3V3</text>
+    <rect x="590" y="375" width="54" height="34" rx="6" fill="#fff"/><text x="617" y="397" text-anchor="middle" class="pin">GND</text>
+    <rect x="590" y="420" width="54" height="34" rx="6" fill="#fff"/><text x="617" y="442" text-anchor="middle" class="pin">IO35</text>
+    <rect x="590" y="465" width="54" height="34" rx="6" fill="#fff"/><text x="617" y="487" text-anchor="middle" class="pin">IO34</text>
+    <rect x="590" y="510" width="54" height="34" rx="6" fill="#fff"/><text x="617" y="532" text-anchor="middle" class="pin">IO36</text>
+    <rect x="590" y="555" width="54" height="34" rx="6" fill="#fff"/><text x="617" y="577" text-anchor="middle" class="pin">IO39</text>
+    <rect x="956" y="330" width="54" height="34" rx="6" fill="#fff"/><text x="983" y="352" text-anchor="middle" class="pin">5V</text>
+    <rect x="956" y="375" width="54" height="34" rx="6" fill="#fff"/><text x="983" y="397" text-anchor="middle" class="pin">GND</text>
+    <rect x="956" y="420" width="54" height="34" rx="6" fill="#fff"/><text x="983" y="442" text-anchor="middle" class="pin">IO5</text>
+    <rect x="956" y="465" width="54" height="34" rx="6" fill="#fff"/><text x="983" y="487" text-anchor="middle" class="pin">IO13</text>
+    <rect x="956" y="510" width="54" height="34" rx="6" fill="#fff"/><text x="983" y="532" text-anchor="middle" class="pin">IO4</text>
+    <rect x="956" y="555" width="54" height="34" rx="6" fill="#fff"/><text x="983" y="577" text-anchor="middle" class="pin">IO2</text>
+    <rect x="956" y="600" width="54" height="34" rx="6" fill="#fff"/><text x="983" y="622" text-anchor="middle" class="pin">IO33</text>
+    <rect x="956" y="645" width="54" height="34" rx="6" fill="#fff"/><text x="983" y="667" text-anchor="middle" class="pin">IO15</text>
+    <rect x="956" y="690" width="54" height="34" rx="6" fill="#fff"/><text x="983" y="712" text-anchor="middle" class="pin">IO32</text>
+  </g>
+
+  <!-- Left motor cards -->
+  <g>
+    <rect x="55" y="135" width="330" height="105" rx="16" class="card"/>
+    <text x="80" y="173" class="h3">M1 直流馬達</text><text x="80" y="205" class="body">兩條馬達線 → Shield M1</text>
+    <path d="M385 188 H480 V171 H530" class="wire-motor"/>
+
+    <rect x="55" y="260" width="330" height="105" rx="16" class="card"/>
+    <text x="80" y="298" class="h3">M2 直流馬達</text><text x="80" y="330" class="body">兩條馬達線 → Shield M2</text>
+    <path d="M385 313 H480 V229 H530" class="wire-motor"/>
+
+    <rect x="55" y="390" width="430" height="180" rx="16" class="card"/>
+    <text x="80" y="425" class="h3">M3 馬達＋編碼器</text>
+    <text x="80" y="455" class="body">馬達線 → Shield M3</text>
+    <text x="80" y="485" class="pin">VCC → 3.3V　GND → GND</text>
+    <text x="80" y="515" class="pin">A相 → GPIO35　B相 → GPIO34</text>
+    <path d="M485 445 H510 V229 H1022" class="wire-motor"/>
+    <path d="M485 480 H520 V347 H590" class="wire-power"/>
+    <path d="M485 500 H530 V392 H590" class="wire-gnd"/>
+    <path d="M485 520 H540 V437 H590" class="wire-a"/>
+    <path d="M485 540 H550 V482 H590" class="wire-b"/>
+
+    <rect x="55" y="595" width="430" height="180" rx="16" class="card"/>
+    <text x="80" y="630" class="h3">M4 馬達＋編碼器</text>
+    <text x="80" y="660" class="body">馬達線 → Shield M4</text>
+    <text x="80" y="690" class="pin">VCC → 3.3V　GND → GND</text>
+    <text x="80" y="720" class="pin">A相 → GPIO36　B相 → GPIO39</text>
+    <path d="M485 650 H500 V171 H1022" class="wire-motor"/>
+    <path d="M485 685 H505 V347 H590" class="wire-power"/>
+    <path d="M485 705 H515 V392 H590" class="wire-gnd"/>
+    <path d="M485 725 H525 V527 H590" class="wire-a"/>
+    <path d="M485 745 H535 V572 H590" class="wire-b"/>
+  </g>
+
+  <!-- Right peripheral cards -->
+  <g>
+    <rect x="1115" y="135" width="420" height="115" rx="16" class="card"/>
+    <text x="1140" y="170" class="h3">舵機 S1／S2</text>
+    <text x="1140" y="202" class="pin">S1 Signal → GPIO5　S2 Signal → GPIO13</text>
+    <text x="1140" y="229" class="body">電源 → 5V　接地 → GND</text>
+    <path d="M1115 190 H1080 V437 H1010" class="wire-servo"/>
+    <path d="M1115 210 H1095 V482 H1010" class="wire-servo"/>
+    <path d="M1115 225 H1065 V347 H1010" class="wire-power"/>
+    <path d="M1115 238 H1050 V392 H1010" class="wire-gnd"/>
+
+    <rect x="1115" y="275" width="420" height="90" rx="16" class="card"/>
+    <text x="1140" y="310" class="h3">LEGO 按鈕</text>
+    <text x="1140" y="340" class="pin">Signal → GPIO4　另一端 → GND</text>
+    <path d="M1115 325 H1065 V527 H1010" class="wire-sig"/>
+
+    <rect x="1115" y="390" width="420" height="155" rx="16" class="card"/>
+    <text x="1140" y="425" class="h3">HC-SR04 超音波</text>
+    <text x="1140" y="457" class="pin">Trig → GPIO2　Echo → GPIO33</text>
+    <text x="1140" y="487" class="body">VCC → 模組規格電源　GND → 共地</text>
+    <text x="1140" y="519" font-family="Noto Sans TC,Microsoft JhengHei,sans-serif" font-size="15" font-weight="700" fill="#c62828">⚠ Echo 進入 ESP32 前必須是 3.3V 邏輯</text>
+    <path d="M1115 452 H1080 V572 H1010" class="wire-sig"/>
+    <path d="M1115 472 H1095 V617 H1010" class="wire-sig"/>
+
+    <rect x="1115" y="570" width="420" height="115" rx="16" class="card"/>
+    <text x="1140" y="605" class="h3">其他預設輸入</text>
+    <text x="1140" y="637" class="pin">數位輸入 → GPIO15</text>
+    <text x="1140" y="667" class="pin">類比輸入 → GPIO32</text>
+    <path d="M1115 630 H1070 V662 H1010" class="wire-sig"/>
+    <path d="M1115 660 H1050 V707 H1010" class="wire-sig"/>
+  </g>
+
+  <!-- Motor power and legend -->
+  <g>
+    <rect x="55" y="815" width="480" height="125" rx="16" fill="#fff7e6" stroke="#e59a18" stroke-width="2"/>
+    <text x="80" y="850" class="h3">外部馬達電源 → Shield EXT_PWR</text>
+    <text x="80" y="881" class="body">電壓依馬達規格；不可由 ESP32 3.3V 供電</text>
+    <text x="80" y="911" class="small">PWR 跳線設定須依實際供電方式確認後再上電</text>
+
+    <rect x="565" y="815" width="400" height="125" rx="16" fill="#fff" stroke="#ced7e4" stroke-width="2"/>
+    <text x="590" y="848" class="h3">接線顏色</text>
+    <line x1="590" y1="875" x2="635" y2="875" class="wire-power"/><text x="648" y="881" class="small">電源</text>
+    <line x1="735" y1="875" x2="780" y2="875" class="wire-gnd"/><text x="793" y="881" class="small">GND</text>
+    <line x1="590" y1="910" x2="635" y2="910" class="wire-a"/><text x="648" y="916" class="small">編碼器 A</text>
+    <line x1="735" y1="910" x2="780" y2="910" class="wire-b"/><text x="793" y="916" class="small">編碼器 B</text>
+
+    <rect x="995" y="800" width="540" height="155" rx="18" fill="#fff1f1" stroke="#d32f2f" stroke-width="3"/>
+    <text x="1025" y="840" font-family="Noto Sans TC,Microsoft JhengHei,sans-serif" font-size="23" font-weight="700" fill="#b71c1c">重要安全事項</text>
+    <text x="1025" y="876" class="body">• 接線與更換模組前先斷電</text>
+    <text x="1025" y="906" class="body">• 所有模組必須共地</text>
+    <text x="1025" y="936" class="body">• 編碼器供電固定為 3.3V</text>
+  </g>
+</svg>
