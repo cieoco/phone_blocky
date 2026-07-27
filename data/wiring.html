@@ -211,7 +211,10 @@
         <tr><td>M4</td><td>A</td><td><span class="gpio">36</span></td><td rowspan="2">輸入專用腳（無法輸出、無內部上拉）</td></tr>
         <tr><td>M4</td><td>B</td><td><span class="gpio">39</span></td></tr>
       </table>
-      <div class="note">GPIO 34/35/36/39 為 ESP32 輸入專用（Input Only）腳位，需自行加上拉電阻（3.3V ↔ 10kΩ ↔ 訊號腳）。2X 解碼模式，每度 = 2 ticks（預設 PPR=360）。</div>
+      <div class="note">GPIO 34/35/36/39 為 ESP32 輸入專用（Input Only）腳位：只能讀不能寫，且<strong>晶片內部沒有上拉電阻</strong>（<code>INPUT_PULLUP</code> 對這四支腳無效）。<br>
+        <strong>樂高編碼器不需要外接上拉電阻</strong>，A/B 相直接接到腳位即可 —— 它是主動輸出，高低電位自己都會拉。<br>
+        僅當改用<strong>開集極／開汲極輸出</strong>的編碼器時，才需自行外接上拉（3.3V ↔ 10kΩ ↔ 訊號腳，四組），且只能外接。<br>
+        預設設定下每度 = 2 ticks（PPR=360）。</div>
     </div>
   </div>
 
@@ -274,7 +277,8 @@
         </div>
       </div>
       <div class="note">水晶頭正面（金屬片朝上、卡榫朝下）由左至右為 Pin 1→6。<br>
-        NXT 馬達每圈約 360 脈衝（馬達軸），2X 解碼後每圈 720 ticks。<br>
+        ⚠️ 注意線色：<strong>紅線是 GND、綠線才是 VCC</strong>，與一般直覺相反，接反編碼器不會動作。<br>
+        預設設定下，輸出軸每圈 720 ticks（每度 2 ticks，PPR=360）。<br>
         MA0/MA1 直流馬達電壓最高 9V，請透過馬達驅動板（L298N、TB6612FNG 或 AFMotor Shield）控制。</div>
     </div>
   </div>
