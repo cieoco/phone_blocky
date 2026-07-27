@@ -1492,7 +1492,7 @@ public:
         responseDoc["type"] = "encoderValue";
         responseDoc["motor"] = motor;
         responseDoc["ticks"] = ticks;
-        responseDoc["deg"] = ticks / TICKS_PER_DEGREE;
+        responseDoc["deg"] = ticks / ticksPerDegree();
         responseDoc["timestamp"] = millis();
         sendJsonResponseCallback(responseDoc, replyChannel);
       }
