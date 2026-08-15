@@ -9,6 +9,16 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
+// 從機模式（env:esp32dev_i2c）：掛 i2cESP32 主機匯流排，WiFi 完全不啟動。
+// 兩者互斥——WiFi task（prio 23）會搶佔 i2c_slave_task（prio 20），
+// 造成主機 bus recovery。見 docs/i2c_slave_sdd.md §7。
+#ifndef I2C_SLAVE_MODE
+#define I2C_SLAVE_MODE 0
+#endif
+
+#if I2C_SLAVE_MODE
+#include "I2CSlaveBridge.h"
+#endif
 
 const int servo1Pin = SERVO1_PIN;
 const int servo2Pin = SERVO2_PIN;
@@ -22,16 +32,27 @@ CommandProcessor cmdProcessor(motorController, servoController, encoderHandler,
                               pwmManager);
 WebServerHandler webServerHandler(cmdProcessor);
 
+#if I2C_SLAVE_MODE
+I2CSlaveBridge i2cBridge(cmdProcessor);
+#endif
+
 // JSON 處理任務
 void jsonTask(void *pvParameters) {
   for (;;) {
     static unsigned long lastPrint = 0;
 
+#if !I2C_SLAVE_MODE
     // 檢查 WebSocket 連接超時
     webServerHandler.checkWebSocketTimeout();
+#endif
 
     // 在安全點套用 WS/序列任務解析好的新 PROG 程式（跨核心交接，避免向量懸空）
     cmdProcessor.applyPendingProgramIfAny();
+
+#if I2C_SLAVE_MODE
+    // 同一個「安全點落地」原則：I2C callback 只解析排隊，動作在此執行。
+    i2cBridge.service();
+#endif
 
     // 只有在 Serial 控制模式未啟用時才執行 PROG 模式 loop 指令
     if (!webServerHandler.isSerialMode()) {
@@ -40,6 +61,19 @@ void jsonTask(void *pvParameters) {
     }
     if (millis() - lastPrint > 1000) {
       lastPrint = millis();
+#if I2C_SLAVE_MODE
+      // 診斷只能在主迴圈列印：I2C callback 內禁止 Serial（SDD §7.1）
+      static uint32_t lastRxCount = 0;
+      I2CSlaveBridge::Stats st = i2cBridge.getStats();
+      if (st.rxCount != lastRxCount) {
+        lastRxCount = st.rxCount;
+        Serial.printf(
+            "[I2C] rx=%lu bad_cmd=%lu not_ready=%lu dropped=%lu last=0x%02X\n",
+            (unsigned long)st.rxCount, (unsigned long)st.badCmdCount,
+            (unsigned long)st.notReadyCount, (unsigned long)st.droppedCount,
+            st.lastCommand);
+      }
+#endif
     }
     vTaskDelay(10 / portTICK_PERIOD_MS); // 高頻率運行
   }
@@ -160,11 +194,20 @@ void setup() {
   // 建立回呼讓 CommandProcessor 能回傳 JSON
   cmdProcessor.setSendJsonResponseCallback(WebServerHandler::sendJsonResponse);
 
+#if I2C_SLAVE_MODE
+  // 從機模式：不啟動 WiFi 與 Web 伺服器（見檔頭說明）。
+  Serial.println("[初始化] I2C 從機橋接層...");
+  i2cBridge.begin(I2C_SLAVE_ADDRESS, I2C_SLAVE_SDA_PIN, I2C_SLAVE_SCL_PIN);
+  Serial.printf("[I2C] slave addr=0x%02X sda=%d scl=%d freq=%lu (WiFi 停用)\n",
+                I2C_SLAVE_ADDRESS, I2C_SLAVE_SDA_PIN, I2C_SLAVE_SCL_PIN,
+                (unsigned long)I2C_SLAVE_FREQ);
+#else
   Serial.println("[初始化] Web 伺服器...");
   webServerHandler.begin();
 
   // 開機 autorun:若 LittleFS 有存檔且 autorun flag 開,自動載入並執行
   webServerHandler.runAutorunProgramIfEnabled();
+#endif
 
   // 建立一個新任務，將 JSON 處理工作分配給 core1
   xTaskCreatePinnedToCore(jsonTask,   // 任務函式

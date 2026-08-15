@@ -303,6 +303,14 @@ private:
     return constrain((int)(speed255 * 100L / 255L), 0, 100);
   }
 
+  // I2C 狀態回報用：線上欄位是 int16，超界必須飽和而非回捲
+  static int16_t clampToInt16(long v)
+  {
+    if (v > 32767L) return 32767;
+    if (v < -32768L) return -32768;
+    return (int16_t)v;
+  }
+
   void resetMotorControlState(int motor)
   {
     if (motor < 1 || motor > NUM_MOTORS) return;
@@ -1277,6 +1285,138 @@ public:
                                                     uint8_t channels))
   {
     sendJsonResponseCallback = callback;
+  }
+
+  // ── I2C 從機橋接介面（docs/i2c_slave_sdd.md §8.1）─────────────────────
+  // 這組方法一律由 jsonTask（主迴圈）呼叫，**不得**在 I2C callback 內執行——
+  // 底層的 startMotorPositionMove / zeroMotorPosition 會 Serial.printf，而
+  // callback 跑在會被 WiFi 搶佔的 i2c_slave_task 上（SDD §7.1）。
+  // I2CSlaveBridge 負責在 callback 內解析並排隊，於此處落地執行。
+  // 全部不產生 JSON 回應：I2C 的回應走 txBuffer_，與 WS/Serial 通道無關。
+
+  void i2cSetPwm(int motor, int duty)
+  {
+    if (motor < 1 || motor > NUM_MOTORS) return;
+    setMotorDuty(motor, duty, MOTOR_MODE_PWM);
+    resetMotorControlState(motor);
+  }
+
+  void i2cSetSpeed(int motor, float rpm)
+  {
+    if (motor < 1 || motor > NUM_MOTORS) return;
+    if (!MOTOR_CAPS[motor - 1].has_encoder || !encoder) return;
+    if (fabs(rpm) < 0.01f) {
+      stopMotorRuntime(motor);
+      return;
+    }
+    // 與 executeDirectCommand 的 "speed" 分支保持同一組初始化，避免兩條
+    // 入口對同一顆馬達產生不同的起步行為。
+    MotorRuntimeState &state = motorState[motor];
+    state.mode = MOTOR_MODE_SPEED;
+    state.rpmCmd = rpm;
+    state.rampedRpmCmd = state.rpmMeas;
+    state.speedIntegral = 0.0f;
+    state.speedLastError = 0.0f;
+    state.lastSampleMs = 0;
+  }
+
+  void i2cMoveToDeg(int motor, float deg)
+  {
+    if (motor < 1 || motor > NUM_MOTORS) return;
+    if (!MOTOR_CAPS[motor - 1].has_encoder || !encoder) return;
+    // I2C 線上是 float 度；內部一律走「度×100」定點（SDD §5）。
+    const long centiDeg = (long)lroundf(deg * 100.0f);
+    startMotorPositionMove(motor, centiDegToTicks(centiDeg), "I2C", true);
+    updateAngleControl();
+  }
+
+  void i2cSetMode(int motor, uint8_t mode)
+  {
+    if (motor < 1 || motor > NUM_MOTORS) return;
+    switch (mode) {
+      case 0: // IDLE
+        stopMotorRuntime(motor);
+        break;
+      case 1: { // SPEED：備妥速度環，實際轉速由後續 0x11 給定
+        if (!MOTOR_CAPS[motor - 1].has_encoder || !encoder) return;
+        MotorRuntimeState &state = motorState[motor];
+        state.mode = MOTOR_MODE_SPEED;
+        state.rpmCmd = 0.0f;
+        state.rampedRpmCmd = state.rpmMeas;
+        state.speedIntegral = 0.0f;
+        state.speedLastError = 0.0f;
+        state.lastSampleMs = 0;
+        break;
+      }
+      case 2: // POSITION：以當前角度為目標進入保持
+        if (!MOTOR_CAPS[motor - 1].has_encoder || !encoder) return;
+        startMotorPositionMove(motor, getMotorTicks(motor), "I2C", true);
+        break;
+      default:
+        break;
+    }
+  }
+
+  void i2cStopMotor(int motor)
+  {
+    if (motor < 1 || motor > NUM_MOTORS) return;
+    stopMotorRuntime(motor);
+  }
+
+  void i2cStopAll() { stopAllRuntime(); }
+
+  void i2cZero(int motor)
+  {
+    if (motor < 1 || motor > NUM_MOTORS) return;
+    zeroMotorPosition(motor);
+  }
+
+  void i2cSetServo(int ch, int deg)
+  {
+    if (ch < 1 || ch > NUM_SERVOS) return;
+    servoDeg[ch] = constrain(deg, 0, 180);
+    servoCtrl.controlServo(ch, servoDeg[ch]);
+  }
+
+  // ── 唯讀快照（此組**允許**在 I2C callback 內呼叫）────────────────────
+  // 純記憶體讀取，無 Serial、無 heap、無硬體 I/O。狀態回報命令
+  // （0x26 / 0x27 / 0x62）需要同步回應，不能走延後佇列。
+
+  struct I2CMotorSnapshot {
+    uint8_t mode;      // 0=idle 1=speed 2=position（對齊 motorControl）
+    int16_t posDeg;
+    int16_t targetDeg;
+    int16_t rpm;
+    int16_t targetRpm;
+    uint8_t flags;
+  };
+
+  bool i2cGetMotorSnapshot(int motor, I2CMotorSnapshot &out) const
+  {
+    if (motor < 1 || motor > NUM_MOTORS) return false;
+    const MotorRuntimeState &state = motorState[motor];
+
+    switch (state.mode) {
+      case MOTOR_MODE_SPEED:    out.mode = 1; break;
+      case MOTOR_MODE_POSITION: out.mode = 2; break;
+      // motorControl 的 I2C 模式列舉只有 idle/speed/position 三態，
+      // 本板的 PWM 模式在線上併入 idle 回報。
+      default:                  out.mode = 0; break;
+    }
+
+    out.posDeg = clampToInt16(ticksToCentiDeg(getMotorTicks(motor)) / 100);
+    out.targetDeg = clampToInt16(ticksToCentiDeg(state.targetTicks) / 100);
+    out.rpm = clampToInt16((long)lroundf(state.rpmMeas));
+    out.targetRpm = clampToInt16((long)lroundf(state.rpmCmd));
+    // 本板無 estop / 堵轉偵測，旗標恆為 0（motorControl 用 bit0/bit1）。
+    out.flags = 0;
+    return true;
+  }
+
+  int i2cGetServoDeg(int ch) const
+  {
+    if (ch < 1 || ch > NUM_SERVOS) return 0;
+    return servoDeg[ch];
   }
 
   // jsonTask 專用：在迴圈安全點套用 staging 程式。只有此任務會動 active 向量與 loopIndex，

@@ -1,6 +1,8 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include <stdint.h>
+
 // Default WiFi settings (leave empty "" to use saved Preferences only).
 // NOTE: keep real credentials out of version control. Fill these in locally,
 // or leave empty and configure Wi-Fi via set.html (stored in Preferences/NVS).
@@ -17,6 +19,14 @@ static const char *CONFIG_ADMIN_PASSWORD = "123456";
 // 硬體腳位定義
 static const int SERVO1_PIN = 5;
 static const int SERVO2_PIN = 13;
+
+// I2C 從機（掛 i2cESP32 主機匯流排）——見 docs/i2c_slave_sdd.md
+// 位址 0x36 延續主機既有角色序列（0x30 底盤 / 0x34 手臂 / 0x35 分球 / 0x3C OLED）。
+// GPIO21/22 在本板完全空置；接線前須實測 AFMotor shield 是否讓出這兩支排針。
+static const int I2C_SLAVE_SDA_PIN = 21;
+static const int I2C_SLAVE_SCL_PIN = 22;
+static const uint8_t I2C_SLAVE_ADDRESS = 0x36;
+static const uint32_t I2C_SLAVE_FREQ = 100000; // 與主機 I2C_FREQ 一致
 
 // 編碼器腳位，對齊 motorControl 的 M3/M4 配置
 static const int ENCODER_M3_PIN_A = 35;
