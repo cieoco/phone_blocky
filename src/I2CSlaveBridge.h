@@ -94,6 +94,8 @@ public:
     uint32_t droppedCount;
     uint32_t lastCommMs;
     uint8_t lastCommand;
+    uint32_t linkRecoveries;
+    uint8_t linkBackoffShift;
   };
 
   explicit I2CSlaveBridge(CommandProcessor &processor,
@@ -105,12 +107,100 @@ public:
   static I2CSlaveBridge *instance() { return instanceRef(); }
 
   void begin(uint8_t address, int sdaPin, int sclPin) {
-    wire_.begin(address, sdaPin, sclPin, I2C_SLAVE_FREQ);
+    address_ = address;
+    sdaPin_ = sdaPin;
+    sclPin_ = sclPin;
+
+    // TwoWire::begin() 的從機路徑會失敗（`bad pin state`、`Bus busy, reinit`、
+    // 佇列配置失敗），而且只在核心層 log_e，上層看不見。不檢查回傳值的話症狀
+    // 會是「板子活著、網頁正常，但主機掃不到 0x36」——那很容易被誤判成接線問題。
+    const bool started = wire_.begin(address, sdaPin, sclPin, I2C_SLAVE_FREQ);
+    if (!started) {
+      initialized_ = false;
+      Serial.printf("[I2C] slave begin FAILED addr=0x%02X sda=%d scl=%d\n",
+                    address, sdaPin, sclPin);
+      return;
+    }
     wire_.onReceive(onReceiveCallback);
     wire_.onRequest(onRequestCallback);
-    address_ = address;
     lastCommMs_ = millis();
     initialized_ = true;
+  }
+
+  // I2C 周邊看門狗。與 service() 一樣由主迴圈（jsonTask）呼叫，
+  // **絕不可在 onReceive / onRequest 內呼叫**（理由見實作內註解）。
+  //
+  // 病理：主機在交易中途被重置（esptool 的 RTS/DTR，或單純重開）時，本從機的
+  // I2C FSM 會停在 clock stretching，之後連自己的位址都不再 ACK，只有重新上電
+  // 能清掉。主機端救不了——I2CTransport::recoverBus() 的 9 次 SCL 脈衝只在
+  // digitalRead(SDA)==LOW 時才跑，而這個故障的 SDA 是正常的（同匯流排上其他
+  // 從機照樣 ACK）。詳見 robot repo 的 DEVELOPER_GUIDELINES.md 第六條第 4 項。
+  //
+  // 為什麼 end() + begin() 有效（查 Arduino core 原始碼所得，非推測）：
+  // Wire.end() -> i2cSlaveDeinit() -> i2c_slave_free_resources() ->
+  // i2c_slave_detach_gpio()，最後一步把 SCL/SDA 設回 GPIO_MODE_INPUT 並從 I2C
+  // matrix 斷開——**被 stretch 住的 SCL 就是在那一步被釋放的**。
+  //
+  // 兩個地雷：
+  //   1. Wire.begin() 在 is_slave 已為 true 時直接跳過不做事，必須先 end()。
+  //   2. i2c_slave_free_resources() 會 vTaskDelete(i2c_slave_task)——在 callback
+  //      內呼叫等於刪掉自己正在跑的 task。
+  void checkLink() {
+    if (!initialized_ || !hasSeenMaster_) {
+      // 從未與主機通訊過 -> 周邊是剛初始化的乾淨狀態，沒有東西要救。這條同時
+      // 擋掉「桌上板單獨用手機網頁玩、根本沒接主機」的常態用法，否則會每 5 秒
+      // 無謂地重建一次 I2C 周邊。
+      return;
+    }
+
+    const uint32_t now = millis();
+    const uint32_t comm = lastCommMs_; // 快照，避免與 callback 競態
+
+    // 上次重建之後真的收到過東西 -> 鏈路是活的，把退避收回基準值。
+    if (lastLinkRecoveryMs_ != 0 &&
+        static_cast<int32_t>(comm - lastLinkRecoveryMs_) > 0) {
+      linkBackoffShift_ = 0;
+    }
+
+    const uint32_t interval = kLinkIdleMs << linkBackoffShift_;
+    if (now - comm < interval) {
+      return;
+    }
+    // 主機真的關機時 lastCommMs_ 不會再前進，少了這道閘門會每拍都重建。
+    if (lastLinkRecoveryMs_ != 0 && now - lastLinkRecoveryMs_ < interval) {
+      return;
+    }
+
+    lastLinkRecoveryMs_ = now;
+    if (linkBackoffShift_ < kLinkMaxBackoffShift) {
+      linkBackoffShift_++;
+    }
+
+    // 重建期間先讓 callback 空轉，避免半重建狀態下被呼叫。
+    initialized_ = false;
+    txReady_ = false;
+    txLength_ = 0;
+
+    wire_.end();
+    delay(5); // 讓周邊與 GPIO 落定
+    const bool started =
+        wire_.begin(address_, sdaPin_, sclPin_, I2C_SLAVE_FREQ);
+    if (!started) {
+      // 多半是 `bad pin state` 或 `Bus busy`——匯流排此刻被別人佔著。不補救，
+      // 下個退避週期再試；initialized_ 保持 false，callback 不會半殘動作。
+      Serial.printf("[I2C-WD] re-init FAILED addr=0x%02X\n", address_);
+      return;
+    }
+    wire_.onReceive(onReceiveCallback);
+    wire_.onRequest(onRequestCallback);
+    initialized_ = true;
+    linkRecoveryCount_++;
+    lastCommMs_ = now; // 重新計時，否則下一拍又立刻判定逾時
+
+    // 這裡可以 Serial：checkLink() 跑在主迴圈，不在 callback 內（SDD 7.1）。
+    Serial.printf("[I2C-WD] peripheral re-init addr=0x%02X idle=%lums count=%lu\n",
+                  address_, (unsigned long)(now - comm),
+                  (unsigned long)linkRecoveryCount_);
   }
 
   bool isInitialized() const { return initialized_; }
@@ -139,6 +229,8 @@ public:
     s.droppedCount = droppedCount_;
     s.lastCommMs = lastCommMs_;
     s.lastCommand = lastCommand_;
+    s.linkRecoveries = linkRecoveryCount_;
+    s.linkBackoffShift = linkBackoffShift_;
     return s;
   }
 
@@ -186,6 +278,21 @@ private:
   volatile uint32_t lastCommMs_ = 0;
   uint8_t address_ = 0;
 
+  // ── I2C 周邊看門狗 ─────────────────────────────────────────────────────
+  // 基準 5 s、退避最多左移 4 位（5→10→20→40→80 s）。主機對本模組的穩態輪詢
+  // 約 2.25 Hz（0x66 每 500ms + 0x67 每四輪），5 s 是十倍以上餘裕。
+  static constexpr uint32_t kLinkIdleMs = 5000;
+  static constexpr uint8_t kLinkMaxBackoffShift = 4;
+
+  int sdaPin_ = -1;
+  int sclPin_ = -1;
+  // 只由 callback 寫：lastCommMs_ / hasSeenMaster_
+  // 只由主迴圈寫：lastLinkRecoveryMs_ / linkBackoffShift_ / linkRecoveryCount_
+  volatile bool hasSeenMaster_ = false;
+  uint32_t lastLinkRecoveryMs_ = 0;
+  uint8_t linkBackoffShift_ = 0;
+  uint32_t linkRecoveryCount_ = 0;
+
   static void onReceiveCallback(int numBytes) {
     I2CSlaveBridge *self = instanceRef();
     if (self != nullptr) {
@@ -232,6 +339,8 @@ private:
 #endif
 
     lastCommMs_ = millis();
+    // checkLink() 用它區分「周邊卡住」與「這塊板子從來沒接過主機」。
+    hasSeenMaster_ = true;
     rxCount_++;
     lastCommand_ = rxBuffer_[0];
 

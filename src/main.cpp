@@ -184,6 +184,9 @@ void jsonTask(void *pvParameters) {
 #if I2C_SLAVE_MODE
     // 同一個「安全點落地」原則：I2C callback 只解析排隊，動作在此執行。
     i2cBridge.service();
+    // I2C 周邊看門狗。必須在主迴圈呼叫：它會 Wire.end()，而那會
+    // vTaskDelete(i2c_slave_task)——在 callback 內呼叫等於刪掉自己。
+    i2cBridge.checkLink();
 #endif
 
     // 只有在 Serial 控制模式未啟用時才執行 PROG 模式 loop 指令
@@ -200,10 +203,12 @@ void jsonTask(void *pvParameters) {
       if (st.rxCount != lastRxCount) {
         lastRxCount = st.rxCount;
         Serial.printf(
-            "[I2C] rx=%lu bad_cmd=%lu not_ready=%lu dropped=%lu last=0x%02X\n",
+            "[I2C] rx=%lu bad_cmd=%lu not_ready=%lu dropped=%lu last=0x%02X"
+            " wd=%lu/%u\n",
             (unsigned long)st.rxCount, (unsigned long)st.badCmdCount,
             (unsigned long)st.notReadyCount, (unsigned long)st.droppedCount,
-            st.lastCommand);
+            st.lastCommand, (unsigned long)st.linkRecoveries,
+            (unsigned)st.linkBackoffShift);
       }
 #endif
     }
