@@ -21,6 +21,7 @@
 //   * 不得推送 WebSocket
 // 診斷一律走計數器，由主迴圈自行取用列印。
 
+#include "BlocklyFunctions.h"
 #include "CommandProcessor.h"
 #include "HardwareConfig.h"
 #include "config.h"
@@ -46,6 +47,14 @@
 #define CMD_BENCH_SERVO 0x60     // [60][ch][deg i16 BE]
 #define CMD_BENCH_PWM 0x61       // [61][id][duty i16 BE]
 #define CMD_BENCH_GET_SERVO 0x62 // [62] -> [s1_deg][s2_deg]
+
+// ── Blockly 對外功能契約（SDD §4）────────────────────────────────────
+// 自 0x64 起，因為 0x60-0x63 在 motorControl 標記為 SysId 遺留「保留勿重用」，
+// 而 0x60-0x62 本檔已用於 bench 直驅。
+#define CMD_FUNC_TABLE 0x64   // [64] -> [n_func][type x n]
+#define CMD_FUNC_SET 0x65     // [65][idx][0|1] 數位 ／ [65][idx][i16 BE] 類比
+#define CMD_FUNC_STATE_D 0x66 // [66] -> [gen][bitmap_hi][bitmap_lo]
+#define CMD_FUNC_STATE_A 0x67 // [67][page] -> [page][i16 BE x8]
 
 // 傳輸框架 CRC 相容開關。兩端必須一致——主機 i2cESP32 與從機 motorControl
 // 目前皆為 0（無任何 env 開啟），單邊硬啟用會讓整條匯流排失效。
@@ -116,6 +125,11 @@ public:
     }
   }
 
+  // Blockly 對外功能註冊表。寫入者只有主迴圈（PROG 解析、佇列落地），
+  // callback 只做唯讀快照。
+  BlocklyFunctions &functions() { return funcs_; }
+  const BlocklyFunctions &functions() const { return funcs_; }
+
   // 主迴圈用：取診斷計數（callback 內不得列印，一律由此取出）
   Stats getStats() const {
     Stats s;
@@ -143,6 +157,7 @@ private:
 
   CommandProcessor &proc_;
   TwoWire &wire_;
+  BlocklyFunctions funcs_;
 
   PendingCmd queue_[kQueueSize] = {};
   volatile uint8_t qHead_ = 0;
@@ -373,6 +388,27 @@ private:
       handleGetServo();
       break;
 
+    // ── Blockly 對外功能（SDD §4）────────────────────────────────
+    case CMD_FUNC_TABLE: // [64]
+      handleFuncTable();
+      break;
+
+    case CMD_FUNC_SET: // [65][idx][...]
+      handleFuncSet(length);
+      break;
+
+    case CMD_FUNC_STATE_D: // [66]
+      handleFuncStateDigital();
+      break;
+
+    case CMD_FUNC_STATE_A: // [67][page]
+      if (length < 2) {
+        lastCmdUnknown_ = true;
+      } else {
+        handleFuncStateAnalog(rxBuffer_[1]);
+      }
+      break;
+
     default:
       // 不適用本板的命令（0x20 四輪同步、0x24-0x2F 底盤位姿、
       // 0x40/0x41 氣壓與手臂、0x50 區塊分球器）一律 BAD_CMD——見 SDD §4.3。
@@ -510,6 +546,73 @@ private:
     txReady_ = true;
   }
 
+  // ── Blockly 對外功能處理器 ─────────────────────────────────────────
+  // 全部只讀 funcs_ 的快照或排隊，不在 callback 內執行動作。
+
+  // [64] -> [n_func][type_0]…[type_{n-1}]
+  // 16 個功能時剛好 19 bytes（含 V2 框架），加 CRC8 為 20，貼齊硬上限。
+  void handleFuncTable() {
+    const uint8_t n = funcs_.count();
+    txBuffer_[0] = n;
+    for (uint8_t i = 0; i < n; ++i) {
+      txBuffer_[1 + i] = funcs_.typeAt(i);
+    }
+    txLength_ = static_cast<size_t>(1 + n);
+    txReady_ = true;
+  }
+
+  // [65][idx][0|1] 數位／[65][idx][hi][lo] 類比。
+  // 長度必須與該功能的型態相符，不吻合一律 BAD_CMD——猜測會讓主機的錯誤靜默。
+  void handleFuncSet(int length) {
+    if (length < 3) {
+      lastCmdUnknown_ = true;
+      return;
+    }
+    const uint8_t idx = rxBuffer_[1];
+    if (!funcs_.valid(idx)) {
+      lastCmdUnknown_ = true;
+      return;
+    }
+    int16_t value = 0;
+    if (funcs_.isAnalog(idx)) {
+      if (length < 4) {
+        lastCmdUnknown_ = true;
+        return;
+      }
+      value = static_cast<int16_t>((static_cast<uint16_t>(rxBuffer_[2]) << 8) |
+                                   rxBuffer_[3]);
+    } else {
+      value = (rxBuffer_[2] != 0) ? 1 : 0;
+    }
+    // 排隊而非直接寫：值的落地與 Blockly 直譯器同在主迴圈，避免與其讀取競態。
+    enqueue(CMD_FUNC_SET, idx, 0, static_cast<float>(value));
+  }
+
+  // [66] -> [gen][bitmap_hi][bitmap_lo]，共 5 bytes（含框架）。
+  // gen 與狀態共用同一次請求，讓主機的「該重讀功能表了」偵測不必額外輪詢。
+  void handleFuncStateDigital() {
+    const uint16_t bits = funcs_.digitalBitmap();
+    txBuffer_[0] = funcs_.generation();
+    txBuffer_[1] = static_cast<uint8_t>((bits >> 8) & 0xFF);
+    txBuffer_[2] = static_cast<uint8_t>(bits & 0xFF);
+    txLength_ = 3;
+    txReady_ = true;
+  }
+
+  // [67][page] -> [page][val i16 BE × 8]，共 19 bytes（含框架）。
+  void handleFuncStateAnalog(uint8_t page) {
+    int16_t values[BlocklyFunctions::kAnalogPerPage] = {0};
+    const uint8_t filled =
+        funcs_.analogPage(page, values, BlocklyFunctions::kAnalogPerPage);
+    txBuffer_[0] = page;
+    for (uint8_t i = 0; i < filled; ++i) {
+      txBuffer_[1 + i * 2] = static_cast<uint8_t>((values[i] >> 8) & 0xFF);
+      txBuffer_[2 + i * 2] = static_cast<uint8_t>(values[i] & 0xFF);
+    }
+    txLength_ = static_cast<size_t>(1 + filled * 2);
+    txReady_ = true;
+  }
+
   // ── 能力檢查（編譯期表格，callback 內呼叫安全）────────────────────
   static bool motorValid(uint8_t id) {
     return id >= 1 && id <= static_cast<uint8_t>(NUM_MOTORS);
@@ -538,6 +641,10 @@ private:
   // 主迴圈端：此處允許 Serial 與較長的執行時間。
   void apply(const PendingCmd &c) {
     switch (c.cmd) {
+    case CMD_FUNC_SET:
+      // 主迴圈落地：此時 Blockly 直譯器不會同時讀取，無競態。
+      funcs_.setValue(c.motor, static_cast<int16_t>(c.value));
+      break;
     case CMD_SET_MODE:
       proc_.i2cSetMode(c.motor, c.mode);
       break;

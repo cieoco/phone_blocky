@@ -20,6 +20,11 @@
 #include "I2CSlaveBridge.h"
 #endif
 
+// 示範功能表開關。Blockly「對外功能」積木完成後應改為 0 並移除相關程式碼。
+#ifndef BLOCKLY_FUNC_DEMO
+#define BLOCKLY_FUNC_DEMO 1
+#endif
+
 const int servo1Pin = SERVO1_PIN;
 const int servo2Pin = SERVO2_PIN;
 
@@ -334,6 +339,23 @@ void setup() {
   Serial.printf("[I2C] slave addr=0x%02X sda=%d scl=%d freq=%lu (WiFi 未啟動)\n",
                 I2C_SLAVE_ADDRESS, I2C_SLAVE_SDA_PIN, I2C_SLAVE_SCL_PIN,
                 (unsigned long)I2C_SLAVE_FREQ);
+#if BLOCKLY_FUNC_DEMO
+  // 【暫時】示範功能表。Blockly 的「對外功能」積木（階段 D）做好之前，讓主機端
+  // 與儀表板可以先端到端驗證 0x64-0x67。積木完成後這段要換成由 PROG JSON 填入，
+  // 見 docs/planning/blockly_module_impl_progress.md 的階段 D2。
+  {
+    BlocklyFunctions &fn = i2cBridge.functions();
+    fn.declare(0, BlocklyFunctions::kTypeReadable);  // 數位、可回讀 -> switch
+    fn.declare(1, 0);                                // 數位、唯寫   -> button
+    fn.declare(2, BlocklyFunctions::kTypeAnalog |
+                      BlocklyFunctions::kTypeReadable); // 類比、可回讀 -> slider
+    fn.declare(3, BlocklyFunctions::kTypeAnalog);       // 類比、唯寫
+    fn.bumpGeneration();
+    Serial.printf("[FUNC] 示範功能表：n=%u gen=%u（暫時，待 Blockly 積木取代）\n",
+                  (unsigned)fn.count(), (unsigned)fn.generation());
+  }
+#endif
+
   expReportI2cTaskPriority("開機基準");
   Serial.println("[EXP] 共存實驗：EXP REBOOT / EXP WIFI STA <ssid> <pw> / EXP WIFI ON|OFF / EXP PRIO <n> / EXP STATUS");
 #else
