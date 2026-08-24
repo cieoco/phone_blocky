@@ -256,7 +256,36 @@ public:
                size_t index,
                size_t total) { handleMotorPIDApply(request, data, len); });
 
-    // 已儲存程式 (Blockly + AI 共用 LittleFS)
+    // 已儲存程式 (Blockly + AI 共用 NVS)
+    //
+    // ⚠ 註冊順序有意義，不要把 /api/program 移到 /api/program/autorun 之前。
+    //
+    // ESPAsyncWebServer 的 URI 比對不是精確比對（WebHandlerImpl.h）：
+    //     if (_uri != request->url() && !request->url().startsWith(_uri + "/"))
+    //         return false;
+    // 也就是註冊 `/api/program` 的處理器會**同時吃掉所有 `/api/program/...`**，
+    // 而處理器是依註冊順序比對、先中先贏。
+    //
+    // 這個順序寫反過的後果（2026-08-25 實際踩到）：POST /api/program/autorun
+    // 被 /api/program 的處理器接走，handleProgramPost() 在 body 裡找不到 json
+    // 欄位，回 {"error":"missing 'json' object"} —— 錯誤訊息完全指向存檔功能，
+    // 跟 autorun 一點關係都沒有，非常難查。GET 同樣被吃掉。
+    //
+    // ai.html 的開關看起來能用，是因為它的狀態讀自 GET /api/program 回應裡的
+    // autorun 欄位，繞過了這條壞掉的路由，所以這個 bug 一直沒被發現。
+    server.on("/api/program/autorun", HTTP_GET,
+              [this](AsyncWebServerRequest *r) {
+                handleProgramAutorunGet(r);
+              });
+
+    server.on(
+        "/api/program/autorun", HTTP_POST,
+        [this](AsyncWebServerRequest *r) {}, NULL,
+        [this](AsyncWebServerRequest *r, uint8_t *data, size_t len,
+               size_t index, size_t total) {
+          handleProgramAutorunPost(r, data, len);
+        });
+
     server.on("/api/program", HTTP_GET,
               [this](AsyncWebServerRequest *r) { handleProgramGet(r); });
 
@@ -270,19 +299,6 @@ public:
 
     server.on("/api/program", HTTP_DELETE,
               [this](AsyncWebServerRequest *r) { handleProgramDelete(r); });
-
-    server.on("/api/program/autorun", HTTP_GET,
-              [this](AsyncWebServerRequest *r) {
-                handleProgramAutorunGet(r);
-              });
-
-    server.on(
-        "/api/program/autorun", HTTP_POST,
-        [this](AsyncWebServerRequest *r) {}, NULL,
-        [this](AsyncWebServerRequest *r, uint8_t *data, size_t len,
-               size_t index, size_t total) {
-          handleProgramAutorunPost(r, data, len);
-        });
 
     // 靜態檔案服務
     server.serveStatic("/", LittleFS, "/")
