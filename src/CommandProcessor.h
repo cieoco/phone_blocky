@@ -13,7 +13,9 @@
 #include "EncoderHandler.h"
 #include "HardwareConfig.h"
 #include "CommandTranslator.h"
+#include "BlocklyFunctions.h"
 #include "CommChannel.h"
+#include "ProgramStore.h"
 #include "config.h"
 
 // --- 效能優化：定義指令的枚舉和結構體 ---
@@ -34,6 +36,7 @@ enum CommandType {
   CMD_MATH_CHANGE,
   CMD_IF,
   CMD_WHILE,
+  CMD_FUNC_SET,   // 對外功能：把值寫回去讓主機讀得到（契約 §6.2）
 };
 
 // Blockly value 積木的執行期表示；可遞迴組成算術與邏輯運算式。
@@ -44,6 +47,7 @@ struct BlocklyValueExpression {
   int value = 0;
   int pin = -1;
   int auxPin = -1;
+  int funcIdx = -1;   // kind == "func_get" 時的對外功能索引
   std::shared_ptr<BlocklyValueExpression> left;
   std::shared_ptr<BlocklyValueExpression> right;
 };
@@ -62,6 +66,7 @@ struct BlocklyCommand {
   String plotSeries;
   String plotUnit;
   String variableName;
+  int funcIdx = -1;   // CMD_FUNC_SET / 對外功能索引
   std::shared_ptr<BlocklyValueExpression> valueExpr;
 
   std::vector<BlocklyCommand> nested_commands_then;
@@ -234,6 +239,12 @@ private:
   // PROG 程式跨任務交接：WS / 序列任務把解析結果放進 staging，jsonTask 在迴圈安全點
   // swap 套用。如此「執行中（含長 delay）的 active 向量」永遠只被 jsonTask 單一任務動到，
   // 杜絕「另一核心 clear/realloc 向量 → 執行端持有的參考懸空（use-after-free）」。
+  // 對外功能（Blockly 模組功能契約）。指標由 main.cpp 注入；未接 I2C 的
+  // env（esp32dev）維持 nullptr，所有相關路徑都會安全略過。
+  BlocklyFunctions *externalFunctions_ = nullptr;
+  std::vector<BlocklyFunctions::Declaration> pendingDeclarations;
+  bool pendingDeclarationsValid = false;
+
   std::vector<BlocklyCommand> pendingSetupCommands;
   std::vector<BlocklyCommand> pendingLoopCommands;
   volatile bool pendingProgram = false;
@@ -1426,6 +1437,8 @@ public:
     if (!pendingProgram) return;
 
     std::vector<BlocklyCommand> incomingSetup, incomingLoop;
+    std::vector<BlocklyFunctions::Declaration> incomingDecls;
+    bool haveDecls = false;
     if (progMutex) xSemaphoreTake(progMutex, portMAX_DELAY);
     if (!pendingProgram) {            // 上鎖後再確認一次（雙重檢查）
       if (progMutex) xSemaphoreGive(progMutex);
@@ -1433,8 +1446,27 @@ public:
     }
     incomingSetup.swap(pendingSetupCommands);   // 快速搬出，鎖只持有極短時間
     incomingLoop.swap(pendingLoopCommands);
+    incomingDecls.swap(pendingDeclarations);
+    haveDecls = pendingDeclarationsValid;
+    pendingDeclarationsValid = false;
     pendingProgram = false;
     if (progMutex) xSemaphoreGive(progMutex);
+
+    // 對外功能表在安全點套用。I2C callback 只會唯讀快照這張表，寫入者只有
+    // 這裡（主迴圈），所以不需要額外的鎖（BlocklyFunctions.h 的併發模型）。
+    if (haveDecls && externalFunctions_) {
+      const uint8_t n = static_cast<uint8_t>(
+          incomingDecls.size() > BlocklyFunctions::kMaxFunctions
+              ? BlocklyFunctions::kMaxFunctions
+              : incomingDecls.size());
+      if (externalFunctions_->applyDeclarations(incomingDecls.data(), n)) {
+        // 只有真的變了才寫 NVS，重跑同一支程式不會消耗寫入次數。
+        ProgramStore::setGeneration(externalFunctions_->generation());
+        Serial.printf("[PROG] 對外功能表更新: count=%u gen=%u\n",
+                      externalFunctions_->count(),
+                      externalFunctions_->generation());
+      }
+    }
 
     setupCommands.swap(incomingSetup);          // 舊程式落到 incoming*，離開作用域即釋放
     loopCommands.swap(incomingLoop);
@@ -1451,6 +1483,68 @@ public:
   void resetWaitingForResponse()
   {
     waitingForResponse = false;
+  }
+
+  // 開機時把「已存檔程式」的對外功能表載回來。
+  //
+  // **刻意不受 autorun 開關影響**（autorun 預設是關的）。功能表是「這支存好的
+  // 程式對主機提供什麼」的宣告，屬於程式的一部分，不是「程式正在跑」的狀態。
+  // 若綁在 autorun 上，學生存好檔、主機儀表板長出元件，之後只要一斷電，
+  // 元件就全部消失、必須有人回到模組網頁按執行——那正好打死本契約的核心場景
+  // （SDD §1「完全不用電腦」）。
+  //
+  // 直接套用而非走 staging：staging 會連 setup/loop 一起換掉（等於清空程式）。
+  // 呼叫點在 setup() 內、jsonTask 尚未啟動，I2C callback 對這張表只做唯讀快照，
+  // 因此直接寫入是安全的。
+  void loadStoredFunctionTable() {
+    if (!externalFunctions_) return;
+    if (!ProgramStore::exists()) return;
+    const String json = ProgramStore::loadJson();
+    if (json.length() == 0) return;
+
+    DynamicJsonDocument doc(8192);
+    if (deserializeJson(doc, json) != DeserializationError::Ok) {
+      Serial.println("[FUNC] 已存檔程式解析失敗，略過對外功能表");
+      return;
+    }
+    if (!doc.containsKey("functions") || !doc["functions"].is<JsonArrayConst>()) {
+      return; // 舊版存檔沒有這個欄位，正常
+    }
+
+    std::vector<BlocklyFunctions::Declaration> decls;
+    for (JsonVariantConst item : doc["functions"].as<JsonArrayConst>()) {
+      if (!item.is<JsonObjectConst>()) continue;
+      JsonObjectConst o = item.as<JsonObjectConst>();
+      const int idx = parseIntOrString(o["idx"], -1);
+      if (idx < 0 || idx >= BlocklyFunctions::kMaxFunctions) continue;
+      uint8_t type = 0;
+      if (o["analog"] | false) type |= BlocklyFunctions::kTypeAnalog;
+      if (o["readable"] | false) type |= BlocklyFunctions::kTypeReadable;
+      decls.push_back({static_cast<uint8_t>(idx), type});
+    }
+
+    const uint8_t n = static_cast<uint8_t>(
+        decls.size() > BlocklyFunctions::kMaxFunctions
+            ? BlocklyFunctions::kMaxFunctions
+            : decls.size());
+    // 表若與 NVS 還原的 gen 相符就不會 bump，主機的快取因此跨重開機仍然有效。
+    if (externalFunctions_->applyDeclarations(decls.data(), n)) {
+      ProgramStore::setGeneration(externalFunctions_->generation());
+    }
+    Serial.printf("[FUNC] 由已存檔程式還原：count=%u gen=%u\n",
+                  externalFunctions_->count(), externalFunctions_->generation());
+  }
+
+  // 由 main.cpp 注入 I2CSlaveBridge 的功能註冊表。
+  // 用注入而非直接 include I2CSlaveBridge：後者建構時就吃 CommandProcessor&，
+  // 反向 include 會造成循環相依。BlocklyFunctions.h 本身無依賴，可安全引用。
+  void setExternalFunctions(BlocklyFunctions *functions) {
+    externalFunctions_ = functions;
+    if (externalFunctions_) {
+      // gen 是功能表的版本，而功能表持久化在 NVS，所以 gen 也要還原，
+      // 否則每次重開機主機都會看到「改版了」而白讀一次 0x64。
+      externalFunctions_->setGeneration(ProgramStore::generation());
+    }
   }
 
   void setPIDGains(float p, float i, float d)
@@ -2039,9 +2133,30 @@ public:
       parseCommandArray(doc["loop"].as<JsonArrayConst>(), newLoop);
     }
 
+    // 對外功能表放在 PROG JSON 的**頂層**，不在 setup 裡（契約 §6.1）。
+    // 理由：主機一套用新程式就要能讀到 0x64，不能等 setup 跑完——setup 裡
+    // 可能有 delay，那段空窗主機會讀到舊表。
+    std::vector<BlocklyFunctions::Declaration> newDecls;
+    bool haveDecls = false;
+    if (doc.containsKey("functions") && doc["functions"].is<JsonArrayConst>()) {
+      haveDecls = true;
+      for (JsonVariantConst item : doc["functions"].as<JsonArrayConst>()) {
+        if (!item.is<JsonObjectConst>()) continue;
+        JsonObjectConst o = item.as<JsonObjectConst>();
+        const int idx = parseIntOrString(o["idx"], -1);
+        if (idx < 0 || idx >= BlocklyFunctions::kMaxFunctions) continue;
+        uint8_t type = 0;
+        if (o["analog"] | false) type |= BlocklyFunctions::kTypeAnalog;
+        if (o["readable"] | false) type |= BlocklyFunctions::kTypeReadable;
+        newDecls.push_back({static_cast<uint8_t>(idx), type});
+      }
+    }
+
     if (progMutex) xSemaphoreTake(progMutex, portMAX_DELAY);
     pendingSetupCommands.swap(newSetup);
     pendingLoopCommands.swap(newLoop);
+    pendingDeclarations.swap(newDecls);
+    pendingDeclarationsValid = haveDecls;
     pendingProgram = true;
     if (progMutex) xSemaphoreGive(progMutex);
     Serial.println("[PROG] Parsing complete.");
@@ -2063,6 +2178,9 @@ public:
     } else if (strcmp(kind, "variable_get") == 0) {
       expr->kind = "variable_get";
       expr->variableName = obj["variableName"] | "";
+    } else if (strcmp(kind, "blockly_func_get") == 0) {
+      expr->kind = "func_get";
+      expr->funcIdx = parseIntOrString(obj["idx"], -1);
     } else if (strcmp(kind, "arduinoUltrasonic") == 0) {
       expr->kind = "ultrasonic";
       expr->pin = parseIntOrString(obj["trigPin"], USER_ULTRASONIC_TRIG_PIN);
@@ -2201,6 +2319,17 @@ public:
           cmd.type = CMD_MATH_CHANGE;
           cmd.variableName = jsonObj["variableName"] | "";
           if (!parseValueSource(jsonObj["value"], cmd)) continue;
+        } else if (strcmp(commandStr, "blockly_func_set") == 0) {
+          // 注意：對外功能的積木一定走**舊格式**分支。Blockly 的 IR 節點
+          // （appIr.js）產生的是 `{"command": ...}`，只有直接指令才用 `"cmd"`。
+          // 寫錯分支不會報錯，指令會靜默地被最後的 else continue 吃掉。
+          cmd.type = CMD_FUNC_SET;
+          cmd.funcIdx = parseIntOrString(jsonObj["idx"], -1);
+          if (!parseValueSource(jsonObj["value"], cmd)) continue;
+        } else if (strcmp(commandStr, "blockly_func_declare") == 0) {
+          // 宣告在 PROG JSON 頂層的 `functions` 已處理過（stageProgCommands）。
+          // 積木本身仍留在 setup 陣列裡，這裡明確跳過，讓下一個人不必猜。
+          continue;
         } else {
           continue;
         }
@@ -2309,6 +2438,13 @@ public:
     if (!expr) return 0;
     if (expr->kind == "constant") return expr->value;
     if (expr->kind == "variable_get") return getRuntimeVariable(expr->variableName);
+    if (expr->kind == "func_get") {
+      // 主機經 0x65 下達的值，由 I2C callback 排隊、主迴圈落地寫進註冊表。
+      // 這裡只是唯讀快照，不做任何 I2C 動作。
+      return externalFunctions_ ? externalFunctions_->valueAt(
+                                      static_cast<uint8_t>(expr->funcIdx))
+                                : 0;
+    }
     if (expr->kind == "arduino_millis") return (int)millis();
     if (expr->kind == "math_arithmetic") {
       int left = evaluateValueExpression(expr->left);
@@ -2478,6 +2614,14 @@ public:
       case CMD_MATH_CHANGE:
         setRuntimeVariable(cmd.variableName,
                            getRuntimeVariable(cmd.variableName) + readBlocklyValue(cmd));
+        break;
+      case CMD_FUNC_SET:
+        // 把值寫回註冊表，主機下次讀 0x66 / 0x67 就看得到（契約 §6.2 的反向）。
+        // setValue() 自己會把數位功能正規化成 0/1，並擋掉越界的 idx。
+        if (externalFunctions_ && cmd.funcIdx >= 0) {
+          externalFunctions_->setValue(static_cast<uint8_t>(cmd.funcIdx),
+                                       static_cast<int16_t>(readBlocklyValue(cmd)));
+        }
         break;
       default:
         break;

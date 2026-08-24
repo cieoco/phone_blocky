@@ -482,3 +482,72 @@ Blockly.Blocks['舵機'] = {
     this.setHelpUrl("");
   }
 };
+
+/********************************************
+ * 對外功能（Blockly 模組功能契約 D1）
+ *
+ * 契約：robot repo 的 docs/architecture/blockly_module_contract_sdd.md
+ * 核心原則是「模組只報結構，主機管呈現」——這裡只讓學生決定「有幾個功能、
+ * 各是什麼型態、可不可以回讀」。**名稱、單位、數值範圍一律不上 I2C**，
+ * 那些是主機儀表板的事（學生在儀表板上自己命名，widget title 本來就可編輯）。
+ * 理由見 SDD §2.1：兩端命名慣例相反（儀表板全英文、Blockly 全中文），
+ * 而名稱一旦上線，20 bytes 的單次請求上限立刻變成主要約束。
+ ********************************************/
+
+// 上限 16：0x64 的回應是 [STATUS][ECHO][n_func][type × 16] = 19 bytes，
+// 加 CRC8 正好 20，貼齊單次 I2C 請求硬上限。與韌體 BlocklyFunctions::
+// kMaxFunctions 必須一致。
+const BLOCKLY_FUNC_INDEX_OPTIONS = Array.from({ length: 16 }, (_, i) => [String(i), String(i)]);
+
+Blockly.Blocks['blockly_func_declare'] = {
+  init: function () {
+    this.appendDummyInput()
+      .appendField("宣告對外功能")
+      .appendField(new Blockly.FieldDropdown(BLOCKLY_FUNC_INDEX_OPTIONS), "IDX")
+      .appendField("型態")
+      .appendField(new Blockly.FieldDropdown([
+        ["數位（開關）", "DIGITAL"],
+        ["類比（數值）", "ANALOG"]
+      ]), "KIND")
+      .appendField("可回讀")
+      .appendField(new Blockly.FieldCheckbox("TRUE"), "READABLE");
+    this.setPreviousStatement(true, null);
+    this.setNextStatement(true, null);
+    this.setColour(60);
+    this.setTooltip(
+      "向主機宣告這支程式提供的一個對外功能，主機儀表板會自動長出對應元件。\n" +
+      "「可回讀」勾起來，表示程式自己會改動這個值、希望主機讀回去同步顯示；" +
+      "純粹由主機單向下令的功能不必勾。");
+    this.setHelpUrl("");
+  }
+};
+
+Blockly.Blocks['blockly_func_get'] = {
+  init: function () {
+    this.appendDummyInput()
+      .appendField("對外功能")
+      .appendField(new Blockly.FieldDropdown(BLOCKLY_FUNC_INDEX_OPTIONS), "IDX")
+      .appendField("的值");
+    this.setOutput(true, null);
+    this.setColour(60);
+    this.setTooltip("讀取主機下達給這個功能的值。數位功能為 0/1，類比功能為 -32768~32767。");
+    this.setHelpUrl("");
+  }
+};
+
+Blockly.Blocks['blockly_func_set'] = {
+  init: function () {
+    this.appendValueInput("VALUE")
+      .setCheck(null)
+      .appendField("設定對外功能")
+      .appendField(new Blockly.FieldDropdown(BLOCKLY_FUNC_INDEX_OPTIONS), "IDX")
+      .appendField("的值為");
+    this.setPreviousStatement(true, null);
+    this.setNextStatement(true, null);
+    this.setColour(60);
+    this.setTooltip(
+      "把值寫回這個功能，讓主機讀得到（例如跑完自動關閉、或回報感測結果）。\n" +
+      "只有宣告時勾了「可回讀」的功能，主機才讀得到這個值。");
+    this.setHelpUrl("");
+  }
+};

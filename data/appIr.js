@@ -789,6 +789,76 @@ function translateServo(block) {
     return new ServoNode(servo, angle);
 }
 
+/********************************************
+ * 對外功能 IR（Blockly 模組功能契約 D1）
+ ********************************************/
+
+// 宣告節點。注意：宣告**不會**進 setup 指令陣列——payload 組裝時會把它們
+// 「拉高」到 PROG JSON 的頂層 `functions`（見 app.js 的 buildProgJson）。
+// 這樣主機一套用新程式就能立刻讀到功能表，不必等 setup 跑完。
+class BlocklyFuncDeclareNode extends BaseNode {
+    constructor(idx, analog, readable) {
+        super();
+        this.idx = idx;
+        this.analog = analog;
+        this.readable = readable;
+    }
+    toJson() {
+        return {
+            command: "blockly_func_declare",
+            idx: this.idx,
+            analog: this.analog,
+            readable: this.readable
+        };
+    }
+}
+
+class BlocklyFuncGetNode extends BaseNode {
+    constructor(idx) {
+        super();
+        this.idx = idx;
+    }
+    toJson() {
+        return { command: "blockly_func_get", idx: this.idx };
+    }
+}
+
+class BlocklyFuncSetNode extends BaseNode {
+    constructor(idx, value) {
+        super();
+        this.idx = idx;
+        this.value = value;
+    }
+    toJson() {
+        return {
+            command: "blockly_func_set",
+            idx: this.idx,
+            value: (this.value && typeof this.value.toJson === "function")
+                     ? this.value.toJson()
+                     : this.value
+        };
+    }
+}
+
+function translateBlocklyFuncDeclare(block) {
+    return new BlocklyFuncDeclareNode(
+        Number(block.getFieldValue("IDX")),
+        block.getFieldValue("KIND") === "ANALOG",
+        block.getFieldValue("READABLE") === "TRUE"
+    );
+}
+
+function translateBlocklyFuncGet(block) {
+    return new BlocklyFuncGetNode(Number(block.getFieldValue("IDX")));
+}
+
+function translateBlocklyFuncSet(block) {
+    const valueBlock = block.getInputTargetBlock("VALUE");
+    const translator = valueBlock ? getTranslator(valueBlock.type) : null;
+    const value = translator ? translator(valueBlock) : null;
+    return new BlocklyFuncSetNode(Number(block.getFieldValue("IDX")), value);
+}
+
 // 用一個小小的 getTranslator() 來集中管理
 function getTranslator(blockType) {
     switch (blockType) {
@@ -858,6 +928,12 @@ function getTranslator(blockType) {
             return translateMotorZero;
         case "servo_set":
             return translateServoSet;
+        case "blockly_func_declare":
+            return translateBlocklyFuncDeclare;
+        case "blockly_func_get":
+            return translateBlocklyFuncGet;
+        case "blockly_func_set":
+            return translateBlocklyFuncSet;
         case "馬達":
             return translateMotor;
         case "舵機":

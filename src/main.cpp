@@ -21,8 +21,12 @@
 #endif
 
 // 示範功能表開關。Blockly「對外功能」積木完成後應改為 0 並移除相關程式碼。
+// 硬編示範功能表。階段 D（Blockly「對外功能」積木）完成後預設關閉——功能表
+// 現在由學生拉的積木經 PROG JSON 決定。留著是為了在沒有任何存檔程式時，
+// 還能單獨驗證主機端的 0x64-0x67 路徑；要用就在 build_flags 加
+// -D BLOCKLY_FUNC_DEMO=1。
 #ifndef BLOCKLY_FUNC_DEMO
-#define BLOCKLY_FUNC_DEMO 1
+#define BLOCKLY_FUNC_DEMO 0
 #endif
 
 const int servo1Pin = SERVO1_PIN;
@@ -344,10 +348,15 @@ void setup() {
   Serial.printf("[I2C] slave addr=0x%02X sda=%d scl=%d freq=%lu (WiFi 未啟動)\n",
                 I2C_SLAVE_ADDRESS, I2C_SLAVE_SDA_PIN, I2C_SLAVE_SCL_PIN,
                 (unsigned long)I2C_SLAVE_FREQ);
+  // 對外功能註冊表的擁有者是 I2CSlaveBridge，寫入者是直譯器。注入而非讓
+  // CommandProcessor 直接 include I2CSlaveBridge：後者建構時就吃
+  // CommandProcessor&，反向 include 會造成循環相依。
+  cmdProcessor.setExternalFunctions(&i2cBridge.functions());
+  // 把已存檔程式宣告的功能表載回來（不受 autorun 開關影響，理由見該函式註解）。
+  cmdProcessor.loadStoredFunctionTable();
+
 #if BLOCKLY_FUNC_DEMO
-  // 【暫時】示範功能表。Blockly 的「對外功能」積木（階段 D）做好之前，讓主機端
-  // 與儀表板可以先端到端驗證 0x64-0x67。積木完成後這段要換成由 PROG JSON 填入，
-  // 見 docs/planning/blockly_module_impl_progress.md 的階段 D2。
+  // 示範功能表：只在沒有任何存檔程式時才有意義，用來單獨驗證主機端路徑。
   {
     BlocklyFunctions &fn = i2cBridge.functions();
     fn.declare(0, BlocklyFunctions::kTypeReadable);  // 數位、可回讀 -> switch

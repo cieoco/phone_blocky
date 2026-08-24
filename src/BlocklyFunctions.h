@@ -61,6 +61,49 @@ public:
   // 回應裡（只有 5 bytes），讓變更偵測與狀態同步共用同一次輪詢。
   void bumpGeneration() { generation_ = static_cast<uint8_t>(generation_ + 1); }
 
+  // 開機時由 NVS 還原（見 ProgramStore）。gen 是「功能表的版本」，而功能表是
+  // 持久化的，所以 gen 也該持久化——否則模組每次重開機都會讓主機看到「改版了」
+  // 而白白重讀一次 0x64。
+  void setGeneration(uint8_t g) { generation_ = g; }
+
+  struct Declaration {
+    uint8_t idx;
+    uint8_t type;
+  };
+
+  // 套用一整份宣告（PROG JSON 的頂層 `functions`）。
+  //
+  // **只有在功能表真的改變時才 bump `gen`。** 學生按「執行」重跑同一支程式是
+  // 常態動作，若每次都 bump，主機會被迫重讀 0x64 並重建儀表板 channel，
+  // 學生剛調好的版面就會閃一下——而且什麼也沒變。
+  //
+  // 回傳 true 表示功能表變了（呼叫端據此決定要不要寫 NVS）。
+  bool applyDeclarations(const Declaration *decls, uint8_t n) {
+    uint8_t newTypes[kMaxFunctions] = {0};
+    uint8_t newCount = 0;
+    for (uint8_t i = 0; i < n; ++i) {
+      const uint8_t idx = decls[i].idx;
+      if (idx >= kMaxFunctions || (decls[i].type & kTypeReserved) != 0) {
+        continue; // 無效宣告直接忽略，不讓它污染整張表
+      }
+      newTypes[idx] = decls[i].type;
+      if (idx >= newCount) {
+        newCount = static_cast<uint8_t>(idx + 1);
+      }
+    }
+
+    if (newCount == count_ && memcmp(newTypes, types_, sizeof(types_)) == 0) {
+      return false; // 完全相同：不動 gen、不清值
+    }
+
+    count_ = newCount;
+    memcpy(types_, newTypes, sizeof(types_));
+    // 表變了，舊的值不再有意義（型態可能整個換掉），一律歸零。
+    memset(values_, 0, sizeof(values_));
+    bumpGeneration();
+    return true;
+  }
+
   uint8_t count() const { return count_; }
   uint8_t generation() const { return generation_; }
 

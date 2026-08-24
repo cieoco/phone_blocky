@@ -74,6 +74,33 @@ public:
     prefs.end();
   }
 
+  // 對外功能表的版本計數器（Blockly 模組功能契約 §4.5）。
+  //
+  // 為什麼要持久化：gen 的語意是「功能表的版本」，而功能表本身存在 NVS 裡。
+  // 若 gen 只活在 RAM，模組每次重開機都會從 0 開始，主機看到的是「改版了」，
+  // 於是白白重讀一次 0x64 並重建儀表板 channel——明明什麼都沒變。
+  //
+  // 只在功能表真的改變時才寫（BlocklyFunctions::applyDeclarations 回傳 true），
+  // 所以不會有 NVS 寫入次數的疑慮。
+  static uint8_t generation() {
+    Preferences prefs;
+    if (!prefs.begin(NAMESPACE, true)) return 0;
+    uint8_t g = prefs.getUChar(KEY_FUNC_GEN, 0);
+    prefs.end();
+    return g;
+  }
+
+  static bool setGeneration(uint8_t g) {
+    Preferences prefs;
+    if (!prefs.begin(NAMESPACE, false)) return false;
+    const bool ok = prefs.putUChar(KEY_FUNC_GEN, g) == sizeof(uint8_t);
+    prefs.end();
+    if (!ok) {
+      Serial.println("[ProgramStore] func gen 寫入失敗");
+    }
+    return ok;
+  }
+
   static bool setAutorun(bool on) {
     Preferences prefs;
     if (!prefs.begin(NAMESPACE, false)) return false;
@@ -92,6 +119,7 @@ public:
 
 private:
   static constexpr const char *NAMESPACE = "program";
+  static constexpr const char *KEY_FUNC_GEN = "func_gen";
   static constexpr const char *KEY_JSON = "json";
   static constexpr const char *KEY_XML = "xml";
   static constexpr const char *KEY_META = "meta";

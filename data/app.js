@@ -133,14 +133,23 @@ function resetCode() {
 
 function resetAndGoHome() { resetCode(); setTimeout(() => location.href = 'index.html', 200); }
 
-function runBlocklyCode() {
+// PROG payload 的單一來源。執行（runBlocklyCode）與存檔（buildProgPayload）
+// 共用同一份，否則「跑起來是對的、存下去卻不一樣」這種 bug 遲早會發生。
+function buildProgJson() {
   const irNodes = parseWorkspaceToIR(workspace);
-
-  const payload = {
+  const { declarations, warnings } = collectFunctionDeclarations(workspace);
+  warnings.forEach(w => appendSensorOutput(`⚠️ 對外功能：${w}`));
+  return {
     mode: 'PROG',
+    // 對外功能表拉到頂層：主機一套用就要讀得到，不能等 setup 跑完（SDD §6.1）
+    functions: declarations,
     setup: irNodes.filter(n => n instanceof arduino_setupNode).map(n => n.toJson()),
     loop: irNodes.filter(n => n instanceof arduino_loopNode).map(n => n.toJson())
   };
+}
+
+function runBlocklyCode() {
+  const payload = buildProgJson();
 
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
@@ -158,13 +167,7 @@ function runBlocklyCode() {
 function buildProgPayload() {
   const xml = Blockly.Xml.workspaceToDom(workspace);
   const xmlText = Blockly.Xml.domToText(xml);
-  const irNodes = parseWorkspaceToIR(workspace);
-  const json = {
-    mode: 'PROG',
-    setup: irNodes.filter(n => n instanceof arduino_setupNode).map(n => n.toJson()),
-    loop:  irNodes.filter(n => n instanceof arduino_loopNode).map(n => n.toJson())
-  };
-  return { json, xml: xmlText, source: 'blockly' };
+  return { json: buildProgJson(), xml: xmlText, source: 'blockly' };
 }
 
 async function saveFile() {
