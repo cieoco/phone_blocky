@@ -153,6 +153,19 @@
       <button class="btn" id="saveBtn">💾 儲存</button>
       <button class="btn" id="saveAsNewBtn">📁 另存</button>
       <button class="btn" id="openFileBtn">📂 開啟</button>
+      <!-- 開機自動執行：原本只在 ai.html。學生在這一頁寫完程式存檔後，若沒有
+           跑去另一頁打開這個開關，斷電之後程式就不會自己跑 —— 主端遙控介面的
+           按鈕會全部失效，而且很難自己想通原因。放在存檔旁邊才是它該在的位置。
+           兩頁共用同一個 /api/program/autorun 端點，狀態一致。 -->
+      <label id="autorunLabel"
+             style="display:flex;align-items:center;gap:8px;cursor:pointer;
+                    margin-top:10px;font-weight:600;">
+        <input type="checkbox" id="autorunToggle" />
+        <span>⚡ 開機自動執行</span>
+      </label>
+      <div id="autorunHint" style="font-size:0.82em;color:#666;margin-top:4px;">
+        開啟後，模組一上電就會自動載入並執行已儲存的程式。
+      </div>
     </div>
 
     <div class="info-section" id="sensorOutput">

@@ -407,10 +407,17 @@ void WebServerHandler::handleProgramAutorunPost(
                 String("{\"ok\":true,\"on\":") + (on ? "true" : "false") + "}");
 }
 
-void WebServerHandler::runAutorunProgramIfEnabled() {
-  if (!ProgramStore::isAutorun() || !ProgramStore::exists()) return;
+void WebServerHandler::runAutorunProgramIfEnabled(uint8_t channels) {
+  if (!ProgramStore::isAutorun()) {
+    Serial.println("[ProgramStore] 開機 autorun: 未啟用（存檔程式不會自動執行）");
+    return;
+  }
+  if (!ProgramStore::exists()) {
+    Serial.println("[ProgramStore] 開機 autorun: 已啟用但 NVS 沒有存檔程式");
+    return;
+  }
   String json = ProgramStore::loadJson();
   if (json.length() == 0) return;
   Serial.println("[ProgramStore] 開機 autorun: 載入已儲存程式並執行");
-  cmdProcessor.processCommands(json, Comm::CH_WS);
+  cmdProcessor.processCommands(json, channels);
 }

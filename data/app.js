@@ -90,9 +90,38 @@ window.addEventListener('load', function () {
   const saveAsBtn = document.getElementById('saveAsNewBtn');
   if (saveAsBtn) saveAsBtn.onclick = downloadFile;
 
+  const autorunToggle = document.getElementById('autorunToggle');
+  if (autorunToggle) autorunToggle.onchange = () => setAutorun(autorunToggle.checked);
+
   // 開頁時自動載入 ESP32 上的存檔(若有)
   setTimeout(autoLoadFromEsp32, 300);
 });
+
+// 開機自動執行開關。與 ai.html 共用 /api/program/autorun 端點，兩頁狀態一致。
+//
+// 這個開關對 I2C 從機模式特別要緊：主端遙控介面按鈕能不能在斷電重開後繼續
+// 驅動模組，就取決於它 —— 關著的話開機不會執行程式，主端設定的功能值沒有人
+// 消費，按鈕看起來全部失效。原本它只在 ai.html，學生在這頁存完檔很容易漏掉。
+async function setAutorun(on) {
+  const toggle = document.getElementById('autorunToggle');
+  try {
+    const resp = await fetch('/api/program/autorun', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ on })
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      appendSensorOutput(`⚡ 開機自動執行：${on ? '已開啟' : '已關閉'}`);
+    } else {
+      throw new Error(data.error || '未知錯誤');
+    }
+  } catch (e) {
+    // 失敗就把勾選狀態改回去，畫面不能顯示一個沒有生效的設定。
+    if (toggle) toggle.checked = !on;
+    appendSensorOutput(`❌ 設定開機自動執行失敗: ${e.message}`);
+  }
+}
 
 function initWebSocket() {
   var wsUrl = ((window.location.protocol === 'https:') ? 'wss://' : 'ws://') + window.location.hostname + '/ws';
@@ -222,6 +251,9 @@ async function autoLoadFromEsp32() {
     const resp = await fetch('/api/program');
     if (!resp.ok) return;
     const data = await resp.json();
+    // 開關要反映 ESP32 上的實際設定，不能讓畫面顯示一個沒有根據的預設值。
+    const toggle = document.getElementById('autorunToggle');
+    if (toggle) toggle.checked = !!data.autorun;
     if (data.ok && data.has_program && data.xml) {
       workspace.clear();
       Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(data.xml), workspace);

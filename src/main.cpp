@@ -9,9 +9,13 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
-// 從機模式（env:esp32dev_i2c）：掛 i2cESP32 主機匯流排，WiFi 完全不啟動。
-// 兩者互斥——WiFi task（prio 23）會搶佔 i2c_slave_task（prio 20），
-// 造成主機 bus recovery。見 docs/i2c_slave_sdd.md §7。
+// 從機模式（env:esp32dev_i2c）：掛 i2cESP32 主機匯流排，**同時**啟動 WiFi。
+//
+// 這裡原本寫著「WiFi 完全不啟動，兩者互斥」，依據是 docs/i2c_slave_sdd.md §7.1。
+// 2026-08-23／08-25 重測推翻了那個結論：六組設定 + 四個真人操作網頁的負載窗口
+// （共 240 秒），含 AP_STA + Web 伺服器 + i2c_slave_task 原生 prio 20，全部零
+// loop 警告、零 bus recovery、底盤 0x30 全程 healthy 100%、本板 dropped=0。
+// 詳見 robot repo 的 blockly_module_contract_sdd.md §8.1。
 #ifndef I2C_SLAVE_MODE
 #define I2C_SLAVE_MODE 0
 #endif
@@ -342,10 +346,12 @@ void setup() {
   cmdProcessor.setSendJsonResponseCallback(WebServerHandler::sendJsonResponse);
 
 #if I2C_SLAVE_MODE
-  // 從機模式：不啟動 WiFi 與 Web 伺服器（見檔頭說明）。
+  // I2C 從機先起來，再啟動 WiFi。順序有意義：WiFi 的 STA 連線最多會阻塞
+  // setup() 10 秒，而 I2C 的 callback 跑在 i2c_slave_task、不受 setup() 影響，
+  // 所以先 begin() 的話，那 10 秒裡主機仍讀得到這塊板。
   Serial.println("[初始化] I2C 從機橋接層...");
   i2cBridge.begin(I2C_SLAVE_ADDRESS, I2C_SLAVE_SDA_PIN, I2C_SLAVE_SCL_PIN);
-  Serial.printf("[I2C] slave addr=0x%02X sda=%d scl=%d freq=%lu (WiFi 未啟動)\n",
+  Serial.printf("[I2C] slave addr=0x%02X sda=%d scl=%d freq=%lu\n",
                 I2C_SLAVE_ADDRESS, I2C_SLAVE_SDA_PIN, I2C_SLAVE_SCL_PIN,
                 (unsigned long)I2C_SLAVE_FREQ);
   // 對外功能註冊表的擁有者是 I2CSlaveBridge，寫入者是直譯器。注入而非讓
@@ -354,6 +360,37 @@ void setup() {
   cmdProcessor.setExternalFunctions(&i2cBridge.functions());
   // 把已存檔程式宣告的功能表載回來（不受 autorun 開關影響，理由見該函式註解）。
   cmdProcessor.loadStoredFunctionTable();
+
+  // 開機自動執行存檔程式。從機模式**必須**做這件事：功能表載回來只是讓主機
+  // 「看得到」有哪些自定動作，但真正去讀那些值、驅動馬達的是 Blockly 程式的
+  // loop。沒有它，主機按了按鈕什麼也不會發生，得有人開網頁按一次「執行」——
+  // 那正好違反「不用電腦就能生成子系統」的目標。
+  //
+  // 回應走序列埠：從機模式沒有 WebSocket，送 CH_WS 只會寫進一個沒人聽的 ws。
+  // runAutorunProgramIfEnabled() 只依賴 ProgramStore（NVS，非 LittleFS）與
+  // cmdProcessor，不需要 Web 伺服器已啟動。
+  webServerHandler.runAutorunProgramIfEnabled(Comm::CH_SERIAL);
+
+  // 從機模式也啟動 WiFi 與 Web 伺服器。
+  //
+  // 原本不啟動，依據是 docs/i2c_slave_sdd.md §7.1：WiFi task（prio 23）會搶佔
+  // i2c_slave_task（prio 20），2026-07-07 實測主機 loop time 被拉到 1-2 秒。
+  // 2026-08-23／08-25 重測推翻了「必須互斥」這個結論——六組設定加四個真人負載
+  // 窗口（共 240 秒），含 AP_STA + Web 伺服器 + prio 20，全部零 loop 警告、
+  // 零 bus recovery、底盤 0x30 全程 healthy 100%、本板 dropped=0。
+  // 證據：robot repo 的 tests/test_runner/logs/i2c_wifi_{coexist,manual}_*.json，
+  // 結論寫在 blockly_module_contract_sdd.md §8.1。
+  //
+  // 為什麼非做不可：沒有 WiFi 的從機模式已經沒有使用情境了。學生一定要能改
+  // Blockly 程式，而**任何會重開機的動作都會讓網頁永久消失**——存 WiFi 設定
+  // （set.html 存完就 ESP.restart()）、按重置、拔電都算。修正前唯一的救法是
+  // 接電腦下序列指令，這與「完全不用電腦就能生成子系統」直接矛盾。
+  //
+  // AP/STA 的行為維持原樣，一行沒改：begin() 一律 WIFI_AP_STA，AP 無條件啟動，
+  // 有憑證才嘗試 STA、逾時 10 秒，連不上就只剩 AP。
+  Serial.println("[初始化] Web 伺服器（從機模式共存）...");
+  webServerHandler.begin();
+  expWifiStarted = true; // 讓 EXP STATUS 如實回報，不是「沒人叫過」
 
 #if BLOCKLY_FUNC_DEMO
   // 示範功能表：只在沒有任何存檔程式時才有意義，用來單獨驗證主機端路徑。

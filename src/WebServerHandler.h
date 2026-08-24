@@ -62,8 +62,16 @@ public:
   void handleProgramAutorunGet(AsyncWebServerRequest *request);
   void handleProgramAutorunPost(AsyncWebServerRequest *request, uint8_t *data,
                                 size_t len);
-  // 開機 autorun:由 main.cpp 在 webServerHandler.begin() 後呼叫,執行存檔程式
-  void runAutorunProgramIfEnabled();
+  // 開機 autorun：載入並執行 NVS 裡的存檔程式。
+  //
+  // 只依賴 ProgramStore（NVS）與 cmdProcessor，**不需要 Web 伺服器已啟動**，
+  // 因此 I2C 從機模式（沒有 WiFi、沒有 begin()）同樣可以呼叫。從機模式下必須
+  // 呼叫：主機能讀功能表、也能經 0x65 設定功能值，但沒有程式在跑就沒有人去
+  // 消費那些值，自定回授動作等於是死的，得有人開網頁按一次「執行」才活。
+  //
+  // channels 決定回應往哪送。從機模式沒有 WebSocket，應傳 Comm::CH_SERIAL，
+  // 否則結果只會寫進一個沒人聽的 ws。
+  void runAutorunProgramIfEnabled(uint8_t channels = Comm::CH_WS);
 
   // WebSocket 連接監控相關函數
   void stopAllMotors();
