@@ -351,9 +351,18 @@ void setup() {
   // 所以先 begin() 的話，那 10 秒裡主機仍讀得到這塊板。
   Serial.println("[初始化] I2C 從機橋接層...");
   i2cBridge.begin(I2C_SLAVE_ADDRESS, I2C_SLAVE_SDA_PIN, I2C_SLAVE_SCL_PIN);
-  Serial.printf("[I2C] slave addr=0x%02X sda=%d scl=%d freq=%lu\n",
-                I2C_SLAVE_ADDRESS, I2C_SLAVE_SDA_PIN, I2C_SLAVE_SCL_PIN,
-                (unsigned long)I2C_SLAVE_FREQ);
+  // 依實際結果印。原本無條件印「已啟動」，begin() 失敗也照印 —— 開機日誌看起來
+  // 一切正常、主機卻掃不到這個位址，會把人推去查接線。2026-08-25 實際遇到：
+  // 日誌同時出現 "slave begin FAILED" 與下一行的「已啟動」，自相矛盾。
+  // 看門狗會在背景重試，所以失敗不是終局，但日誌必須說實話。
+  if (i2cBridge.isInitialized()) {
+    Serial.printf("[I2C] slave addr=0x%02X sda=%d scl=%d freq=%lu\n",
+                  I2C_SLAVE_ADDRESS, I2C_SLAVE_SDA_PIN, I2C_SLAVE_SCL_PIN,
+                  (unsigned long)I2C_SLAVE_FREQ);
+  } else {
+    Serial.printf("[I2C] slave 啟動失敗 addr=0x%02X（看門狗將重試）\n",
+                  I2C_SLAVE_ADDRESS);
+  }
   // 對外功能註冊表的擁有者是 I2CSlaveBridge，寫入者是直譯器。注入而非讓
   // CommandProcessor 直接 include I2CSlaveBridge：後者建構時就吃
   // CommandProcessor&，反向 include 會造成循環相依。

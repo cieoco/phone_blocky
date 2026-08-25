@@ -146,14 +146,45 @@ public:
   //   2. i2c_slave_free_resources() 會 vTaskDelete(i2c_slave_task)——在 callback
   //      內呼叫等於刪掉自己正在跑的 task。
   void checkLink() {
-    if (!initialized_ || !hasSeenMaster_) {
+    const uint32_t now = millis();
+
+    // 兩種需要進來的狀況，判準完全不同：
+    //
+    //   (a) 周邊沒起來（initialized_ == false）
+    //       開機 begin() 失敗，或本函式上一次重建失敗。此時 hasSeenMaster_
+    //       永遠是 false、lastCommMs_ 也永遠不會前進，「靜默逾時」那組條件一條
+    //       都不會成立 —— 只能用退避節流。
+    //
+    //   (b) 周邊活著但被卡住（initialized_ == true）
+    //       主機重燒造成的 clock stretching 殘留，靠靜默逾時偵測。
+    //
+    // 2026-08-25 修正：原本第一行是
+    //     if (!initialized_ || !hasSeenMaster_) return;
+    // 把 (a) 整個擋在門外，造成兩個永久死狀態，都只能手動重新上電：
+    //   1. 開機 begin() 失敗 -> 永遠不重試。實機遇過：本板開機印
+    //      「[I2C] slave begin FAILED addr=0x36」，主機 i2c_scan 從此掃不到它。
+    //   2. 下面重建失敗的分支註解寫著「下個退避週期再試」，但 initialized_ 留在
+    //      false，下次進來又被第一行擋掉 —— 重試永遠不會發生。
+    // 與 motorControl 的 I2CSlave::checkI2CLink() 是同一個修法（同日修）。
+    const bool needsInit = !initialized_;
+    uint32_t idleMs = 0; // 只有 (b) 有意義，供日誌用
+
+    if (needsInit) {
+      // 周邊沒起來：第一次進來（lastLinkRecoveryMs_ == 0）立刻重試，之後照退避。
+      const uint32_t interval = kLinkIdleMs << linkBackoffShift_;
+      if (lastLinkRecoveryMs_ != 0 && now - lastLinkRecoveryMs_ < interval) {
+        return;
+      }
+      return rebuildPeripheral(now, needsInit, idleMs);
+    }
+
+    if (!hasSeenMaster_) {
       // 從未與主機通訊過 -> 周邊是剛初始化的乾淨狀態，沒有東西要救。這條同時
       // 擋掉「桌上板單獨用手機網頁玩、根本沒接主機」的常態用法，否則會每 5 秒
       // 無謂地重建一次 I2C 周邊。
       return;
     }
 
-    const uint32_t now = millis();
     const uint32_t comm = lastCommMs_; // 快照，避免與 callback 競態
 
     // 上次重建之後真的收到過東西 -> 鏈路是活的，把退避收回基準值。
@@ -171,6 +202,13 @@ public:
       return;
     }
 
+    idleMs = now - comm;
+    rebuildPeripheral(now, needsInit, idleMs);
+  }
+
+  // 重建 I2C 周邊。**只能從主迴圈呼叫**：wire_.end() 會 vTaskDelete
+  // (i2c_slave_task)，在 callback 內呼叫等於刪掉正在跑自己的那個 task。
+  void rebuildPeripheral(uint32_t now, bool needsInit, uint32_t idleMs) {
     lastLinkRecoveryMs_ = now;
     if (linkBackoffShift_ < kLinkMaxBackoffShift) {
       linkBackoffShift_++;
@@ -188,6 +226,8 @@ public:
     if (!started) {
       // 多半是 `bad pin state` 或 `Bus busy`——匯流排此刻被別人佔著。不補救，
       // 下個退避週期再試；initialized_ 保持 false，callback 不會半殘動作。
+      // 「下個週期再試」現在是真的了——修正前會被 checkLink() 開頭的
+      // `if (!initialized_ ...) return;` 擋掉，重試永遠不會發生。
       Serial.printf("[I2C-WD] re-init FAILED addr=0x%02X\n", address_);
       return;
     }
@@ -198,9 +238,15 @@ public:
     lastCommMs_ = now; // 重新計時，否則下一拍又立刻判定逾時
 
     // 這裡可以 Serial：checkLink() 跑在主迴圈，不在 callback 內（SDD 7.1）。
-    Serial.printf("[I2C-WD] peripheral re-init addr=0x%02X idle=%lums count=%lu\n",
-                  address_, (unsigned long)(now - comm),
-                  (unsigned long)linkRecoveryCount_);
+    // 兩種情境分開記，現場才分得出「原本就沒起來」與「起來後被卡住」。
+    if (needsInit) {
+      Serial.printf("[I2C-WD] initial begin recovered addr=0x%02X count=%lu\n",
+                    address_, (unsigned long)linkRecoveryCount_);
+    } else {
+      Serial.printf(
+          "[I2C-WD] peripheral re-init addr=0x%02X idle=%lums count=%lu\n",
+          address_, (unsigned long)idleMs, (unsigned long)linkRecoveryCount_);
+    }
   }
 
   bool isInitialized() const { return initialized_; }
