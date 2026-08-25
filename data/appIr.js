@@ -709,27 +709,59 @@ function translateLogicNegate(block) {
     return new LogicNegateNode(content);
 }
 
+// Blockly 的 getFieldValue("VAR") 在新版回傳的是變數的**內部 ID**（像
+// `7w+/q)~FI-Nb^hQC^ZSZ`），不是使用者取的名稱。直接用它當 variableName 的後果是
+// 顯示訊息積木會印出 `7w+/q)~FI-Nb^hQC^ZSZ=112` 而不是 `dis=112`，幾乎沒法讀。
+//
+// 韌體端只把 variableName 當成執行期變數表的鍵（getRuntimeVariable /
+// setRuntimeVariable），用名稱或 ID 都能運作，所以改成名稱是安全的 —— 而且
+// Blockly 保證同一個 workspace 內變數名稱唯一，不會撞鍵。
+function readVariableName(block) {
+    const field = block.getField("VAR");
+    // 優先問欄位自己的顯示文字；不同 Blockly 版本的 API 不一致，逐層退回。
+    if (field) {
+        if (typeof field.getText === "function") {
+            const text = field.getText();
+            if (text) return text;
+        }
+        if (typeof field.getVariable === "function") {
+            const v = field.getVariable();
+            if (v && v.name) return v.name;
+        }
+    }
+    const raw = block.getFieldValue("VAR");
+    // 最後手段：拿 ID 去 workspace 查名稱；查不到就用 ID（至少還能跑）。
+    try {
+        const ws = block.workspace;
+        if (ws && typeof ws.getVariableById === "function") {
+            const v = ws.getVariableById(raw);
+            if (v && v.name) return v.name;
+        }
+    } catch (e) { /* 舊版 API 沒有就算了 */ }
+    return raw;
+}
+
 function translateVariableDeclare(block) {
-    const variableName = block.getFieldValue("VAR");
+    const variableName = readVariableName(block);
     return new VariableDeclareNode(variableName);
 }
 
 function translateVariableSet(block) {
-    const variableName = block.getFieldValue("VAR");
+    const variableName = readVariableName(block);
     const valueBlock = block.getInputTargetBlock("VALUE");
     let value = valueBlock ? getTranslator(valueBlock.type)(valueBlock) : null;
     return new VariableSetNode(variableName, value);
   }
 
 function translateMathChange(block) {
-    const variableName = block.getFieldValue("VAR");
+    const variableName = readVariableName(block);
     const valueBlock = block.getInputTargetBlock("DELTA");
     let value = valueBlock ? getTranslator(valueBlock.type)(valueBlock) : null;
     return new MathChangeNode(variableName, value);
 }
 
 function translateVariableGet(block) {
-    const variableName = block.getFieldValue("VAR");
+    const variableName = readVariableName(block);
     return new VariableGetNode(variableName);
 }
 
