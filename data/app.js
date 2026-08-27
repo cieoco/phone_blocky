@@ -5,6 +5,9 @@
 var workspace;
 var ws;
 let lastAppendTime = 0;
+let wsReconnectTimer = null;
+let wsReconnectEnabled = true;
+const WS_RECONNECT_DELAY_MS = 2000;
 
 function appendSensorOutput(newMessage) {
   const sensorOutputDiv = document.getElementById('sensorOutput');
@@ -124,10 +127,20 @@ async function setAutorun(on) {
 }
 
 function initWebSocket() {
-  var wsUrl = ((window.location.protocol === 'https:') ? 'wss://' : 'ws://') + window.location.hostname + '/ws';
-  ws = new WebSocket(wsUrl);
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
-  ws.onmessage = (e) => {
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = null;
+  }
+
+  var wsUrl = ((window.location.protocol === 'https:') ? 'wss://' : 'ws://') + window.location.hostname + '/ws';
+  const socket = new WebSocket(wsUrl);
+  ws = socket;
+
+  socket.onopen = () => appendSensorOutput("WebSocket 已連線");
+
+  socket.onmessage = (e) => {
     try {
       const data = JSON.parse(e.data);
 
@@ -141,17 +154,28 @@ function initWebSocket() {
 
       // 重要：發送 JSON 格式的確認 (v1.3.1)
       // 配合修正後的韌體，這不會再中斷 Loop 執行
-      if (data.message && data.message !== "指令已接收") {
-        ws.send(JSON.stringify({ "mode": "PROG", "message_success": true }));
+      if (data.message && data.message !== "指令已接收" && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ "mode": "PROG", "message_success": true }));
       }
     } catch (err) {
       appendSensorOutput("收到: " + e.data);
     }
   };
 
-  ws.onclose = () => appendSensorOutput("連線關閉");
-  ws.onerror = () => appendSensorOutput("連線錯誤");
+  socket.onclose = () => {
+    if (ws === socket) ws = null;
+    appendSensorOutput("連線關閉，2 秒後重連");
+    if (wsReconnectEnabled && !wsReconnectTimer) {
+      wsReconnectTimer = setTimeout(initWebSocket, WS_RECONNECT_DELAY_MS);
+    }
+  };
+  socket.onerror = () => appendSensorOutput("連線錯誤");
 }
+
+window.addEventListener('beforeunload', () => {
+  wsReconnectEnabled = false;
+  if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+});
 
 function resetCode() {
   if (ws && ws.readyState === WebSocket.OPEN) {

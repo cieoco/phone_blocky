@@ -103,9 +103,13 @@ public:
 
     case WS_EVT_DISCONNECT:
       Serial.printf("WebSocket 用戶端 #%u 已斷線\n", client->id());
-      webSocketConnected = false;
-      // 立即停止所有馬達
-      stopAllMotors();
+      // AsyncWebSocket::count() 只計算 WS_CONNECTED client。關閉其中一個
+      // Blockly／搖桿分頁時，其他仍在線的控制頁不應被誤判為全部斷線。
+      webSocketConnected = server && server->count() > 0;
+      if (!webSocketConnected) {
+        // 最後一個 WebSocket client 離線才停止所有馬達。
+        stopAllMotors();
+      }
       break;
 
     case WS_EVT_DATA: {
