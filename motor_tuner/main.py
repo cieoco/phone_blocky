@@ -231,19 +231,11 @@ class MotorTuner(QMainWindow):
         w = QWidget()
         v = QVBoxLayout(w)
 
-        target = QGroupBox("目標板")
+        target = QGroupBox("燒錄設定")
         tl = QHBoxLayout(target)
-        tl.addWidget(QLabel("COM 埠:"))
-        self.flash_port_combo = QComboBox()
-        self.flash_port_combo.setMinimumWidth(260)
-        self.flash_port_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self.flash_port_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.flash_port_combo.currentIndexChanged.connect(self._update_flash_port_tooltip)
-        self.flash_port_combo.view().setMinimumWidth(420)
-        tl.addWidget(self.flash_port_combo, 1)
-        btn_ports = QPushButton("重新整理")
-        btn_ports.clicked.connect(self._refresh_flash_ports)
-        tl.addWidget(btn_ports)
+        port_hint = QLabel("使用上方「USB（序列）」選擇的 COM 埠")
+        port_hint.setStyleSheet("color:#555;")
+        tl.addWidget(port_hint, 1)
         tl.addWidget(QLabel("Baud:"))
         self.flash_baud_combo = QComboBox()
         self.flash_baud_combo.addItems(["921600", "460800", "115200"])
@@ -299,7 +291,6 @@ class MotorTuner(QMainWindow):
         self.flash_log.setMinimumHeight(220)
         v.addWidget(self.flash_log, 1)
 
-        self._refresh_flash_ports()
         return w
 
     def _browse_flash_file(self, name: str):
@@ -314,22 +305,6 @@ class MotorTuner(QMainWindow):
         if path:
             self.flash_paths[name].setText(path)
 
-    def _refresh_flash_ports(self):
-        self._populate_port_combo(
-            self.flash_port_combo,
-            str(self.settings.value("flash_port", "") or "").strip(),
-        )
-        self._update_flash_port_tooltip()
-
-    def _update_flash_port_tooltip(self, _index=None):
-        self.flash_port_combo.setToolTip(self.flash_port_combo.currentText())
-
-    def _current_flash_port(self) -> str:
-        port = self.flash_port_combo.currentData()
-        if port:
-            return str(port).strip()
-        return self.flash_port_combo.currentText().split(" - ", 1)[0].strip()
-
     def _start_flash(self):
         if self.flash_process and self.flash_process.state() != QProcess.ProcessState.NotRunning:
             self._flash_log("燒錄仍在執行中")
@@ -337,10 +312,10 @@ class MotorTuner(QMainWindow):
         if self.serial.is_connected():
             self._flash_log("請先按上方「斷線」，釋放 USB 序列埠後再燒錄")
             return
-        port = self._current_flash_port()
+        port = self._current_serial_port()
         if not port:
-            self._refresh_flash_ports()
-            port = self._current_flash_port()
+            self._refresh_ports()
+            port = self._current_serial_port()
         if not port:
             self._flash_log("請選擇 COM 埠")
             return
@@ -348,7 +323,7 @@ class MotorTuner(QMainWindow):
         write_args = self._build_flash_write_args(port)
         if not write_args:
             return
-        self.settings.setValue("flash_port", port)
+        self.settings.setValue("serial_port", port)
         self.flash_log.clear()
         self._flash_log(f"使用 {port} 開始燒錄")
         if self.chk_flash_erase.isChecked():
