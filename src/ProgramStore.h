@@ -71,13 +71,16 @@ public:
     prefs.remove(KEY_JSON);
     prefs.remove(KEY_XML);
     prefs.remove(KEY_META);
+    // A deleted migrated program must not reappear from the old filesystem.
+    prefs.putBool(KEY_MIGRATED, true);
     prefs.end();
   }
 
   static bool setAutorun(bool on) {
     Preferences prefs;
     if (!prefs.begin(NAMESPACE, false)) return false;
-    bool ok = on ? prefs.putBool(KEY_AUTORUN, true) == 1 : prefs.remove(KEY_AUTORUN);
+    bool ok = on ? prefs.putBool(KEY_AUTORUN, true) == 1
+                 : (!prefs.isKey(KEY_AUTORUN) || prefs.remove(KEY_AUTORUN));
     prefs.end();
     return ok;
   }
@@ -96,6 +99,7 @@ private:
   static constexpr const char *KEY_XML = "xml";
   static constexpr const char *KEY_META = "meta";
   static constexpr const char *KEY_AUTORUN = "autorun";
+  static constexpr const char *KEY_MIGRATED = "migrated";
 
   static bool putBlob(Preferences &prefs, const char *key, const String &value) {
     return prefs.putBytes(key, value.c_str(), value.length()) == value.length();
@@ -123,8 +127,9 @@ private:
 
   static void migrateLegacyIfNeeded() {
     Preferences prefs;
-    if (!prefs.begin(NAMESPACE, true)) return;
-    bool alreadyMigrated = prefs.isKey(KEY_JSON);
+    // Read/write opens the namespace on the very first NVS boot too.
+    if (!prefs.begin(NAMESPACE, false)) return;
+    bool alreadyMigrated = prefs.isKey(KEY_JSON) || prefs.getBool(KEY_MIGRATED, false);
     prefs.end();
     if (alreadyMigrated || !LittleFS.exists(PATH_JSON)) return;
 

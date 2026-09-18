@@ -17,9 +17,8 @@ public:
 
   void initServo()
   {
-    ESP32PWM::allocateTimer(0);
-    ESP32PWM::allocateTimer(1);
-    ESP32PWM::allocateTimer(2);
+    // Timer 3 (channels 6/7) is isolated from AFMotor timers 1/2
+    // and general-purpose PWM timer 0. ESP32Servo allocates within this timer.
     ESP32PWM::allocateTimer(3);
 
     servo1.setPeriodHertz(50);

@@ -145,9 +145,13 @@ class DelayNode extends BaseNode {
         this.delayTime = delayTime;
     }
     toJson() {
+        const ms = Number(this.delayTime);
+        if (!Number.isInteger(ms) || ms < 0 || ms > 10000) {
+            throw new Error("延遲必須是 0–10000 毫秒的整數；較長等待請拆成多個積木。");
+        }
         return {
-            command: "delay",
-            delayTime: this.delayTime
+            cmd: "delay",
+            ms
         };
     }
 }
@@ -658,20 +662,12 @@ function translateIf(block) {
 
 
 function translateRepeat(block) {
-    const times = block.getFieldValue("TIMES");
-    return new RepeatNode(times);
+    throw new Error("repeat 尚未支援；請移除舊迴圈積木，使用頂層 loop。");
 }
 
 function translateWhile(block) {
-    const mode = block.getFieldValue("MODE");
-    const conditionBlock = block.getInputTargetBlock("BOOL");
-    let condition = conditionBlock ? getTranslator(conditionBlock.type)(conditionBlock) : null;
+    throw new Error("while/until 尚未支援；請移除舊迴圈積木，使用頂層 loop + if。");
 
-    // 使用 parseBlockChain 來解析 while 內部所有命令
-    const doBlock = block.getInputTargetBlock("DO");
-    let doCommands = doBlock ? parseBlockChain(doBlock) : [];
-
-    return new WhileNode(condition, doCommands, mode);
 }
 
 function translateMillis(block) {

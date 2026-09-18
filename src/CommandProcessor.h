@@ -19,6 +19,7 @@
 // --- 效能優化：定義指令的枚舉和結構體 ---
 enum CommandType {
   CMD_NONE,
+  CMD_PIN_MODE,
   CMD_DIGITAL_WRITE,
   CMD_ANALOG_WRITE,
   CMD_DELAY,
@@ -33,7 +34,6 @@ enum CommandType {
   CMD_VARIABLE_SET,
   CMD_MATH_CHANGE,
   CMD_IF,
-  CMD_WHILE,
 };
 
 // Blockly value 積木的執行期表示；可遞迴組成算術與邏輯運算式。
@@ -50,14 +50,14 @@ struct BlocklyValueExpression {
 
 struct BlocklyCommand {
   CommandType type = CMD_NONE;
-  int pin;
-  int value;
-  int motor_id;
-  char direction;
-  int speed;   // signed when direction=='P' (PWM ±100)
-  int servo_id;
-  int angle;
-  int delay_ms;
+  int pin = -1;
+  int value = 0;
+  int motor_id = 0;
+  char direction = 0;
+  int speed = 0;   // signed when direction=='P' (PWM ±100)
+  int servo_id = 0;
+  int angle = 0;
+  int delay_ms = 0;
   String message;
   String plotSeries;
   String plotUnit;
@@ -1890,13 +1890,24 @@ public:
   void stageProgCommands(const JsonDocument &doc) {
     Serial.println("[PROG] Parsing commands...");
 
+    if (!doc["setup"].is<JsonArrayConst>() || !doc["loop"].is<JsonArrayConst>()) {
+      sendError("invalid_program_arrays");
+      return;
+    }
+
     std::vector<BlocklyCommand> newSetup;
     std::vector<BlocklyCommand> newLoop;
     if (doc.containsKey("setup") && doc["setup"].is<JsonArrayConst>()) {
-      parseCommandArray(doc["setup"].as<JsonArrayConst>(), newSetup);
+      if (!parseCommandArray(doc["setup"].as<JsonArrayConst>(), newSetup)) {
+        sendError("unsupported_or_invalid_program_command");
+        return;
+      }
     }
     if (doc.containsKey("loop") && doc["loop"].is<JsonArrayConst>()) {
-      parseCommandArray(doc["loop"].as<JsonArrayConst>(), newLoop);
+      if (!parseCommandArray(doc["loop"].as<JsonArrayConst>(), newLoop)) {
+        sendError("unsupported_or_invalid_program_command");
+        return;
+      }
     }
 
     if (progMutex) xSemaphoreTake(progMutex, portMAX_DELAY);
@@ -1972,14 +1983,16 @@ public:
     runtimeVariables.push_back({name, value});
   }
 
-  void parseCommandArray(JsonArrayConst jsonArr, std::vector<BlocklyCommand> &commandList) {
+  bool parseCommandArray(JsonArrayConst jsonArr, std::vector<BlocklyCommand> &commandList) {
     for (JsonVariantConst item : jsonArr) {
-      if (!item.is<JsonObjectConst>()) continue;
+      if (!item.is<JsonObjectConst>()) return false;
       JsonObjectConst jsonObj = item.as<JsonObjectConst>();
 
       // Unwrap arduino_setup/arduino_loop body
       if (jsonObj.containsKey("body") && jsonObj["body"].is<JsonArrayConst>()) {
-        parseCommandArray(jsonObj["body"].as<JsonArrayConst>(), commandList);
+        const char *wrapper = jsonObj["command"] | "";
+        if (strcmp(wrapper, "arduino_setup") != 0 && strcmp(wrapper, "arduino_loop") != 0) return false;
+        if (!parseCommandArray(jsonObj["body"].as<JsonArrayConst>(), commandList)) return false;
         continue;
       }
 
@@ -1992,49 +2005,57 @@ public:
       } else if (jsonObj.containsKey("command")) {
         commandStr = jsonObj["command"];
       }
-      if (!commandStr) continue;
+      if (!commandStr) return false;
 
       BlocklyCommand cmd;
 
       // --- Legacy format ---
       if (!isNewFormat) {
-        if (strcmp(commandStr, "digitalWrite") == 0) {
+        if (strcmp(commandStr, "pinMode") == 0) {
+          cmd.type = CMD_PIN_MODE;
+          cmd.pin = parseIntOrString(jsonObj["pin"], -1);
+          const char *pinModeName = jsonObj["mode"] | "INPUT";
+          cmd.value = strcmp(pinModeName, "OUTPUT") == 0 ? OUTPUT :
+                      strcmp(pinModeName, "INPUT_PULLUP") == 0 ? INPUT_PULLUP : INPUT;
+        } else if (strcmp(commandStr, "digitalWrite") == 0) {
           cmd.type = CMD_DIGITAL_WRITE;
-          cmd.pin = atoi(jsonObj["pin"]);
-          cmd.value = (strcmp(jsonObj["state"], "HIGH") == 0) ? HIGH : LOW;
+          cmd.pin = parseIntOrString(jsonObj["pin"], -1);
+          cmd.value = (strcmp(jsonObj["state"] | "LOW", "HIGH") == 0) ? HIGH : LOW;
         } else if (strcmp(commandStr, "analogWrite") == 0) {
           cmd.type = CMD_ANALOG_WRITE;
-          cmd.pin = atoi(jsonObj["pin"]);
+          cmd.pin = parseIntOrString(jsonObj["pin"], -1);
           cmd.value = jsonObj["value"];
         } else if (strcmp(commandStr, "delay") == 0) {
           cmd.type = CMD_DELAY;
           cmd.delay_ms = parseIntOrString(jsonObj["delayTime"], 0);
         } else if (strcmp(commandStr, "motor_control") == 0) {
           cmd.type = CMD_MOTOR;
-          cmd.motor_id = atoi(jsonObj["motor"]);
-          cmd.direction = jsonObj["direction"].as<const char *>()[0];
+          cmd.motor_id = parseIntOrString(jsonObj["motor"], 0);
+          cmd.direction = (jsonObj["direction"] | "R")[0];
           cmd.speed = parseIntOrString(jsonObj["speed"], 0);
         } else if (strcmp(commandStr, "servo_control") == 0) {
           cmd.type = CMD_SERVO;
-          cmd.servo_id = atoi(jsonObj["servo"]);
+          cmd.servo_id = parseIntOrString(jsonObj["servo"], 0);
           cmd.angle = parseIntOrString(jsonObj["angle"], 90);
         } else if (strcmp(commandStr, "if") == 0) {
           cmd.type = CMD_IF;
-          if (!parseValueSource(jsonObj["condition"], cmd)) continue;
+          if (!parseValueSource(jsonObj["condition"], cmd)) return false;
+          if (!jsonObj["then"].is<JsonArrayConst>()) return false;
+          if (jsonObj.containsKey("else") && !jsonObj["else"].is<JsonArrayConst>()) return false;
           // then / else 陣列遞迴解析
           if (jsonObj["then"].is<JsonArrayConst>()) {
-            parseCommandArray(jsonObj["then"].as<JsonArrayConst>(),
-                              cmd.nested_commands_then);
+            if (!parseCommandArray(jsonObj["then"].as<JsonArrayConst>(),
+                              cmd.nested_commands_then)) return false;
           }
           if (jsonObj["else"].is<JsonArrayConst>()) {
-            parseCommandArray(jsonObj["else"].as<JsonArrayConst>(),
-                              cmd.nested_commands_else);
+            if (!parseCommandArray(jsonObj["else"].as<JsonArrayConst>(),
+                              cmd.nested_commands_else)) return false;
           }
         } else if (strcmp(commandStr, "serial_println") == 0 ||
                    strcmp(commandStr, "message_print") == 0) {
           cmd.type = CMD_PRINT;
           cmd.direction = strcmp(commandStr, "message_print") == 0 ? 'M' : 'S';
-          if (!parseValueSource(jsonObj["content"], cmd)) continue;
+          if (!parseValueSource(jsonObj["content"], cmd)) return false;
           if (jsonObj["content"].is<JsonObjectConst>()) {
             JsonObjectConst content = jsonObj["content"].as<JsonObjectConst>();
             const char *contentCommand = content["command"] | "";
@@ -2049,20 +2070,20 @@ public:
           cmd.type = CMD_PLOT;
           cmd.plotSeries = jsonObj["series"] | "value";
           cmd.plotUnit = jsonObj["unit"] | "";
-          if (!parseValueSource(jsonObj["value"], cmd)) continue;
+          if (!parseValueSource(jsonObj["value"], cmd)) return false;
         } else if (strcmp(commandStr, "variable_declare") == 0) {
           cmd.type = CMD_VARIABLE_DECLARE;
           cmd.variableName = jsonObj["variableName"] | "";
         } else if (strcmp(commandStr, "variable_set") == 0) {
           cmd.type = CMD_VARIABLE_SET;
           cmd.variableName = jsonObj["variableName"] | "";
-          if (!parseValueSource(jsonObj["value"], cmd)) continue;
+          if (!parseValueSource(jsonObj["value"], cmd)) return false;
         } else if (strcmp(commandStr, "math_change") == 0) {
           cmd.type = CMD_MATH_CHANGE;
           cmd.variableName = jsonObj["variableName"] | "";
-          if (!parseValueSource(jsonObj["value"], cmd)) continue;
+          if (!parseValueSource(jsonObj["value"], cmd)) return false;
         } else {
-          continue;
+          return false;
         }
       }
       // --- New format ---
@@ -2112,12 +2133,19 @@ public:
           cmd.pin = parseIntOrString(jsonObj["pin"], 0);
           cmd.value = parseIntOrString(jsonObj["value"], 0);
         } else {
-          continue;
+          return false;
         }
       }
 
+      if ((cmd.type == CMD_MOTOR_POSITION || cmd.type == CMD_MOTOR_ZERO || cmd.type == CMD_MOTOR_SPEED) &&
+          (cmd.motor_id < 3 || cmd.motor_id > 4)) return false;
+      if (cmd.type == CMD_MOTOR && (cmd.motor_id < (cmd.direction == 'X' ? 0 : 1) || cmd.motor_id > NUM_MOTORS)) return false;
+      if (cmd.type == CMD_SERVO && (cmd.servo_id < 1 || cmd.servo_id > NUM_SERVOS)) return false;
+      if ((cmd.type == CMD_PIN_MODE || cmd.type == CMD_DIGITAL_WRITE || cmd.type == CMD_ANALOG_WRITE) &&
+          (cmd.pin < 0 || cmd.pin > 39)) return false;
       commandList.push_back(cmd);
     }
+    return true;
   }
 
   // Blockly 的腳位常以字串送 ("2"),AI 端會用整數 (2)。兩種都收
@@ -2130,7 +2158,10 @@ public:
 
   // 給 CMD_IF / 未來迴圈用:把一串巢狀指令依序執行
   void executeCommandList(const std::vector<BlocklyCommand> &cmds) {
-    for (const auto &c : cmds) executeSingleCommand(c);
+    for (const auto &c : cmds) {
+      if (pendingProgram) break;
+      executeSingleCommand(c);
+    }
   }
 
   // 讀感測器,回傳整數 (距離 cm / 數位值 / 類比值 ...)。供 CMD_IF 評估條件
@@ -2211,6 +2242,9 @@ public:
 
   void executeSingleCommand(const BlocklyCommand &cmd) {
     switch (cmd.type) {
+      case CMD_PIN_MODE:
+        pinMode(cmd.pin, cmd.value);
+        break;
       case CMD_DIGITAL_WRITE:
         pinMode(cmd.pin, OUTPUT);
         digitalWrite(cmd.pin, cmd.value);
@@ -2273,6 +2307,7 @@ public:
           } else {
             state.mode = MOTOR_MODE_SPEED;
             state.rpmCmd = (float)cmd.speed;
+            state.rampedRpmCmd = state.rpmMeas;
             state.speedIntegral = 0.0f;
             state.speedLastError = 0.0f;
             state.lastSampleMs = 0;
@@ -2346,14 +2381,12 @@ public:
 
   void executeSetupCommands() {
     Serial.println("[PROG] Executing setup commands...");
-    for (const auto &cmd : setupCommands) {
-      executeSingleCommand(cmd);
-    }
+    executeCommandList(setupCommands);
     Serial.println("[PROG] Setup complete.");
   }
 
   void executeLoopCommands() {
-    if (loopCommands.empty()) return;
+    if (pendingProgram || loopCommands.empty()) return;
 
     if (loopIndex >= loopCommands.size()) {
       loopIndex = 0;

@@ -16,7 +16,9 @@
 - `setup` 與 `loop` 皆為陣列；可空但必須存在
 - `setup` 只在程式載入時跑一次
 - `loop` 內元素依序執行,跑完最後一個會回到第一個 (見 `CommandProcessor::executeLoopCommands`)
-- 巢狀僅限 `if.then` / `if.else` 兩個分支陣列 (見下方 `if` 一節)
+- 巢狀動作僅限 `if.then` / `if.else`；不支援 `while` / `until` / `repeat`。舊 XML 可讀取，但含這些積木時無法執行或存成可執行程式。
+- 一次性動作全部放 `setup`，`loop: []`；`stop` 只停馬達，**不會終止 loop**。
+- 新 Blockly 輸出扁平陣列；韌體仍接受舊 `{command:"arduino_setup"|"arduino_loop", body:[...]}` 包裝。
 
 ## 指令(cmd)
 
@@ -58,7 +60,7 @@
 
 | 欄位    | 型別 | 範圍   | 說明                                        |
 |--------|------|--------|---------------------------------------------|
-| motor  | int  | 3..4   | **僅 M3/M4 有編碼器**,其餘回 `no_encoder`    |
+| motor  | int  | 3..4   | **僅 M3/M4 有編碼器**,直接指令回 `no_encoder`，PROG 於解析時拒絕    |
 | deg    | int  | —      | 角度 × 100（固定小數點整數）,韌體除以 100 還原 |
 
 - `move_to` 為絕對角度（相對零點）、`move_by` 為相對目前位置
@@ -152,31 +154,30 @@
 | else | array | 條件不成立時執行,可省略 = 空陣列 |
 
 - **動作指令用 `cmd:`、if/感測器用 `command:`** — 兩種 key 在同一個程式裡可混用,parser 會自動分辨
-- 在 `loop` 內每個 tick 都會重新讀 sensor、重新判斷
+- 每次輪到這個 `if` 指令時重新讀 sensor、重新判斷；不是所有 if 在每個 tick 同時執行
 - `then` / `else` 內可再放 `if`,但建議不要超過 2 層,韌體記憶體有限
 - 韌體執行單一 `if` 整支跑完 (同步) 才會回到 loop 排程
 
 ### `digitalWrite` / `analogWrite` — GPIO (進階,AI 預設不產生)
 
 ```json
-{ "cmd": "digitalWrite", "pin": 5, "state": "HIGH" }
-{ "cmd": "analogWrite",  "pin": 5, "value": 128 }
+{ "cmd": "digitalWrite", "pin": 2, "state": "HIGH" }
+{ "cmd": "analogWrite",  "pin": 26, "value": 128 }
 ```
 
-> AI 生成預設限制在 `pwm`/`stop`/`servo`/`delay` 四種,以免亂寫 GPIO 造成短路。
+> AI 支援 `pwm`、`stop`、`servo`、`delay`、`speed`、`move_to`、`move_by`、`zero` 與 `if`；不產生 GPIO 寫入。一般 analogWrite 限 GPIO 0/2/4/15/18/21/22/26/32/33，使用 timer 0 的 ch 0/1/8/9，避開馬達 timer 1/2 與舵機 timer 3。
 
-## 範例:讓 M1 前進 2 秒後停止
+## 範例:讓 M1 前進 2 秒後停止（只執行一次）
 
 ```json
 {
   "mode": "PROG",
-  "setup": [],
-  "loop": [
-    { "cmd": "pwm",   "motor": 1, "duty": 60 },
+  "setup": [
+    { "cmd": "pwm", "motor": 1, "duty": 60 },
     { "cmd": "delay", "ms": 2000 },
-    { "cmd": "stop",  "motor": 1 },
-    { "cmd": "delay", "ms": 1000 }
-  ]
+    { "cmd": "stop", "motor": 1 }
+  ],
+  "loop": []
 }
 ```
 
@@ -234,7 +235,7 @@ POST `/api/program` 的 body 範例:
 }
 ```
 
-- `json.mode` 必須是 `"PROG"`,否則回 400
+- `json.mode` 必須是 `"PROG"`，setup/loop 必須是陣列，且通過韌體解析與 16KB JSON 容量檢查，否則回 400；檢查不執行任何指令
 - `xml` 是 optional,ai.html 不會附,Blockly 會附
 - `source` 是字串標籤,顯示「這份檔是誰存的」
 
@@ -248,16 +249,42 @@ if (ProgramStore::isAutorun() && ProgramStore::exists()) {
 }
 ```
 
-PS4 模式不執行 autorun (那時 Web 伺服器也不會啟動)。
+目前 `main.cpp` 啟動 WiFi/Web 後呼叫 autorun，沒有 PS4 任務／模式分支。舊 LittleFS 遷移只搬 JSON/XML/來源標籤，autorun 須透過目前 API 明確設定。
 
-## 驗證規則 (relay/ai.html 兩端皆套用)
+## AI 子集驗證（relay 與 ai.html）
 
-1. 頂層 `mode == "PROG"`、`setup`/`loop` 為陣列
-2. 每個指令物件必須有 `cmd` 字串
-3. setup/loop 內每個物件必須是:
-   - `cmd:` 動作指令 (`pwm`, `stop`, `servo`, `delay`),或
-   - `command:` Blockly 形狀 (目前只 `if`)
-4. `if.condition` 必須是 `logic_compare` 物件;`condition.left`/`right` 是感測器物件或整數,感測器目前只支援 `arduinoUltrasonic`
-5. 各欄位範圍如上表
-6. 多餘的鍵會被忽略 (韌體端使用 ArduinoJson 預設值機制)
-7. 指令總數 (含 `then`/`else` 內的) 建議 ≤ 64,避免 ESP32 記憶體吃緊
+1. `mode == "PROG"`，`setup` / `loop` 必須存在且為陣列。
+2. 動作用 `cmd`，條件／讀值用 `command`；同一物件不得同時帶兩者。
+3. 動作支援 `pwm`、`stop`、`servo`、`delay`、`speed`、`move_to`、`move_by`、`zero`。範圍如前表；定位 deg 限 signed 32-bit 整數。
+4. `if.condition` 必須是 `logic_compare`；左右為整數、`arduinoUltrasonic` 或 `legoButton`。`then` 必填，`else` 可省略。
+5. `{ "command":"legoButton", "pin":"4" }` 讀取 INPUT_PULLUP 的原始 0/1，按下的值由接線決定。超音波無回波為 -1。
+6. 腳位接受 0..39 整數或只含 ASCII 數字的字串；這是格式範圍，不代表每個 GPIO 都可接外設，接線依 [腳位.md](腳位.md)。拒絕 `2junk`、空字串與布林值。
+7. 指令總數含 then/else，前端最多 64；relay 預設 64（環境變數 MAX_COMMANDS 可調整，配合前端時應維持 64）。
+8. 其餘多餘鍵忽略。布林與數字字串不可冒充動作的整數欄位。
+
+AI 子集不是整個 Blockly 語言。Blockly 比較的數字積木會輸出 `{command:"math_number",number:20}`，韌體可求值；AI 直接輸出常數 `20`。兩者在韌體中等價，但 Blockly 延伸程式不必通過 AI 子集驗證。
+
+## Blockly 延伸與必要舊格式
+
+韌體另接受以下 `command` 形狀，供 Blockly 使用：
+
+| 指令／表達式 | 欄位與行為 |
+|---|---|
+| `pinMode` | pin、mode（INPUT／OUTPUT／INPUT_PULLUP） |
+| `digitalWrite` / `analogWrite` | pin + state（HIGH／LOW）或 value（0..255） |
+| `delay`（舊） | delayTime；新 Blockly 輸出 cmd:delay/ms |
+| `motor_control`（舊） | motor、direction（F/B/R）、speed（0..255）；舊 XML 的「馬達」積木自身使用 0..100 並轉 cmd:pwm |
+| `servo_control`（舊） | servo、angle；新格式為 cmd:servo/ch/deg |
+| `serial_println` / `message_print` | content 數值表達式；分別輸出序列／網頁訊息 |
+| `plot_print` | series、unit、value 數值表達式 |
+| `variable_declare` / `variable_set` / `math_change` | variableName；後兩者帶 value |
+| `math_number` / `variable_get` | number / variableName |
+| `math_arithmetic` | operator（ADD/MINUS/MULTIPLY/DIVIDE）、left、right；整數運算 |
+| `logic_boolean` / `logic_negate` | value 布林 / content 表達式 |
+| `logic_compare` | operator、left、right；可巢狀數值表達式 |
+| `digitalRead` / `analogRead` / `legoButton` | pin |
+| `arduinoUltrasonic` / `arduino_millis` | trigPin、echoPin / 無參數 |
+
+韌體保留舊數字字串與預設值相容性，並非完整的 AI 嚴格驗證器。未知動作、非法馬達／舵機 ID、未支援迴圈會拒絕整份 PROG（`unsupported_or_invalid_program_command`），不取代正在執行的程式。缺 setup/loop 陣列回 `invalid_program_arrays`。若需要停止舊程式，送出完整空 PROG。
+
+setup 與 if 分支同步執行；delay 以短片段等待並更新控制。新 PROG 到達時跳出等待與剩餘分支／setup，下一安全點套用新程式。這不等於即時硬體急停，實際延遲仍需實機驗證。

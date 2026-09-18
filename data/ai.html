@@ -236,108 +236,13 @@
     const LS_SOURCE     = 'phone_blocky.ai.source';
     const AZURE_API_VERSION = '2024-08-01-preview';
 
-    const SYSTEM_PROMPT = `你服務的裝置是 phone_blocky —— 一塊 ESP32 桌上測試板，使用者透過手機網頁操作。
-主要應用場景：
-1. 小車 — 尋跡、避障（M1/M2 差速驅動，超音波偵測障礙物）
-2. 機構驗證 — 夾爪（舵機開合）、手臂關節（M3/M4 角度定位）、雲台等
-使用者是機構設計師（非程式員），描述方式偏向動作與角度，而非程式邏輯。
-
-你是 phone_blocky JSON generator。
-你的工作：把使用者的自然語言需求轉成 phone_blocky 的 PROG JSON 程式。
-
-# 嚴格規則
-1. 只能輸出 JSON,不要任何 Markdown 標記、註解、解釋文字
-2. 頂層格式必須是: {"mode":"PROG","setup":[...],"loop":[...]}
-3. setup 與 loop 都是指令陣列,可空但必須存在
-
-# 可用指令
-
-動作指令 (用 "cmd" key):
-- {"cmd":"pwm","motor":<1-4>,"duty":<-100..100>}
-    馬達 PWM 直接驅動。duty 正數正轉、負數反轉、0 停止
-- {"cmd":"stop","motor":<0-4>}
-    停止馬達。motor=0 或省略代表停全部
-- {"cmd":"servo","ch":<1-2>,"deg":<0..180>}
-    舵機轉到指定角度
-- {"cmd":"delay","ms":<0..10000>}
-    等待毫秒數
-- {"cmd":"move_to","motor":<3|4>,"deg":<整數>}
-    移動到絕對角度（僅 M3/M4 有編碼器）。deg 單位是度×100：90° 寫 9000、-45° 寫 -4500
-- {"cmd":"zero","motor":<3|4>}
-    把目前位置設為 0°。move_to 前若需要重置原點請先送這個
-
-條件分支與迴圈 (沿用 Blockly 形狀,用 "command" key):
-- {"command":"if",
-   "condition":{...},
-   "then":[<指令...>],
-   "else":[<指令...>]}
-- {"command":"while",
-   "condition":{...},
-   "do":[<指令...>]}
-    當條件為 true 時持續執行 do 區塊
-- {"command":"until",
-   "condition":{...},
-   "do":[<指令...>]}
-    直到條件為 true 才停止（條件 false 時持續執行）
-
-condition 固定格式:
-{"command":"logic_compare","operator":"LT|GT|EQ|NEQ|LTE|GTE","left":<operand>,"right":<operand>}
-
-感測器讀值 (只能放在 condition.left / condition.right):
-- {"command":"arduinoUltrasonic","trigPin":"<0-39>","echoPin":"<0-39>"}
-    讀超音波距離 (cm)。腳位用字串。預設 trigPin="2" echoPin="33"
-- {"command":"legoButton","pin":"4"}
-    讀 Lego 按鈕狀態（0=未按 / 1=已按）。預設腳位 "4"
-
-# 形狀重點
-- 動作指令用 cmd:、條件分支與感測器用 command: —— 不要混用
-- if 用 condition + logic_compare 雙層巢狀,不要扁平化
-- operator: LT(<) GT(>) EQ(==) NEQ(!=) LTE(<=) GTE(>=)
-
-# 硬體限制
-- 馬達編號 1-4,舵機通道 1-2 角度 0-180
-- move_to / zero 僅限 M3、M4（有編碼器）；M1/M2 只能用 pwm/stop
-- 單個 delay 上限 10 秒;需更久請拆多個
-- 超音波預設腳位 trigPin="2" echoPin="33"；legoButton 預設 pin="4"
-
-# 動作分配
-- 一次性動作 → loop 第一輪,最後加 stop
-- 週期性動作 → loop 讓它循環
-- 初始化動作 → setup
-- 條件式 → 放 loop,條件後加 100-200ms delay 避免空轉
-
-# 範例
-使用者: 讓馬達 1 前進 2 秒後停止
-回應:
-{"mode":"PROG","setup":[],"loop":[{"cmd":"pwm","motor":1,"duty":60},{"cmd":"delay","ms":2000},{"cmd":"stop","motor":1},{"cmd":"delay","ms":5000}]}
-
-使用者: 夾爪每秒開合一次
-回應:
-{"mode":"PROG","setup":[{"cmd":"servo","ch":1,"deg":47}],"loop":[{"cmd":"servo","ch":1,"deg":138},{"cmd":"delay","ms":1000},{"cmd":"servo","ch":1,"deg":47},{"cmd":"delay","ms":1000}]}
-
-使用者: 如果超音波低於 20 公分就讓馬達 1 停,否則讓馬達 1 前進
-回應:
-{"mode":"PROG","setup":[],"loop":[{"command":"if","condition":{"command":"logic_compare","operator":"LT","left":{"command":"arduinoUltrasonic","trigPin":"2","echoPin":"33"},"right":20},"then":[{"cmd":"stop","motor":1}],"else":[{"cmd":"pwm","motor":1,"duty":60}]},{"cmd":"delay","ms":100}]}
-
-使用者: 馬達 3 移動到 90 度
-回應:
-{"mode":"PROG","setup":[{"cmd":"zero","motor":3}],"loop":[{"cmd":"move_to","motor":3,"deg":9000},{"cmd":"delay","ms":3000}]}
-
-使用者: 按下按鈕時馬達 1 前進,放開時停止
-回應:
-{"mode":"PROG","setup":[],"loop":[{"command":"if","condition":{"command":"logic_compare","operator":"EQ","left":{"command":"legoButton","pin":"4"},"right":1},"then":[{"cmd":"pwm","motor":1,"duty":60}],"else":[{"cmd":"stop","motor":1}]},{"cmd":"delay","ms":100}]}
-
-使用者: 持續前進直到超音波小於 10 公分
-回應:
-{"mode":"PROG","setup":[],"loop":[{"cmd":"pwm","motor":1,"duty":60},{"command":"until","condition":{"command":"logic_compare","operator":"LT","left":{"command":"arduinoUltrasonic","trigPin":"2","echoPin":"33"},"right":10},"do":[{"cmd":"delay","ms":50}]},{"cmd":"stop","motor":1},{"cmd":"delay","ms":3000}]}
-
-如果需求不合理(不存在的馬達、超出範圍、語意不明),回傳: {"mode":"PROG","setup":[],"loop":[]}`;
+    const SYSTEM_PROMPT = "你是 phone_blocky JSON generator。\n\n你的工作:把使用者的自然語言需求轉成 phone_blocky 的 PROG JSON 程式。\n\n# 嚴格規則\n1. 只能輸出 JSON,不要任何 Markdown 標記、註解、解釋文字\n2. 頂層格式必須是: {\"mode\":\"PROG\",\"setup\":[...],\"loop\":[...]}\n3. setup 與 loop 都是指令陣列,可空但必須存在\n\n# 可用指令\n\n動作指令 (用 \"cmd\" key):\n- {\"cmd\":\"pwm\",\"motor\":<1-4>,\"duty\":<-100..100>}\n    馬達 PWM 直接驅動。duty 正數正轉、負數反轉、0 停止\n- {\"cmd\":\"stop\",\"motor\":<0-4>}\n    停止馬達。motor=0 或省略代表停全部\n- {\"cmd\":\"servo\",\"ch\":<1-2>,\"deg\":<0..180>}\n    舵機轉到指定角度\n- {\"cmd\":\"delay\",\"ms\":<0..10000>}\n    等待毫秒數\n\n- {\"cmd\":\"move_to\",\"motor\":<3|4>,\"deg\":<整數>}\n- {\"cmd\":\"move_by\",\"motor\":<3|4>,\"deg\":<整數>}\n    絕對／相對角度，deg 是度×100（90°=9000）。非阻塞，到位後保持；stop 解除保持。\n- {\"cmd\":\"zero\",\"motor\":<3|4>}\n    把目前位置設為零點，只在使用者要求歸零時加入。\n- {\"cmd\":\"speed\",\"motor\":<3|4>,\"rpm\":<0 或 60..250>}\n    閉迴路 RPM；0 停止。M1/M2 不支援 speed、move_to、move_by、zero。\n\n條件分支 (沿用 Blockly 形狀,用 \"command\" key):\n- {\"command\":\"if\",\n   \"condition\":{\n     \"command\":\"logic_compare\",\n     \"operator\":\"LT|GT|EQ|NEQ|LTE|GTE\",\n     \"left\":  <感測器讀值 或 整數>,\n     \"right\": <感測器讀值 或 整數>\n   },\n   \"then\":[<指令...>],\n   \"else\":[<指令...>]}\n\n感測器讀值 (只能放在 condition.left / condition.right):\n- {\"command\":\"arduinoUltrasonic\",\"trigPin\":\"<0-39>\",\"echoPin\":\"<0-39>\"}\n    讀超音波距離 (cm)。**腳位用字串,對齊 Blockly 既有格式**\n\n- {\"command\":\"legoButton\",\"pin\":\"4\"}\n    讀取原始數位電位 0/1（INPUT_PULLUP）；按下對應值取決於接線，不自行假定。\n\n# 形狀重點 (重要!)\n- 不支援 while、until、repeat；持續判斷使用頂層 loop + if，不生成巢狀迴圈。\n- 指令總數（含 then/else）最多 64。\n- 超音波 timeout 回 -1，涉及距離門檻時應考慮無回波情況。\n- 動作指令用 `cmd:`、條件分支與感測器用 `command:` —— 不要混用\n- if 用 Blockly 既有的 condition + logic_compare 雙層巢狀,不要扁平化\n- operator 用 Blockly 字串代號:\n    LT  = less than (<)\n    GT  = greater than (>)\n    EQ  = equal (==)\n    NEQ = not equal (!=)\n    LTE = less than or equal (<=)\n    GTE = greater than or equal (>=)\n\n# 硬體限制\n- 馬達編號 1-4 (M1-M4)\n- 舵機通道 1-2,角度 0-180\n- 單個 delay 上限 10 秒;需要更久請拆多個\n- 超音波預設腳位 trigPin=\"2\" echoPin=\"33\" (使用者沒指定就用這組)\n\n# 動作分配的習慣\n- 一次性動作 → 全部放 setup，loop 留空；需要停止時最後加 stop。loop 永遠重複，stop 只停馬達、不會結束程式。\n- 週期性動作 → 放 loop 讓它循環\n- 初始化動作 → 放 setup\n- 感測器條件式 → 把整個 if 放 loop,loop 每 tick 重新讀感測器再判斷\n- 條件式後面加一個 100-200ms delay,避免無限空轉\n\n# 範例\n使用者: 讓馬達 1 前進 2 秒後停止\n回應:\n{\"mode\":\"PROG\",\"setup\":[{\"cmd\":\"pwm\",\"motor\":1,\"duty\":60},{\"cmd\":\"delay\",\"ms\":2000},{\"cmd\":\"stop\",\"motor\":1}],\"loop\":[]}\n\n使用者: 夾爪每秒開合一次\n回應:\n{\"mode\":\"PROG\",\"setup\":[{\"cmd\":\"servo\",\"ch\":1,\"deg\":47}],\"loop\":[{\"cmd\":\"servo\",\"ch\":1,\"deg\":138},{\"cmd\":\"delay\",\"ms\":1000},{\"cmd\":\"servo\",\"ch\":1,\"deg\":47},{\"cmd\":\"delay\",\"ms\":1000}]}\n\n使用者: 馬達 3 正轉、馬達 4 反轉,然後三秒後都停\n回應:\n{\"mode\":\"PROG\",\"setup\":[{\"cmd\":\"pwm\",\"motor\":3,\"duty\":70},{\"cmd\":\"pwm\",\"motor\":4,\"duty\":-70},{\"cmd\":\"delay\",\"ms\":3000},{\"cmd\":\"stop\"}],\"loop\":[]}\n\n使用者: 如果超音波低於 20 公分就讓馬達 1 停,否則讓馬達 1 前進\n回應:\n{\"mode\":\"PROG\",\"setup\":[],\"loop\":[{\"command\":\"if\",\"condition\":{\"command\":\"logic_compare\",\"operator\":\"LT\",\"left\":{\"command\":\"arduinoUltrasonic\",\"trigPin\":\"2\",\"echoPin\":\"33\"},\"right\":20},\"then\":[{\"cmd\":\"stop\",\"motor\":1}],\"else\":[{\"cmd\":\"pwm\",\"motor\":1,\"duty\":60}]},{\"cmd\":\"delay\",\"ms\":100}]}\n\n使用者: 超音波超過 30 公分時讓 M3 正轉,持續判斷\n回應:\n{\"mode\":\"PROG\",\"setup\":[],\"loop\":[{\"command\":\"if\",\"condition\":{\"command\":\"logic_compare\",\"operator\":\"GT\",\"left\":{\"command\":\"arduinoUltrasonic\",\"trigPin\":\"2\",\"echoPin\":\"33\"},\"right\":30},\"then\":[{\"cmd\":\"pwm\",\"motor\":3,\"duty\":70}],\"else\":[{\"cmd\":\"stop\",\"motor\":3}]},{\"cmd\":\"delay\",\"ms\":100}]}\n\n如果使用者的需求不合理 (例如指定不存在的馬達、超出範圍、語意不明),回傳一個空程式: {\"mode\":\"PROG\",\"setup\":[],\"loop\":[]}\n";
 
     // ---------- 狀態 ----------
     let source = localStorage.getItem(LS_SOURCE) || 'azure';
     let websocket = null;
-    const ALLOWED_CMDS = ['pwm', 'stop', 'servo', 'delay', 'move_to', 'zero'];
-    const ALLOWED_BLOCKLY_CMDS = ['if', 'while', 'until'];
+    const ALLOWED_CMDS = ['pwm', 'stop', 'servo', 'delay', 'move_to', 'move_by', 'speed', 'zero'];
+    const ALLOWED_BLOCKLY_CMDS = ['if'];
     const ALLOWED_READ_CMDS = ['arduinoUltrasonic', 'legoButton'];
     const ALLOWED_OPS = ['LT', 'GT', 'EQ', 'NEQ', 'LTE', 'GTE'];
     const MAX_COMMANDS = 64;
@@ -538,13 +443,14 @@ condition 固定格式:
           if (ce) errs.push(`${k}[${i}] ${ce}`);
         });
       });
-      const total = (obj.setup?.length || 0) + (obj.loop?.length || 0);
+      const total = countCommands(obj);
       if (total > MAX_COMMANDS) errs.push(`指令總數 ${total} > 上限 ${MAX_COMMANDS}`);
       return errs;
     }
 
     function validateCmd(c) {
       if (!c || typeof c !== 'object') return '不是物件';
+      if ('cmd' in c && 'command' in c) return 'cmd 與 command 不可同時出現';
       if (typeof c.cmd === 'string') {
         if (!ALLOWED_CMDS.includes(c.cmd)) return `未知 cmd "${c.cmd}"`;
         if (c.cmd === 'pwm') {
@@ -557,9 +463,12 @@ condition 固定格式:
           if (!Number.isInteger(c.deg) || c.deg < 0 || c.deg > 180) return 'servo.deg 必須 0-180';
         } else if (c.cmd === 'delay') {
           if (!Number.isInteger(c.ms) || c.ms < 0 || c.ms > 10000) return 'delay.ms 必須 0-10000';
-        } else if (c.cmd === 'move_to') {
+        } else if ((c.cmd === 'move_to' || c.cmd === 'move_by')) {
           if (!Number.isInteger(c.motor) || c.motor < 3 || c.motor > 4) return 'move_to.motor 必須 3 或 4（需有編碼器）';
-          if (!Number.isInteger(c.deg)) return 'move_to.deg 必須是整數（centi-deg，90°=9000）';
+          if (!Number.isInteger(c.deg) || c.deg < -2147483648 || c.deg > 2147483647) return 'move_to.deg 必須是整數（centi-deg，90°=9000）';
+        } else if (c.cmd === 'speed') {
+          if (!Number.isInteger(c.motor) || c.motor < 3 || c.motor > 4) return 'speed.motor 必須 3 或 4';
+          if (!Number.isInteger(c.rpm) || (c.rpm !== 0 && (c.rpm < 60 || c.rpm > 250))) return 'speed.rpm 必須 0 或 60..250';
         } else if (c.cmd === 'zero') {
           if (!Number.isInteger(c.motor) || c.motor < 3 || c.motor > 4) return 'zero.motor 必須 3 或 4';
         }
@@ -580,14 +489,7 @@ condition 固定格式:
             const e = validateCmd(c.else[i]);
             if (e) return `if.else[${i}] ${e}`;
           }
-        } else if (c.command === 'while' || c.command === 'until') {
-          const ce = validateCondition(c.condition);
-          if (ce) return `${c.command}.condition ${ce}`;
-          if (!Array.isArray(c.do)) return `${c.command}.do 必須是陣列`;
-          for (let i = 0; i < c.do.length; i++) {
-            const e = validateCmd(c.do[i]);
-            if (e) return `${c.command}.do[${i}] ${e}`;
-          }
+
         }
         return null;
       }
@@ -596,6 +498,7 @@ condition 固定格式:
 
     function validateCondition(c) {
       if (!c || typeof c !== 'object') return '不是物件';
+      if ('cmd' in c && 'command' in c) return 'cmd 與 command 不可同時出現';
       if (c.command !== 'logic_compare') return 'condition.command 必須是 logic_compare';
       if (!ALLOWED_OPS.includes(c.operator)) return `operator 必須是 ${ALLOWED_OPS.join('/')}`;
       const le = validateOperand(c.left);
@@ -608,14 +511,15 @@ condition 固定格式:
     function validateOperand(v) {
       if (typeof v === 'number' && Number.isInteger(v)) return null;
       if (v && typeof v === 'object' && typeof v.command === 'string') {
+        if ('cmd' in v) return 'cmd 與 command 不可同時出現';
         if (!ALLOWED_READ_CMDS.includes(v.command)) return `未知 read command "${v.command}"`;
         if (v.command === 'arduinoUltrasonic') {
-          const t = typeof v.trigPin === 'string' ? parseInt(v.trigPin, 10) : v.trigPin;
-          const e = typeof v.echoPin === 'string' ? parseInt(v.echoPin, 10) : v.echoPin;
+          const t = typeof v.trigPin === 'string' && /^[0-9]+$/.test(v.trigPin) ? Number(v.trigPin) : v.trigPin;
+          const e = typeof v.echoPin === 'string' && /^[0-9]+$/.test(v.echoPin) ? Number(v.echoPin) : v.echoPin;
           if (!Number.isInteger(t) || t < 0 || t > 39) return 'arduinoUltrasonic.trigPin 必須 0-39';
           if (!Number.isInteger(e) || e < 0 || e > 39) return 'arduinoUltrasonic.echoPin 必須 0-39';
         } else if (v.command === 'legoButton') {
-          const p = typeof v.pin === 'string' ? parseInt(v.pin, 10) : v.pin;
+          const p = typeof v.pin === 'string' && /^[0-9]+$/.test(v.pin) ? Number(v.pin) : v.pin;
           if (!Number.isInteger(p) || p < 0 || p > 39) return 'legoButton.pin 必須 0-39';
         }
         return null;

@@ -59,25 +59,24 @@ python config.py    # 快速設定工具
 ```
 main.cpp
   ├── jsonTask  ← WebSocket 接收 JSON 指令 → CommandProcessor
-  ├── ps4Task   ← PS4 藍芽輸入 → CommandProcessor
   └── serialTask ← USB 序列輸入（除錯用）
 
 CommandProcessor.h   ← 核心指令解析與馬達/舵機/感測器執行
   ├── MotorController.h   ← AFMotor 驅動，介面：pwmSigned(±100)
   ├── ServoController.h   ← ESP32Servo，S1(GPIO5) / S2(GPIO13)
   ├── EncoderHandler.h    ← ESP32 PCNT 硬體計數，M3/M4 有編碼器
-  └── PWMManager.h        ← 動態 LED/PWM 通道管理（最多 16 通道）
+  └── PWMManager.h        ← 一般 PWM 使用 timer 0 的 0/1/8/9 通道，避開馬達與舵機
 
 WebServerHandler.h   ← AsyncWebServer + WebSocket，HTTP API 端點
-ProgramStore.h       ← PROG JSON 存檔（LittleFS），支援自動執行
+ProgramStore.h       ← PROG JSON 存檔（NVS，含舊 LittleFS 遷移），支援自動執行
 CommandTranslator.h  ← 舊格式 command:"motor_control" → 新格式 cmd:"pwm"（相容層）
-PS4ControllerHandler.h / PS4SettingsManager.h  ← PS4 藍芽手把
+目前 main.cpp 無 PS4 任務；舊 PS4 描述不適用
 ```
 
 ### 前端層（data/）
 
 ```
-blockly.html  ← 頁面容器，載入以下三個 JS 模組
+blockly.html  ← 頁面容器，載入以下四個 JS 模組
   appBlock.js   (1) 積木 UI 定義（外觀、欄位、下拉選單）
   appIr.js      (2) IR Node 類別 + 積木→IR 翻譯器
   appJson.js    (3) workspace 遍歷 → IR 陣列
@@ -85,7 +84,7 @@ blockly.html  ← 頁面容器，載入以下三個 JS 模組
 
 joy.html + joy.js            ← 即時觸控搖桿 → cmd JSON
 hardware_test.html           ← 馬達/感測器硬體一鍵測試
-ai.html                      ← AI 自然語言輸入（接 ai-relay/ 服務）
+ai.html                      ← AI 自然語言輸入（直接 Azure；ai-relay/ 為選用獨立服務）
 set.html                     ← WiFi / AP / 管理員密碼設定
 ```
 
@@ -113,7 +112,7 @@ set.html                     ← WiFi / AP / 管理員密碼設定
 | `motor_zero` | `{ cmd:"zero", motor }` |
 | `servo_set` | `{ cmd:"servo", ch, deg }` |
 
-**舊格式積木**（`馬達`、`舵機`）保留為相容 shim，透過 `CommandTranslator` 轉換，新功能勿用。
+**舊格式積木**（`馬達`、`舵機`）保留為相容 shim，舊馬達 XML 直接轉 cmd，舊舵機／原始 command JSON 由相容解析器轉換，新功能勿用。
 
 > `move_to` 的 `deg` 欄位單位為「度 × 100」的整數（固定小數點），韌體端除以 100 還原。
 
@@ -138,16 +137,16 @@ set.html                     ← WiFi / AP / 管理員密碼設定
 ```json
 {"cmd": "pwm",      "motor": 1, "duty": 50}
 {"cmd": "speed",    "motor": 3, "rpm": 120}
-{"cmd": "move_to",  "motor": 3, "deg": 90}
-{"cmd": "move_by",  "motor": 4, "deg": -45}
-{"cmd": "servo",    "servo": 1, "deg": 90}
+{"cmd": "move_to",  "motor": 3, "deg": 9000}
+{"cmd": "move_by",  "motor": 4, "deg": -4500}
+{"cmd": "servo",    "ch": 1, "deg": 90}
 {"cmd": "stop",     "motor": 3}
 ```
 
 **PROG 程式（Blockly / AI 生成）：**
 ```json
 {
-  "type": "prog",
+  "mode": "PROG",
   "setup": [...],
   "loop":  [...]
 }
@@ -160,7 +159,7 @@ set.html                     ← WiFi / AP / 管理員密碼設定
 ## 關鍵設計約定
 
 - **PWM 單位（`duty` 欄位）**：JSON 指令用 ±100 簽號制，正值前進，負值後退；`pwmSigned()` 內部再映射至 AFMotor 的 0–255 硬體訊號。
-- **角度單位**：度（°），`TICKS_PER_DEGREE = 2.0`（因 48:1 減速比 × 360 PPR × 2X 解碼）。
+- **角度單位**：度（°），`TICKS_PER_DEGREE = 2.0`（輸出軸 360 PPR × 2X ÷ 360；PPR 已含減速比，不再乘 48）。
 - **馬達速度**：RPM，有效範圍 60–250。
 - **PID 預設**：Kp=2.0, Ki=0.0, Kd=0.1，可由 set.html 或 WebSocket API 即時調整。
 - **舊格式相容**：`CommandTranslator` 自動轉換，新功能一律使用新格式。

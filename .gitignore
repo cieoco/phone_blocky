@@ -24,6 +24,7 @@ __pycache__/
 *$py.class
 venv/
 .venv/
+.venv-check/
 
 # Claude Code local tooling
 .claude/

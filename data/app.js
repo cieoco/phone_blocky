@@ -134,19 +134,23 @@ function resetCode() {
 function resetAndGoHome() { resetCode(); setTimeout(() => location.href = 'index.html', 200); }
 
 function runBlocklyCode() {
-  const irNodes = parseWorkspaceToIR(workspace);
+  try {
+    const irNodes = parseWorkspaceToIR(workspace);
 
-  const payload = {
-    mode: 'PROG',
-    setup: irNodes.filter(n => n instanceof arduino_setupNode).map(n => n.toJson()),
-    loop: irNodes.filter(n => n instanceof arduino_loopNode).map(n => n.toJson())
-  };
+    const payload = {
+      mode: 'PROG',
+      setup: irNodes.filter(n => n instanceof arduino_setupNode).flatMap(n => n.body.map(cmd => cmd.toJson())),
+      loop: irNodes.filter(n => n instanceof arduino_loopNode).flatMap(n => n.body.map(cmd => cmd.toJson()))
+    };
 
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(payload));
-    appendSensorOutput("🚀 程式已傳送 (v1.3.1)");
-  } else {
-    appendSensorOutput("❌ 錯誤: WebSocket 未連線");
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(payload));
+      appendSensorOutput("🚀 程式已傳送 (v1.3.1)");
+    } else {
+      appendSensorOutput("❌ 錯誤: WebSocket 未連線");
+    }
+  } catch (e) {
+    appendSensorOutput(`❌ 無法執行: ${e.message}`);
   }
 }
 
@@ -161,8 +165,8 @@ function buildProgPayload() {
   const irNodes = parseWorkspaceToIR(workspace);
   const json = {
     mode: 'PROG',
-    setup: irNodes.filter(n => n instanceof arduino_setupNode).map(n => n.toJson()),
-    loop:  irNodes.filter(n => n instanceof arduino_loopNode).map(n => n.toJson())
+    setup: irNodes.filter(n => n instanceof arduino_setupNode).flatMap(n => n.body.map(cmd => cmd.toJson())),
+    loop:  irNodes.filter(n => n instanceof arduino_loopNode).flatMap(n => n.body.map(cmd => cmd.toJson()))
   };
   return { json, xml: xmlText, source: 'blockly' };
 }

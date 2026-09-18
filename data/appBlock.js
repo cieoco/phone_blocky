@@ -137,7 +137,7 @@ Blockly.Blocks['arduino_delay'] = {
     this.setPreviousStatement(true, null);
     this.setNextStatement(true, null);
     this.setColour(290);
-    this.setTooltip("延遲指定的毫秒數");
+    this.setTooltip("延遲 0–10000 毫秒；較長等待請拆成多個積木。");
     this.setHelpUrl("");
   }
 };
@@ -207,7 +207,7 @@ Blockly.Blocks['controls_repeat_ext'] = {
     this.setPreviousStatement(true, null);
     this.setNextStatement(true, null);
     this.setColour(210);
-    this.setTooltip("重複執行指定次數");
+    this.setTooltip("舊版積木：目前不支援 repeat，執行前請移除，使用頂層 loop。");
     this.setHelpUrl("");
   }
 };
@@ -223,7 +223,7 @@ Blockly.Blocks['controls_whileUntil'] = {
     this.setPreviousStatement(true, null);
     this.setNextStatement(true, null);
     this.setColour(210);
-    this.setTooltip("當條件為 true 時重複執行 do 區塊");
+    this.setTooltip("舊版積木：目前不支援 while/until，執行前請移除，使用頂層 loop + if。");
   }
 };
 

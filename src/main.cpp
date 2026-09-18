@@ -163,7 +163,7 @@ void setup() {
   Serial.println("[初始化] Web 伺服器...");
   webServerHandler.begin();
 
-  // 開機 autorun:若 LittleFS 有存檔且 autorun flag 開,自動載入並執行
+  // 開機 autorun:若 NVS 有存檔且 autorun flag 開,自動載入並執行
   webServerHandler.runAutorunProgramIfEnabled();
 
   // 建立一個新任務，將 JSON 處理工作分配給 core1

@@ -351,12 +351,26 @@ void WebServerHandler::handleProgramPost(AsyncWebServerRequest *request,
   String progJsonStr;
   serializeJson(doc["json"], progJsonStr);
 
+  // Use the execution parser without staging or running any commands.
+  // Match its JSON capacity so a saved program can actually be loaded.
+  DynamicJsonDocument executable(16384);
+  std::vector<BlocklyCommand> parsedSetup, parsedLoop;
+  if (deserializeJson(executable, progJsonStr) || executable.overflowed() ||
+      !executable["setup"].is<JsonArrayConst>() ||
+      !executable["loop"].is<JsonArrayConst>() ||
+      !cmdProcessor.parseCommandArray(executable["setup"].as<JsonArrayConst>(), parsedSetup) ||
+      !cmdProcessor.parseCommandArray(executable["loop"].as<JsonArrayConst>(), parsedLoop)) {
+    request->send(400, "application/json",
+                  "{\"ok\":false,\"error\":\"unsupported_or_invalid_program_command\"}");
+    return;
+  }
+
   String xmlStr = doc["xml"] | "";
   String source = doc["source"] | "unknown";
 
   if (!ProgramStore::save(progJsonStr, xmlStr, source)) {
     request->send(500, "application/json",
-                  "{\"ok\":false,\"error\":\"littlefs write failed\"}");
+                  "{\"ok\":false,\"error\":\"nvs write failed\"}");
     return;
   }
 
