@@ -14,6 +14,7 @@ from __future__ import annotations
 import sys
 import os
 import json
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -46,6 +47,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+import serial
 
 from chart_widget import MotorChartWidget
 from serial_worker import SerialWorker
@@ -106,6 +108,12 @@ class MotorTuner(QMainWindow):
         self._compact_cards = None
         self.flash_process: QProcess | None = None
         self._pending_flash_args: list[str] | None = None
+        self._ap_capture: serial.Serial | None = None
+        self._ap_capture_buffer = ""
+        self._ap_capture_deadline = 0.0
+        self._ap_capture_timer = QTimer(self)
+        self._ap_capture_timer.setInterval(100)
+        self._ap_capture_timer.timeout.connect(self._poll_ap_identity_capture)
         self._autotune_active = False
         self._autotune_ctx: dict | None = None
         self._autotune_samples: list[tuple[float, float]] = []
@@ -306,6 +314,7 @@ class MotorTuner(QMainWindow):
             self.flash_paths[name].setText(path)
 
     def _start_flash(self):
+        self._stop_ap_identity_capture()
         if self.flash_process and self.flash_process.state() != QProcess.ProcessState.NotRunning:
             self._flash_log("燒錄仍在執行中")
             return
@@ -406,6 +415,9 @@ class MotorTuner(QMainWindow):
             return
         if exit_code == 0:
             self._flash_log("燒錄完成，請重新啟動 ESP32")
+            port = self._current_serial_port()
+            if port:
+                QTimer.singleShot(250, lambda: self._start_ap_identity_capture(port))
         else:
             self._flash_log(f"燒錄失敗，exit code={exit_code}")
         self._pending_flash_args = None
@@ -421,6 +433,61 @@ class MotorTuner(QMainWindow):
     def _set_flash_idle(self):
         self.btn_flash_start.setEnabled(True)
         self.btn_flash_stop.setEnabled(False)
+
+    def _start_ap_identity_capture(self, port: str):
+        """Read the boot log after esptool resets the board and show its AP identity."""
+        if self.serial.is_connected():
+            return
+        self._stop_ap_identity_capture()
+        try:
+            self._ap_capture = serial.Serial(port, 115200, timeout=0, write_timeout=0)
+            self._ap_capture.dtr = False
+            self._ap_capture.rts = False
+        except (serial.SerialException, OSError) as exc:
+            self._flash_log(f"無法讀取 AP MAC：{exc}")
+            return
+        self._ap_capture_buffer = ""
+        self._ap_capture_deadline = time.monotonic() + 10.0
+        self._ap_capture_timer.start()
+        self._flash_log("正在讀取 ESP32 重啟資訊與 AP MAC…")
+
+    def _poll_ap_identity_capture(self):
+        if not self._ap_capture:
+            self._stop_ap_identity_capture()
+            return
+        try:
+            waiting = self._ap_capture.in_waiting
+            if waiting:
+                self._ap_capture_buffer += self._ap_capture.read(waiting).decode(
+                    "utf-8", errors="ignore"
+                )
+        except (serial.SerialException, OSError) as exc:
+            self._flash_log(f"讀取 AP MAC 失敗：{exc}")
+            self._stop_ap_identity_capture()
+            return
+
+        name = re.search(r"AP 啟動成功 - Name:\s*(.+)", self._ap_capture_buffer)
+        mac = re.search(r"AP MAC:\s*([0-9A-Fa-f:]{17})", self._ap_capture_buffer)
+        if name and mac:
+            self._flash_log(f"✓ AP 熱點名稱：{name.group(1).strip()}")
+            self._flash_log(f"✓ AP MAC：{mac.group(1).upper()}")
+            self._flash_log("請在控制板貼上熱點名稱，方便多人同時連線時辨識。")
+            self._stop_ap_identity_capture()
+            return
+
+        if time.monotonic() >= self._ap_capture_deadline:
+            self._flash_log("未讀到 AP MAC；請確認控制板已重啟後再試。")
+            self._stop_ap_identity_capture()
+
+    def _stop_ap_identity_capture(self):
+        self._ap_capture_timer.stop()
+        if self._ap_capture:
+            try:
+                self._ap_capture.close()
+            except (serial.SerialException, OSError):
+                pass
+        self._ap_capture = None
+        self._ap_capture_buffer = ""
 
     def _flash_log(self, text: str):
         if not text:
@@ -1287,6 +1354,7 @@ class MotorTuner(QMainWindow):
         if self.active.is_connected():
             self.active.disconnect_ws() if self.active is self.ws else self.active.disconnect_serial()
             return
+        self._stop_ap_identity_capture()
         if self.active is self.ws:
             ip = self.ip_edit.text().strip()
             if not ip:
@@ -1982,6 +2050,7 @@ class MotorTuner(QMainWindow):
         self.log.appendPlainText(msg)
 
     def closeEvent(self, event):
+        self._stop_ap_identity_capture()
         if self.flash_process and self.flash_process.state() != QProcess.ProcessState.NotRunning:
             self.flash_process.kill()
             self.flash_process.waitForFinished(1000)
