@@ -71,7 +71,7 @@ SYSTEM_PROMPT = """你是 phone_blocky JSON generator。
 - 一次性動作 → 全部放 setup，loop 留空；需要停止時最後加 stop。loop 永遠重複，stop 只停馬達、不會結束程式。
 - 週期性動作 → 放 loop 讓它循環
 - 初始化動作 → 放 setup
-- 感測器條件式 → 把整個 if 放 loop,loop 每 tick 重新讀感測器再判斷
+- 感測器條件式 → 把整個 if 放 loop，每次輪到該 if 時重新讀感測器再判斷；每個 tick 只執行一條頂層指令
 - 條件式後面加一個 100-200ms delay,避免無限空轉
 
 # 範例

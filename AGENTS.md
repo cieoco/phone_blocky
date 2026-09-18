@@ -160,7 +160,7 @@ set.html                     ← WiFi / AP / 管理員密碼設定
 
 - **PWM 單位（`duty` 欄位）**：JSON 指令用 ±100 簽號制，正值前進，負值後退；`pwmSigned()` 內部再映射至 AFMotor 的 0–255 硬體訊號。
 - **角度單位**：度（°），`TICKS_PER_DEGREE = 2.0`（輸出軸 360 PPR × 2X ÷ 360；PPR 已含減速比，不再乘 48）。
-- **馬達速度**：RPM，有效範圍 60–250。
+- **馬達速度**：RPM；Blockly 提供正向 60–250，AI 子集另允許 0 停止。底層 direct 指令保留帶符號浮點 RPM，PROG 以整數解析，兩者未硬性限制 60–250；詳見 schema 的 speed 一節。
 - **PID 預設**：Kp=2.0, Ki=0.0, Kd=0.1，可由 set.html 或 WebSocket API 即時調整。
 - **舊格式相容**：`CommandTranslator` 自動轉換，新功能一律使用新格式。
 - **硬體設定單一真相**：`include/config.h`（腳位/常數）和 `data/hw_config.json`（前端元資料）需同步。

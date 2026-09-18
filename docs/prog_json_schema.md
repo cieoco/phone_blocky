@@ -20,6 +20,23 @@
 - 一次性動作全部放 `setup`，`loop: []`；`stop` 只停馬達，**不會終止 loop**。
 - 新 Blockly 輸出扁平陣列；韌體仍接受舊 `{command:"arduino_setup"|"arduino_loop", body:[...]}` 包裝。
 
+## 即時控制路由與單位
+
+`processCommands()` 先判斷 mode，再進入各自的解析器。以下封裝不能只按欄位名稱互換：
+
+| 來源／路由 | 例子 | 單位與相容性 |
+|---|---|---|
+| Blockly／AI PROG | `{mode:"PROG",setup:[],loop:[]}` | `type:"prog"` 不是支援的別名；不要用它代替 mode |
+| 即時舵機 `executeDirectCommand` | `{cmd:"servo",ch:2,deg:90}` | 舵機角度為度，不乘 100；joy.html 的滑桿使用此格式 |
+| 即時定位 `executeDirectCommand` | `{cmd:"move_to",motor:3,deg:9000}` | 馬達角度為度×100，與 PROG 相同 |
+| 搖桿 `mode:"joy"` | `{mode:"joy",Button1:1,Action3:2,M3A:90}`（片段） | M3A/M4A 是度；`updateJoyPositionTarget` 乘 100。進入角度模式／按鈕由 OFF→ON 時會歸零，不能當作 direct move_to 的無狀態替代 |
+| 搖桿 M3/M4 PWM | `{cmd:"pwm",motor:3,duty:-60}` 或 joy 封裝的 M3/M4 | ±100 百分比；Action3/4=1 且 Button1/2=1 時使用 joy 的值 |
+| 硬體測試舵機 `handleHardwareTest` | `{mode:"hardwareTest",test:"servoTest",servo:2,angle:90}` | servo/angle 為既有欄位；此路由也接受 ch/deg，回應為 servoAck + servo/angle |
+| 硬體測試馬達 `handleHardwareTest` | `{mode:"hardwareTest",type:"motorControl",motor:"M3",speed:-255}` | speed 為帶方向的原始 PWM ±255，不是 cmd:pwm 的 ±100；motor 是 M1..M4 字串 |
+| 舊直接舵機相容層 | `{command:"servo_control",servo:"2",angle:"90"}` | 由 CommandTranslator 轉成 cmd:servo/ch/deg；PROG 內由 parseCommandArray 接受 |
+
+`data/joy.js` 提供搖桿元件，真正封裝／發送命令在 `data/joy.html`；硬體測試的 `sendCommand()` 會加入 `mode:"hardwareTest"`。`servo` 與 `ch` 不是所有路由都通用的同義欄位。
+
 ## 指令(cmd)
 
 每個指令是一個物件,以 `cmd` 字串選擇類型,其他鍵依類型而定。
@@ -78,7 +95,15 @@
 | 欄位    | 型別 | 範圍     | 說明                              |
 |--------|------|----------|-----------------------------------|
 | motor  | int  | 3..4     | 僅 M3/M4 有編碼器                  |
-| rpm    | int  | 60..250  | 目標轉速;`0` 視為停止              |
+| rpm    | number | 依入口，見下方 | 目標轉速；0 視為停止 |
+
+速度範圍依入口區分（保留既有韌體能力）：
+
+- Blockly 的 `motor_speed` 欄位提供正向整數 60..250 RPM；停止使用 stop 積木。
+- AI 頁面與 relay 子集接受整數 60..250 或 0；不生成負 RPM。
+- 底層直接 `cmd:"speed"` 接受帶正負號的浮點 RPM，沒有硬編碼的 60..250 範圍檢查；絕對值小於 0.01 視為停止。
+- 韌體 PROG 的 `cmd:"speed"` 以整數解析，保留負值與範圍外值的既有相容性；0 停止。不要把直接指令支援的小數精度套用到 PROG。
+- 「可接受的指令值」不代表馬達一定能達到該速度；實際可用範圍由馬達、供電與調校決定，待實機驗證。本輪不新增韌體限速或擴充 UI／AI 可選範圍。
 
 ### `zero` — 重設角度零點
 
