@@ -30,17 +30,78 @@ const value = s => JSON.parse(JSON.stringify(vm.runInContext(s, context)));
 assert.deepEqual(value('new MotorPositionNode("3", 90).toJson()'), {cmd:'move_to',motor:3,deg:9000});
 assert.deepEqual(value('new MotorMoveByNode("4", -45.25).toJson()'), {cmd:'move_by',motor:4,deg:-4525});
 assert.deepEqual(value('new MotorPwmNode("1", "BACKWARD", 60).toJson()'), {cmd:'pwm',motor:1,duty:-60});
-assert.deepEqual(value('new MotorNode("1", "BACKWARD", 60).toJson()'), {cmd:'pwm',motor:1,duty:-60});
-assert.deepEqual(value('new ServoNode("2", "90").toJson()'), {command:'servo_control',servo:'2',angle:'90'});
+// Old 「馬達」/「舵機」 blocks were removed (2026-10-09); they are now unknown blocks.
+assert.throws(() => value(`getTranslator('馬達')({type:'馬達'})`), /不支援的積木/);
+assert.throws(() => value(`getTranslator('舵機')({type:'舵機'})`), /不支援的積木/);
 assert.deepEqual(value('new DelayNode("1000").toJson()'), {cmd:'delay',ms:1000});
 assert.throws(() => value('new DelayNode("oops").toJson()'));
-assert.throws(() => value('translateRepeat({})'));
-assert.throws(() => value('translateWhile({})'));
+// Loops: repeat / while translate to firmware shapes; nesting is capped at MAX_BLOCK_DEPTH (8).
 vm.runInContext(`
-    const motor = {type:'motor_position',getFieldValue:n=>({MOTOR:'3',DEG:90})[n],getNextBlock:()=>null};
+    var fakeBlock = (type, fields, inputs) => ({type, getFieldValue: n => fields[n],
+        getInputTargetBlock: n => inputs[n] || null, getNextBlock: () => null});
+    var delay10 = () => fakeBlock('arduino_delay', {}, {});
+`, context);
+assert.deepEqual(value('new RepeatNode(new MathNumberNode(3), [new DelayNode("100")]).toJson()'),
+    {command:'repeat', times:{command:'math_number', number:3}, do:[{cmd:'delay', ms:100}]});
+assert.deepEqual(value('new WhileNode(new LogicBooleanNode("TRUE"), [], "UNTIL").toJson()'),
+    {command:'while', mode:'UNTIL', condition:{command:'logic_boolean', value:true}, do:[]});
+assert.deepEqual(value(`translateRepeat(fakeBlock('controls_repeat_ext', {}, {
+        TIMES: fakeBlock('math_number', {NUM: 5}, {}),
+        DO: fakeBlock('motor_stop', {MOTOR: '1'}, {})})).toJson()`),
+    {command:'repeat', times:{command:'math_number', number:5}, do:[{cmd:'stop', motor:1}]});
+assert.deepEqual(value(`translateWhile(fakeBlock('controls_whileUntil', {MODE: 'WHILE'}, {
+        BOOL: fakeBlock('logic_boolean', {BOOL: 'TRUE'}, {})})).toJson()`),
+    {command:'while', mode:'WHILE', condition:{command:'logic_boolean', value:true}, do:[]});
+assert.throws(() => value(`translateRepeat(fakeBlock('controls_repeat_ext', {}, {}))`), /次數/);
+assert.throws(() => value(`translateWhile(fakeBlock('controls_whileUntil', {MODE: 'WHILE'}, {}))`), /條件/);
+vm.runInContext(`
+    var nestRepeat = n => n === 0 ? new DelayNode("10")
+        : new RepeatNode(new MathNumberNode(2), [nestRepeat(n - 1)]);
+    var setupWith = node => Object.assign(Object.create(arduino_setupNode.prototype), {body: [node]});
+`, context);
+assert.equal(value('progNestingDepth([nestRepeat(3).toJson()])'), 3);
+assert.equal(value('progNestingDepth([new IfNode(null, [], []).toJson()])'), 1);
+assert.equal(value('buildProgJson([setupWith(nestRepeat(8))]).setup.length'), 1);
+assert.throws(() => value('buildProgJson([setupWith(nestRepeat(9))])'), /最多 8 層/);
+vm.runInContext(`
+    const deg90 = {type:'math_number',getFieldValue:n=>({NUM:90})[n]};
+    const motor = {type:'motor_position',getFieldValue:n=>({MOTOR:'3'})[n],
+        getInputTargetBlock:n=>({DEG:deg90})[n]||null,getNextBlock:()=>null};
     const setup = {type:'arduino_setup',getParent:()=>null,getInputTargetBlock:()=>motor,getNextBlock:()=>null};
     workspace = {getTopBlocks:()=>[setup]};
     Blockly = {Xml:{workspaceToDom:()=>null,domToText:()=>'<xml/>'}};
 `, context);
 assert.deepEqual(value('buildProgPayload().json'), {mode:'PROG',setup:[{cmd:'move_to',motor:3,deg:9000}],loop:[]});
-console.log('Frontend syntax, IR units, legacy shapes, flat payload, and unsupported loops: PASS');
+// Value slots: constants keep the old JSON (range-checked); expressions go to the firmware as objects.
+vm.runInContext('var vx = new VariableGetNode("x");', context);
+const vxJson = value('vx.toJson()');
+assert.deepEqual(value('new MotorPwmNode("1", "BACKWARD", vx).toJson()'),
+    {cmd:'pwm', motor:1, duty:{command:'math_arithmetic', operator:'MULTIPLY', left:vxJson, right:-1}});
+assert.deepEqual(value('new MotorPwmNode("2", "FORWARD", vx).toJson()'), {cmd:'pwm', motor:2, duty:vxJson});
+assert.deepEqual(value('new MotorPwmNode("2", "STOP", vx).toJson()'), {cmd:'stop', motor:2});
+assert.deepEqual(value('new MotorPositionNode("3", vx).toJson()'),
+    {cmd:'move_to', motor:3, deg:{command:'math_arithmetic', operator:'MULTIPLY', left:vxJson, right:100}});
+assert.deepEqual(value('new ServoSetNode("1", vx).toJson()'), {cmd:'servo', ch:1, deg:vxJson});
+assert.deepEqual(value('new ServoSetNode("1", 45).toJson()'), {cmd:'servo', ch:1, deg:45});
+assert.deepEqual(value('new MotorSpeedNode("4", vx).toJson()'), {cmd:'speed', motor:4, rpm:vxJson});
+assert.deepEqual(value('new DelayNode(vx).toJson()'), {cmd:'delay', ms:vxJson});
+assert.throws(() => value('new MotorPwmNode("1", "FORWARD", 150).toJson()'), /馬達動力/);
+assert.throws(() => value('new ServoSetNode("1", 200).toJson()'), /舵機角度/);
+assert.throws(() => value('new MotorSpeedNode("3", 30).toJson()'), /轉速/);
+assert.throws(() => value(`translateMotorPwm(fakeBlock('motor_pwm', {MOTOR:'1', DIRECTION:'FORWARD'}, {}))`), /沒有放數值/);
+assert.equal(value(`translateMotorPwm(fakeBlock('motor_pwm', {MOTOR:'1', DIRECTION:'FORWARD'},
+    {PWM: fakeBlock('math_number', {NUM: 70}, {})})).toJson().duty`), 70);
+// AND / OR
+assert.deepEqual(value('new LogicOperationNode("OR", new LogicBooleanNode("TRUE"), vx).toJson()'),
+    {command:'logic_operation', operator:'OR', left:{command:'logic_boolean', value:true}, right:vxJson});
+assert.throws(() => value(`translateLogicOperation(fakeBlock('logic_operation', {OP:'AND'}, {}))`), /且／或/);
+// Unknown blocks fail loudly; blocks outside setup/loop are counted, not translated
+assert.throws(() => value(`getTranslator('mystery_block')({type:'mystery_block'})`), /不支援的積木/);
+vm.runInContext(`
+    var strayRepeat = fakeBlock('controls_repeat_ext', {}, {});   // incomplete, would throw if translated
+    strayRepeat.getParent = () => null;
+    var setupOnly = {type:'arduino_setup',getParent:()=>null,getInputTargetBlock:()=>null,getNextBlock:()=>null};
+    workspace = {getTopBlocks:()=>[setupOnly, strayRepeat]};
+`, context);
+assert.equal(value('parseWorkspaceToIR(workspace).strayBlocks'), 1);
+console.log('Frontend syntax, IR units, legacy shapes, flat payload, loops, nesting limit, value slots, AND/OR, unknown/stray blocks: PASS');

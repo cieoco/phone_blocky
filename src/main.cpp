@@ -169,7 +169,7 @@ void setup() {
   // 建立一個新任務，將 JSON 處理工作分配給 core1
   xTaskCreatePinnedToCore(jsonTask,   // 任務函式
                           "JSONTask", // 任務名稱
-                          8192,       // 堆疊大小
+                          12288,      // 堆疊大小（巢狀 if/repeat/while 每層一次遞迴，最多 8 層）
                           NULL,       // 傳入參數
                           2,          // 任務優先權
                           NULL, // 任務句柄（不需要時可設為 NULL）

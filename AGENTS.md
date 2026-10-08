@@ -141,11 +141,34 @@ hw_config.json        ← 前端硬體元資料
 | `motor_zero` | `{ cmd:"zero", motor }` |
 | `servo_set` | `{ cmd:"servo", ch, deg }` |
 
-其餘積木：`arduino_setup/loop`、`arduino_delay`、`controls_if/repeat_ext/whileUntil`、`logic_*`、`math_*`、
+**流程控制積木**（容器，可互相包，**最多 8 層**）：
+
+| 積木名稱 | 生成 JSON |
+|----------|-----------|
+| `controls_if` | `{ command:"if", condition, then:[...], else:[...] }` |
+| `controls_repeat_ext` | `{ command:"repeat", times:<值>, do:[...] }` ← 次數進入時求值一次 |
+| `controls_whileUntil` | `{ command:"while", mode:"WHILE"\|"UNTIL", condition, do:[...] }` ← 每圈重新判斷 |
+
+層數上限三處需一致：韌體 `PROG_MAX_BLOCK_DEPTH`（CommandProcessor.h）、前端 `MAX_BLOCK_DEPTH`（app.js）、
+`platformio.ini` 的 `ARDUINOJSON_DEFAULT_NESTING_LIMIT=32`（每層積木佔 2 層 JSON，拿掉會退回只剩 3 層）。
+容器同步執行；`delay` 與每圈迴圈經 `programYield()` 讓出 CPU 並維持 10ms 控制節拍，新程式到達時全部跳出。
+**不要在 `programYield()` 裡呼叫 WebSocket 逾時檢查**：Blockly 頁沒有心跳，會提早停掉正常的延遲動作。
+AI 子集（`prompts.py` / `schema.py` / `ai.html`）目前不產生迴圈。
+
+其餘積木：`arduino_setup/loop`、`arduino_delay`、`logic_*`（含 `logic_operation` 且／或）、`math_*`、
 `arduino_ultrasonic`、`lego_button`、`arduino_digitalRead/Write`、`arduino_analogRead/Write`、`arduino_pinMode`、
 `arduino_millis`、`arduino_serial_println`、`message_print`、`plot_print`。
 
-**舊格式積木**（`馬達`、`舵機`）保留為相容 shim，舊馬達 XML 直接轉 cmd，舊舵機／原始 command JSON 由相容解析器轉換，新功能勿用。
+**數值插槽**：上表積木的動力／角度／RPM，以及延遲毫秒，都是可接積木的插槽（預設放數字積木）。
+只放數字時輸出整數常數（前端檢查範圍，JSON 與舊版相同）；接變數／算式時輸出表達式物件，由韌體
+`parseNumericArg` / `numericArg` 在執行時求值並夾限。舊存檔（數值是 field）載入時由 `app.js`
+的 `upgradeLegacyXml` 轉成插槽，新增這類積木時要一併登記到 `LEGACY_NUMBER_FIELDS`。
+
+**不默默略過積木**：`getTranslator` 遇到不認得的積木會丟出錯誤；沒接在 setup／loop 裡的積木
+不翻譯，只在執行／存檔時顯示「有 N 個積木不會執行」。新增積木時務必在 `getTranslator` 登記。
+
+舊版「馬達」「舵機」積木已於 2026-10-09 刪除（不需讀取舊程式），含此兩積木的舊 XML 無法載入。
+韌體端的舊 JSON 相容層（`CommandTranslator`、`motor_control` / `servo_control`）仍保留。
 
 > `move_to` 與 `move_by` 的 `deg` 欄位單位均為「度 × 100」的整數（固定小數點），韌體端除以 100 還原。
 >

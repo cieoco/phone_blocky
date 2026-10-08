@@ -16,7 +16,7 @@
 - `setup` 與 `loop` 皆為陣列；可空但必須存在
 - `setup` 只在程式載入時跑一次
 - `loop` 內元素依序執行,跑完最後一個會回到第一個 (見 `CommandProcessor::executeLoopCommands`)
-- 巢狀動作僅限 `if.then` / `if.else`；不支援 `while` / `until` / `repeat`。舊 XML 可讀取，但含這些積木時無法執行或存成可執行程式。
+- 巢狀容器為 `if`（then/else）、`repeat`、`while`（do），可互相包，**最多 8 層**（韌體 `PROG_MAX_BLOCK_DEPTH`，前端 `MAX_BLOCK_DEPTH`）。超過時前端擋下、韌體回 `nesting_too_deep`。AI 子集目前不產生迴圈。
 - 一次性動作全部放 `setup`，`loop: []`；`stop` 只停馬達，**不會終止 loop**。
 - 新 Blockly 輸出扁平陣列；韌體仍接受舊 `{command:"arduino_setup"|"arduino_loop", body:[...]}` 包裝。
 
@@ -38,6 +38,12 @@
 `data/joy.js` 提供搖桿元件，真正封裝／發送命令在 `data/joy.html`；硬體測試的 `sendCommand()` 會加入 `mode:"hardwareTest"`。`servo` 與 `ch` 不是所有路由都通用的同義欄位。
 
 ## 指令(cmd)
+
+> **數值參數可用表達式（Blockly 延伸）**：`pwm.duty`、`servo.deg`、`move_to.deg`、`move_by.deg`、`speed.rpm`、`delay.ms`
+> 除了整數常數，也可以是數值表達式物件（`variable_get`、`math_arithmetic`、感測器讀值…），韌體在**執行到該指令時**求值。
+> 例：`{"cmd":"servo","ch":1,"deg":{"command":"math_arithmetic","operator":"MULTIPLY","left":{"command":"variable_get","variableName":"i"},"right":10}}`。
+> 表達式結果由韌體夾限：duty ±100、servo 0–180、delay 負值視為 0；`move_to/move_by` 的表達式需自行 ×100（Blockly 會自動包一層 ×100）。
+> Blockly 在插槽裡只放數字時仍輸出整數常數（並在前端檢查範圍），與舊格式相同。AI 子集只用常數。
 
 每個指令是一個物件,以 `cmd` 字串選擇類型,其他鍵依類型而定。
 
@@ -180,8 +186,42 @@
 
 - **動作指令用 `cmd:`、if/感測器用 `command:`** — 兩種 key 在同一個程式裡可混用,parser 會自動分辨
 - 每次輪到這個 `if` 指令時重新讀 sensor、重新判斷；不是所有 if 在每個 tick 同時執行
-- `then` / `else` 內可再放 `if`,但建議不要超過 2 層,韌體記憶體有限
+- `then` / `else` 內可再放 `if` / `repeat` / `while`，與迴圈合計最多 8 層
 - 韌體執行單一 `if` 整支跑完 (同步) 才會回到 loop 排程
+
+### `repeat` — 重複 N 次（Blockly 延伸，AI 不產生）
+
+```json
+{ "command": "repeat", "times": { "command": "math_number", "number": 3 },
+  "do": [ { "cmd": "servo", "ch": 1, "deg": 30 }, { "cmd": "delay", "ms": 500 } ] }
+```
+
+| 欄位 | 型別 | 說明 |
+|------|------|------|
+| times | object \| int | 數值表達式（常數、變數、感測器、算式）；**進入迴圈時求值一次**，≤0 不執行 |
+| do | array | 迴圈本體，必填（可空） |
+
+### `while` — 當／直到重複（Blockly 延伸，AI 不產生）
+
+```json
+{ "command": "while", "mode": "WHILE",
+  "condition": { "command": "logic_compare", "operator": "GT",
+                 "left": { "command": "arduinoUltrasonic", "trigPin": "2", "echoPin": "33" }, "right": 20 },
+  "do": [ { "cmd": "pwm", "motor": 1, "duty": 60 }, { "cmd": "delay", "ms": 50 } ] }
+```
+
+| 欄位 | 型別 | 說明 |
+|------|------|------|
+| mode | string | `WHILE`：條件成立就繼續；`UNTIL`：條件成立就停止。省略視為 `WHILE` |
+| condition | object \| int | 條件表達式，**每圈開頭重新求值** |
+| do | array | 迴圈本體，必填（可空） |
+
+迴圈執行規則（`CommandProcessor` 的 `CMD_REPEAT` / `CMD_WHILE`）：
+
+- 同步執行：迴圈與其本體整段跑完才回到頂層 loop 排程，與 `if` 相同。本體內指令連續執行，**不像頂層 loop 每 10 ms 一條**；需要間隔請放 `delay`。
+- 每圈結束呼叫 `programYield()`：讓出 CPU、約每 10 ms 跑一次角度／速度控制（M3/M4 保持照常）。空迴圈不會卡死板子。
+- 新 PROG 到達（含按「停止」送出的空程式）時，各層迴圈立即跳出，與 `delay` 相同。
+- 條件永遠成立的 `while` 不會自行結束，迴圈後面的指令也不會執行；要持續判斷但仍能往下跑，請改用頂層 loop + if。
 
 ### `digitalWrite` / `analogWrite` — GPIO (進階,AI 預設不產生)
 
@@ -298,7 +338,7 @@ AI 子集不是整個 Blockly 語言。Blockly 比較的數字積木會輸出 `{
 | `pinMode` | pin、mode（INPUT／OUTPUT／INPUT_PULLUP） |
 | `digitalWrite` / `analogWrite` | pin + state（HIGH／LOW）或 value（0..255） |
 | `delay`（舊） | delayTime；新 Blockly 輸出 cmd:delay/ms |
-| `motor_control`（舊） | motor、direction（F/B/R）、speed（0..255）；舊 XML 的「馬達」積木自身使用 0..100 並轉 cmd:pwm |
+| `motor_control`（舊） | motor、direction（F/B/R）、speed（0..255）；（Blockly 舊「馬達」積木已刪除，此格式僅供舊 JSON 相容） |
 | `servo_control`（舊） | servo、angle；新格式為 cmd:servo/ch/deg |
 | `serial_println` / `message_print` | content 數值表達式；分別輸出序列／網頁訊息 |
 | `plot_print` | series、unit、value 數值表達式 |
@@ -306,10 +346,11 @@ AI 子集不是整個 Blockly 語言。Blockly 比較的數字積木會輸出 `{
 | `math_number` / `variable_get` | number / variableName |
 | `math_arithmetic` | operator（ADD/MINUS/MULTIPLY/DIVIDE）、left、right；整數運算 |
 | `logic_boolean` / `logic_negate` | value 布林 / content 表達式 |
+| `logic_operation` | operator（AND／OR）、left、right；短路求值（AND 左邊不成立、OR 左邊成立就不讀右邊） |
 | `logic_compare` | operator、left、right；可巢狀數值表達式 |
 | `digitalRead` / `analogRead` / `legoButton` | pin |
 | `arduinoUltrasonic` / `arduino_millis` | trigPin、echoPin / 無參數 |
 
-韌體保留舊數字字串與預設值相容性，並非完整的 AI 嚴格驗證器。未知動作、非法馬達／舵機 ID、未支援迴圈會拒絕整份 PROG（`unsupported_or_invalid_program_command`），不取代正在執行的程式。缺 setup/loop 陣列回 `invalid_program_arrays`。若需要停止舊程式，送出完整空 PROG。
+韌體保留舊數字字串與預設值相容性，並非完整的 AI 嚴格驗證器。未知動作、非法馬達／舵機 ID、缺欄位的迴圈會拒絕整份 PROG（`unsupported_or_invalid_program_command`）；巢狀超過 8 層回 `nesting_too_deep`；兩者都不取代正在執行的程式。JSON 解析深度由 `platformio.ini` 的 `ARDUINOJSON_DEFAULT_NESTING_LIMIT=32` 放寬（預設 10 只夠 3 層積木）。缺 setup/loop 陣列回 `invalid_program_arrays`。若需要停止舊程式，送出完整空 PROG。
 
-setup 與 if 分支同步執行；delay 以短片段等待並更新控制。新 PROG 到達時跳出等待與剩餘分支／setup，下一安全點套用新程式。這不等於即時硬體急停，實際延遲仍需實機驗證。
+setup、if 分支與 repeat／while 迴圈同步執行；delay 與每圈迴圈都經 `programYield()` 讓出並更新控制。新 PROG 到達時跳出等待、迴圈與剩餘分支／setup，下一安全點套用新程式。這不等於即時硬體急停，實際延遲仍需實機驗證。

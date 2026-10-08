@@ -130,14 +130,14 @@ Blockly.Blocks['arduino_ultrasonic'] = {
 
 Blockly.Blocks['arduino_delay'] = {
   init: function () {
-    this.appendDummyInput()
-      .appendField("延遲")
-      .appendField(new Blockly.FieldTextInput("1000"), "DELAY_TIME")
-      .appendField("毫秒");
+    // 數值插槽（可接數字、變數或算式）；舊存檔的 DELAY_TIME 格子由 app.js upgradeLegacyXml 轉換
+    this.appendValueInput("DELAY_TIME").setCheck("Number").appendField("延遲");
+    this.appendDummyInput().appendField("毫秒");
+    this.setInputsInline(true);
     this.setPreviousStatement(true, null);
     this.setNextStatement(true, null);
     this.setColour(290);
-    this.setTooltip("延遲 0–10000 毫秒；較長等待請拆成多個積木。");
+    this.setTooltip("延遲毫秒。直接填數字時限 0–10000；接變數／算式時負值視為 0。");
     this.setHelpUrl("");
   }
 };
@@ -198,32 +198,33 @@ Blockly.Blocks['controls_if'] = {
   }
 };
 
-// 流程次數積木：repeat
+// 流程次數積木：重複 N 次（輸入名稱 TIMES / DO 不可改，舊存檔 XML 依賴）
 Blockly.Blocks['controls_repeat_ext'] = {
   init: function () {
-    this.appendDummyInput().appendField("repeat");
-    this.appendValueInput("TIMES").setCheck("Number");
-    this.appendStatementInput("DO").setCheck(null);
+    this.appendValueInput("TIMES").setCheck("Number").appendField("重複");
+    this.appendDummyInput().appendField("次");
+    this.appendStatementInput("DO").setCheck(null).appendField("執行");
+    this.setInputsInline(true);
     this.setPreviousStatement(true, null);
     this.setNextStatement(true, null);
     this.setColour(210);
-    this.setTooltip("舊版積木：目前不支援 repeat，執行前請移除，使用頂層 loop。");
+    this.setTooltip("把裡面的積木重複指定次數。次數在開始時決定；裡面的指令會連續執行，需要間隔請自行加延遲。可巢狀，最多 8 層。");
     this.setHelpUrl("");
   }
 };
 
+// 條件迴圈：當條件成立時重複／重複直到條件成立（欄位 MODE / BOOL / DO 不可改）
 Blockly.Blocks['controls_whileUntil'] = {
   init: function () {
-    this.appendDummyInput().appendField(new Blockly.FieldDropdown([
-      ["while", "WHILE"],
-      ["until", "UNTIL"]
+    this.appendValueInput("BOOL").setCheck("Boolean").appendField(new Blockly.FieldDropdown([
+      ["當條件成立時重複", "WHILE"],
+      ["重複直到條件成立", "UNTIL"]
     ]), "MODE");
-    this.appendValueInput("BOOL").setCheck("Boolean");
-    this.appendStatementInput("DO").setCheck(null);
+    this.appendStatementInput("DO").setCheck(null).appendField("執行");
     this.setPreviousStatement(true, null);
     this.setNextStatement(true, null);
     this.setColour(210);
-    this.setTooltip("舊版積木：目前不支援 while/until，執行前請移除，使用頂層 loop + if。");
+    this.setTooltip("每圈重新判斷條件。條件一直不變時會一直重複，按「停止」可中止；迴圈後面的積木要等迴圈結束才會執行。可巢狀，最多 8 層。");
   }
 };
 
@@ -293,6 +294,21 @@ Blockly.Blocks['logic_compare'] = {
   }
 };
 
+// 且／或：兩個條件都成立／任一成立（韌體短路求值）
+Blockly.Blocks['logic_operation'] = {
+  init: function () {
+    this.appendValueInput("A").setCheck("Boolean");
+    this.appendValueInput("B").setCheck("Boolean").appendField(new Blockly.FieldDropdown([
+      ["且", "AND"],
+      ["或", "OR"]
+    ]), "OP");
+    this.setInputsInline(true);
+    this.setOutput(true, "Boolean");
+    this.setColour(270);
+    this.setTooltip("且：兩邊條件都成立才成立；或：任一邊成立就成立");
+  }
+};
+
 Blockly.Blocks['logic_negate'] = {
   init: function () {
     this.appendValueInput("BOOL").setCheck("Boolean").appendField("not");
@@ -321,14 +337,14 @@ Blockly.Blocks['motor_pwm'] = {
         ["Forward", "FORWARD"],
         ["Backward", "BACKWARD"],
         ["Stop", "STOP"]
-      ]), "DIRECTION")
-      .appendField("動力")
-      .appendField(new Blockly.FieldNumber(50, 0, 100), "PWM")
-      .appendField("%");
+      ]), "DIRECTION");
+    this.appendValueInput("PWM").setCheck("Number").appendField("動力");
+    this.appendDummyInput().appendField("%");
+    this.setInputsInline(true);
     this.setPreviousStatement(true, null);
     this.setNextStatement(true, null);
     this.setColour(180);
-    this.setTooltip("控制馬達動力 (0–100%)，方向由下拉選單決定");
+    this.setTooltip("控制馬達動力 (0–100%)，方向由下拉選單決定。可接變數或算式，超出範圍時韌體會夾在 ±100。");
     this.setHelpUrl("");
   }
 };
@@ -355,9 +371,10 @@ Blockly.Blocks['motor_position'] = {
       .appendField(new Blockly.FieldDropdown([
         ["3", "3"], ["4", "4"]
       ]), "MOTOR")
-      .appendField("移動到角度")
-      .appendField(new Blockly.FieldNumber(0, -36000, 36000), "DEG")
-      .appendField("°");
+      .appendField("移動到角度");
+    this.appendValueInput("DEG").setCheck("Number");
+    this.appendDummyInput().appendField("°");
+    this.setInputsInline(true);
     this.setPreviousStatement(true, null);
     this.setNextStatement(true, null);
     this.setColour(180);
@@ -389,9 +406,10 @@ Blockly.Blocks['motor_speed'] = {
       .appendField(new Blockly.FieldDropdown([
         ["3", "3"], ["4", "4"]
       ]), "MOTOR")
-      .appendField("轉速")
-      .appendField(new Blockly.FieldNumber(120, 60, 250), "RPM")
-      .appendField("RPM");
+      .appendField("轉速");
+    this.appendValueInput("RPM").setCheck("Number");
+    this.appendDummyInput().appendField("RPM");
+    this.setInputsInline(true);
     this.setPreviousStatement(true, null);
     this.setNextStatement(true, null);
     this.setColour(180);
@@ -407,9 +425,10 @@ Blockly.Blocks['motor_move_by'] = {
       .appendField(new Blockly.FieldDropdown([
         ["3", "3"], ["4", "4"]
       ]), "MOTOR")
-      .appendField("相對旋轉")
-      .appendField(new Blockly.FieldNumber(90, -36000, 36000), "DEG")
-      .appendField("°");
+      .appendField("相對旋轉");
+    this.appendValueInput("DEG").setCheck("Number");
+    this.appendDummyInput().appendField("°");
+    this.setInputsInline(true);
     this.setPreviousStatement(true, null);
     this.setNextStatement(true, null);
     this.setColour(180);
@@ -425,60 +444,13 @@ Blockly.Blocks['servo_set'] = {
       .appendField(new Blockly.FieldDropdown([
         ["1", "1"], ["2", "2"]
       ]), "CH")
-      .appendField("角度")
-      .appendField(new Blockly.FieldNumber(90, 0, 180), "DEG");
+      .appendField("角度");
+    this.appendValueInput("DEG").setCheck("Number");
+    this.setInputsInline(true);
     this.setPreviousStatement(true, null);
     this.setNextStatement(true, null);
     this.setColour(40);
-    this.setTooltip("控制舵機角度 (0–180°)");
-    this.setHelpUrl("");
-  }
-};
-
-// ============================================================
-// 舊格式積木 (deprecated shim — 保留相容)
-// ============================================================
-
-Blockly.Blocks['馬達'] = {
-  init: function () {
-    this.appendDummyInput()
-      .appendField("馬達")
-      .appendField(new Blockly.FieldDropdown([
-        ["1", "1"],
-        ["2", "2"],
-        ["3", "3"],
-        ["4", "4"]
-      ]), "MOTOR")
-      .appendField("方向")
-      .appendField(new Blockly.FieldDropdown([
-        ["Forward", "FORWARD"],
-        ["Backward", "BACKWARD"],
-        ["Stop", "STOP"]
-      ]), "DIRECTION")
-      .appendField("動力")
-      .appendField(new Blockly.FieldNumber(0, 0, 100), "SPEED");
-    this.setPreviousStatement(true, null);
-    this.setNextStatement(true, null);
-    this.setColour(180);
-    this.setTooltip("控制馬達方向與動力百分比 (0-100)");
-    this.setHelpUrl("");
-  }
-};
-
-Blockly.Blocks['舵機'] = {
-  init: function () {
-    this.appendDummyInput()
-      .appendField("舵機")
-      .appendField(new Blockly.FieldDropdown([
-        ["1", "1"],
-        ["2", "2"]
-      ]), "SERVO")
-      .appendField("角度")
-      .appendField(new Blockly.FieldNumber(90, 0, 180), "ANGLE");
-    this.setPreviousStatement(true, null);
-    this.setNextStatement(true, null);
-    this.setColour(40);
-    this.setTooltip("控制舵機角度");
+    this.setTooltip("控制舵機角度 (0–180°)。可接變數或算式，超出範圍時韌體會夾在 0–180。");
     this.setHelpUrl("");
   }
 };

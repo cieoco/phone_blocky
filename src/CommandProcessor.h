@@ -34,7 +34,13 @@ enum CommandType {
   CMD_VARIABLE_SET,
   CMD_MATH_CHANGE,
   CMD_IF,
+  CMD_REPEAT,   // 重複 N 次：valueExpr = 次數，nested_commands_then = 迴圈本體
+  CMD_WHILE,    // 當／直到：valueExpr = 條件，direction 'W'/'U'，nested_commands_then = 迴圈本體
 };
+
+// 積木巢狀上限（if / repeat / while 互相包的層數）。前端 app.js 的 MAX_BLOCK_DEPTH 需一致。
+// 每層執行時是一層遞迴（約數百 bytes 堆疊），jsonTask 堆疊見 main.cpp。
+static const int PROG_MAX_BLOCK_DEPTH = 8;
 
 // Blockly value 積木的執行期表示；可遞迴組成算術與邏輯運算式。
 struct BlocklyValueExpression {
@@ -64,7 +70,7 @@ struct BlocklyCommand {
   String variableName;
   std::shared_ptr<BlocklyValueExpression> valueExpr;
 
-  std::vector<BlocklyCommand> nested_commands_then;
+  std::vector<BlocklyCommand> nested_commands_then;   // if.then；repeat / while 的迴圈本體
   std::vector<BlocklyCommand> nested_commands_else;
 };
 // --- 效能優化結束 ---
@@ -230,6 +236,9 @@ private:
   std::vector<BlocklyCommand> setupCommands;
   std::vector<BlocklyCommand> loopCommands;
   size_t loopIndex = 0;
+
+  // programYield() 的控制節拍時間戳（約每 10ms 跑一次角度/速度控制）
+  unsigned long lastProgramYieldControlMs = 0;
 
   // PROG 程式跨任務交接：WS / 序列任務把解析結果放進 staging，jsonTask 在迴圈安全點
   // swap 套用。如此「執行中（含長 delay）的 active 向量」永遠只被 jsonTask 單一任務動到，
@@ -1899,13 +1908,13 @@ public:
     std::vector<BlocklyCommand> newLoop;
     if (doc.containsKey("setup") && doc["setup"].is<JsonArrayConst>()) {
       if (!parseCommandArray(doc["setup"].as<JsonArrayConst>(), newSetup)) {
-        sendError("unsupported_or_invalid_program_command");
+        sendError(lastParseError ? lastParseError : "unsupported_or_invalid_program_command");
         return;
       }
     }
     if (doc.containsKey("loop") && doc["loop"].is<JsonArrayConst>()) {
       if (!parseCommandArray(doc["loop"].as<JsonArrayConst>(), newLoop)) {
-        sendError("unsupported_or_invalid_program_command");
+        sendError(lastParseError ? lastParseError : "unsupported_or_invalid_program_command");
         return;
       }
     }
@@ -1942,7 +1951,8 @@ public:
                strcmp(kind, "analogRead") == 0 || strcmp(kind, "arduino_millis") == 0) {
       expr->kind = kind;
       expr->pin = parseIntOrString(obj["pin"], -1);
-    } else if (strcmp(kind, "math_arithmetic") == 0 || strcmp(kind, "logic_compare") == 0) {
+    } else if (strcmp(kind, "math_arithmetic") == 0 || strcmp(kind, "logic_compare") == 0 ||
+               strcmp(kind, "logic_operation") == 0) {
       expr->kind = kind;
       expr->op = obj["operator"] | "";
       expr->left = parseValueExpression(obj["left"]);
@@ -1983,7 +1993,13 @@ public:
     runtimeVariables.push_back({name, value});
   }
 
-  bool parseCommandArray(JsonArrayConst jsonArr, std::vector<BlocklyCommand> &commandList) {
+  // 最近一次 parseCommandArray 失敗的具體原因（nullptr = 一般格式錯誤）。
+  const char *lastParseError = nullptr;
+
+  // depth = 外層 if / repeat / while 的層數；頂層呼叫用預設 0。
+  bool parseCommandArray(JsonArrayConst jsonArr, std::vector<BlocklyCommand> &commandList,
+                         int depth = 0) {
+    if (depth == 0) lastParseError = nullptr;
     for (JsonVariantConst item : jsonArr) {
       if (!item.is<JsonObjectConst>()) return false;
       JsonObjectConst jsonObj = item.as<JsonObjectConst>();
@@ -1992,7 +2008,7 @@ public:
       if (jsonObj.containsKey("body") && jsonObj["body"].is<JsonArrayConst>()) {
         const char *wrapper = jsonObj["command"] | "";
         if (strcmp(wrapper, "arduino_setup") != 0 && strcmp(wrapper, "arduino_loop") != 0) return false;
-        if (!parseCommandArray(jsonObj["body"].as<JsonArrayConst>(), commandList)) return false;
+        if (!parseCommandArray(jsonObj["body"].as<JsonArrayConst>(), commandList, depth)) return false;
         continue;
       }
 
@@ -2042,15 +2058,41 @@ public:
           if (!parseValueSource(jsonObj["condition"], cmd)) return false;
           if (!jsonObj["then"].is<JsonArrayConst>()) return false;
           if (jsonObj.containsKey("else") && !jsonObj["else"].is<JsonArrayConst>()) return false;
+          if (depth + 1 > PROG_MAX_BLOCK_DEPTH) {
+            lastParseError = "nesting_too_deep";
+            return false;
+          }
           // then / else 陣列遞迴解析
           if (jsonObj["then"].is<JsonArrayConst>()) {
             if (!parseCommandArray(jsonObj["then"].as<JsonArrayConst>(),
-                              cmd.nested_commands_then)) return false;
+                              cmd.nested_commands_then, depth + 1)) return false;
           }
           if (jsonObj["else"].is<JsonArrayConst>()) {
             if (!parseCommandArray(jsonObj["else"].as<JsonArrayConst>(),
-                              cmd.nested_commands_else)) return false;
+                              cmd.nested_commands_else, depth + 1)) return false;
           }
+        } else if (strcmp(commandStr, "repeat") == 0 || strcmp(commandStr, "while") == 0) {
+          // {"command":"repeat","times":<值>,"do":[...]}
+          // {"command":"while","mode":"WHILE"|"UNTIL","condition":<值>,"do":[...]}
+          const bool isRepeat = strcmp(commandStr, "repeat") == 0;
+          cmd.type = isRepeat ? CMD_REPEAT : CMD_WHILE;
+          if (isRepeat) {
+            if (!jsonObj.containsKey("times")) return false;
+            if (!parseValueSource(jsonObj["times"], cmd)) return false;
+          } else {
+            const char *loopMode = jsonObj["mode"] | "WHILE";
+            if (strcmp(loopMode, "WHILE") != 0 && strcmp(loopMode, "UNTIL") != 0) return false;
+            cmd.direction = loopMode[0];   // 'W' / 'U'
+            if (!jsonObj.containsKey("condition")) return false;
+            if (!parseValueSource(jsonObj["condition"], cmd)) return false;
+          }
+          if (!jsonObj["do"].is<JsonArrayConst>()) return false;
+          if (depth + 1 > PROG_MAX_BLOCK_DEPTH) {
+            lastParseError = "nesting_too_deep";
+            return false;
+          }
+          if (!parseCommandArray(jsonObj["do"].as<JsonArrayConst>(),
+                                 cmd.nested_commands_then, depth + 1)) return false;
         } else if (strcmp(commandStr, "serial_println") == 0 ||
                    strcmp(commandStr, "message_print") == 0) {
           cmd.type = CMD_PRINT;
@@ -2064,7 +2106,8 @@ public:
               cmd.message = cmd.valueExpr ? cmd.valueExpr->variableName : "變數";
             else if (strcmp(contentCommand, "math_arithmetic") == 0) cmd.message = "運算結果";
             else if (strcmp(contentCommand, "logic_compare") == 0 ||
-                     strcmp(contentCommand, "logic_negate") == 0) cmd.message = "條件結果";
+                     strcmp(contentCommand, "logic_negate") == 0 ||
+                     strcmp(contentCommand, "logic_operation") == 0) cmd.message = "條件結果";
           }
         } else if (strcmp(commandStr, "plot_print") == 0) {
           cmd.type = CMD_PLOT;
@@ -2092,7 +2135,7 @@ public:
           cmd.type = CMD_MOTOR;
           cmd.motor_id = parseIntOrString(jsonObj["motor"], 0);
           cmd.direction = 'P';             // marker: signed PWM duty
-          cmd.speed = parseIntOrString(jsonObj["duty"], 0); // signed, -100..100
+          if (!parseNumericArg(jsonObj["duty"], cmd.speed, 0, cmd)) return false; // signed, -100..100
         } else if (strcmp(commandStr, "stop") == 0) {
           cmd.type = CMD_MOTOR;
           cmd.motor_id = parseIntOrString(jsonObj["motor"], 0); // 0 = all
@@ -2101,28 +2144,27 @@ public:
         } else if (strcmp(commandStr, "servo") == 0) {
           cmd.type = CMD_SERVO;
           cmd.servo_id = parseIntOrString(jsonObj["ch"], 1);
-          cmd.angle = parseIntOrString(jsonObj["deg"], 90);
+          if (!parseNumericArg(jsonObj["deg"], cmd.angle, 90, cmd)) return false;
         } else if (strcmp(commandStr, "move_to") == 0) {
           cmd.type = CMD_MOTOR_POSITION;
           cmd.motor_id = parseIntOrString(jsonObj["motor"], 0);
-          cmd.angle = parseIntOrString(jsonObj["deg"], 0); // centi-degrees
+          if (!parseNumericArg(jsonObj["deg"], cmd.angle, 0, cmd)) return false; // centi-degrees
         } else if (strcmp(commandStr, "zero") == 0) {
           cmd.type = CMD_MOTOR_ZERO;
           cmd.motor_id = parseIntOrString(jsonObj["motor"], 0);
         } else if (strcmp(commandStr, "move_by") == 0) {
           cmd.type = CMD_MOTOR_POSITION;
           cmd.motor_id = parseIntOrString(jsonObj["motor"], 0);
-          cmd.angle = parseIntOrString(jsonObj["deg"], 0); // centi-degrees
+          if (!parseNumericArg(jsonObj["deg"], cmd.angle, 0, cmd)) return false; // centi-degrees
           cmd.direction = 'R'; // relative
         } else if (strcmp(commandStr, "speed") == 0) {
           cmd.type = CMD_MOTOR_SPEED;
           cmd.motor_id = parseIntOrString(jsonObj["motor"], 0);
-          cmd.speed = parseIntOrString(jsonObj["rpm"], 0);
+          if (!parseNumericArg(jsonObj["rpm"], cmd.speed, 0, cmd)) return false;
         } else if (strcmp(commandStr, "delay") == 0) {
           cmd.type = CMD_DELAY;
-          cmd.delay_ms = jsonObj.containsKey("delayTime")
-                             ? parseIntOrString(jsonObj["delayTime"], 0)
-                             : parseIntOrString(jsonObj["ms"], 0);
+          if (!parseNumericArg(jsonObj.containsKey("delayTime") ? jsonObj["delayTime"] : jsonObj["ms"],
+                               cmd.delay_ms, 0, cmd)) return false;
         } else if (strcmp(commandStr, "digitalWrite") == 0) {
           cmd.type = CMD_DIGITAL_WRITE;
           cmd.pin = parseIntOrString(jsonObj["pin"], 0);
@@ -2148,6 +2190,21 @@ public:
     return true;
   }
 
+  // 動作的數值參數(duty / deg / rpm / ms)可為常數,或表達式物件(變數、感測器、算式)。
+  // 表達式存進 cmd.valueExpr(動作指令不另作他用),執行時由 numericArg() 求值。
+  bool parseNumericArg(JsonVariantConst v, int &out, int def, BlocklyCommand &cmd) {
+    if (v.is<JsonObjectConst>()) {
+      cmd.valueExpr = parseValueExpression(v);
+      return cmd.valueExpr != nullptr;
+    }
+    out = parseIntOrString(v, def);
+    return true;
+  }
+
+  int numericArg(const BlocklyCommand &cmd, int stored) {
+    return cmd.valueExpr ? evaluateValueExpression(cmd.valueExpr) : stored;
+  }
+
   // Blockly 的腳位常以字串送 ("2"),AI 端會用整數 (2)。兩種都收
   static int parseIntOrString(JsonVariantConst v, int def) {
     if (v.is<const char *>()) return atoi(v.as<const char *>());
@@ -2156,11 +2213,27 @@ public:
     return def;
   }
 
-  // 給 CMD_IF / 未來迴圈用:把一串巢狀指令依序執行
+  // 給 CMD_IF / CMD_REPEAT / CMD_WHILE 用:把一串巢狀指令依序執行
   void executeCommandList(const std::vector<BlocklyCommand> &cmds) {
     for (const auto &c : cmds) {
       if (pendingProgram) break;
       executeSingleCommand(c);
+    }
+  }
+
+  // 程式執行中的讓出點(delay 每步、迴圈每圈):
+  //  1. 讓出 CPU(至少 1 tick),空迴圈也不會霸佔核心或觸發看門狗;
+  //  2. 約每 10ms 跑一次角度/速度控制,迴圈內 M3/M4 保持照常運作(節流避免 dt 過小)。
+  // 刻意不在此做 WebSocket 逾時檢查:Blockly 頁沒有心跳,逾時會在送出程式約 3 秒後觸發,
+  // 若在 delay 中檢查會提早停掉「前進 5 秒」這類正常程式。真正斷線由 WS_EVT_DISCONNECT 處理。
+  // 新程式到達時 pendingProgram 由呼叫端檢查並跳出。
+  void programYield(int waitMs) {
+    TickType_t ticks = pdMS_TO_TICKS(waitMs);
+    vTaskDelay(ticks > 0 ? ticks : 1);
+    unsigned long now = millis();
+    if (now - lastProgramYieldControlMs >= 9) {
+      lastProgramYieldControlMs = now;
+      updateAngleControl();
     }
   }
 
@@ -2220,6 +2293,12 @@ public:
       return left == right; // EQ
     }
     if (expr->kind == "logic_negate") return !evaluateValueExpression(expr->left);
+    if (expr->kind == "logic_operation") {
+      // 短路求值:AND 左邊不成立、OR 左邊成立時,不讀右邊(右邊可能是較慢的超音波)
+      bool left = evaluateValueExpression(expr->left) != 0;
+      if (expr->op == "OR") return left || evaluateValueExpression(expr->right) != 0;
+      return left && evaluateValueExpression(expr->right) != 0; // AND
+    }
 
     BlocklyCommand sensorCmd;
     sensorCmd.message = expr->kind;
@@ -2254,19 +2333,18 @@ public:
         break;
       case CMD_DELAY:
         {
-          int remaining = cmd.delay_ms;
+          int remaining = numericArg(cmd, cmd.delay_ms);   // 負值視為 0
           while (remaining > 0) {
             if (pendingProgram) break;   // 有新程式待套用 → 中止等待,盡快切換(回應性)
             int step = remaining > 10 ? 10 : remaining;
-            vTaskDelay(step / portTICK_PERIOD_MS);
-            updateAngleControl();
+            programYield(step);
             remaining -= step;
           }
         }
         break;
       case CMD_MOTOR:
         if (cmd.direction == 'P') {
-          setMotorDuty(cmd.motor_id, cmd.speed, MOTOR_MODE_PWM);
+          setMotorDuty(cmd.motor_id, numericArg(cmd, cmd.speed), MOTOR_MODE_PWM); // 內部夾 ±100
           resetMotorControlState(cmd.motor_id);
         } else if (cmd.direction == 'X') {
           if (cmd.motor_id == 0) {
@@ -2288,9 +2366,10 @@ public:
       case CMD_MOTOR_POSITION:
         if (cmd.motor_id >= 1 && cmd.motor_id <= NUM_MOTORS &&
             MOTOR_CAPS[cmd.motor_id - 1].has_encoder && encoder) {
+          const long argCentiDeg = (long)numericArg(cmd, cmd.angle);
           long targetCentiDeg = cmd.direction == 'R'
-              ? ticksToCentiDeg(getMotorTicks(cmd.motor_id)) + (long)cmd.angle
-              : (long)cmd.angle;
+              ? ticksToCentiDeg(getMotorTicks(cmd.motor_id)) + argCentiDeg
+              : argCentiDeg;
           startMotorPositionMove(cmd.motor_id, centiDegToTicks(targetCentiDeg), "PROG", true);
           updateAngleControl();
         }
@@ -2302,11 +2381,12 @@ public:
         if (cmd.motor_id >= 1 && cmd.motor_id <= NUM_MOTORS &&
             MOTOR_CAPS[cmd.motor_id - 1].has_encoder && encoder) {
           MotorRuntimeState &state = motorState[cmd.motor_id];
-          if (cmd.speed == 0) {
+          const int rpm = numericArg(cmd, cmd.speed);
+          if (rpm == 0) {
             stopMotorRuntime(cmd.motor_id);
           } else {
             state.mode = MOTOR_MODE_SPEED;
-            state.rpmCmd = (float)cmd.speed;
+            state.rpmCmd = (float)rpm;
             state.rampedRpmCmd = state.rpmMeas;
             state.speedIntegral = 0.0f;
             state.speedLastError = 0.0f;
@@ -2316,7 +2396,7 @@ public:
         break;
       case CMD_SERVO:
         if (cmd.servo_id >= 1 && cmd.servo_id <= NUM_SERVOS) {
-          servoDeg[cmd.servo_id] = constrain(cmd.angle, 0, 180);
+          servoDeg[cmd.servo_id] = constrain(numericArg(cmd, cmd.angle), 0, 180);
           servoCtrl.controlServo(cmd.servo_id, servoDeg[cmd.servo_id]);
         }
         break;
@@ -2324,6 +2404,26 @@ public:
         bool branch = readBlocklyValue(cmd) != 0;
         executeCommandList(branch ? cmd.nested_commands_then
                                   : cmd.nested_commands_else);
+        break;
+      }
+      case CMD_REPEAT: {
+        // 次數只在進入時算一次(與 Blockly 語意相同);每圈讓出,新程式到達即跳出
+        int times = readBlocklyValue(cmd);
+        for (int i = 0; i < times && !pendingProgram; i++) {
+          executeCommandList(cmd.nested_commands_then);
+          programYield(1);
+        }
+        break;
+      }
+      case CMD_WHILE: {
+        // WHILE: 條件成立就繼續;UNTIL: 條件成立就停止。每圈重新評估條件
+        const bool until = cmd.direction == 'U';
+        while (!pendingProgram) {
+          const bool cond = readBlocklyValue(cmd) != 0;
+          if (cond == until) break;
+          executeCommandList(cmd.nested_commands_then);
+          programYield(1);
+        }
         break;
       }
       case CMD_PRINT: {

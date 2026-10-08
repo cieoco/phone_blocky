@@ -8,10 +8,10 @@
   <!-- 載入 Blockly -->
   <script src="blockly.min.js"></script>
   <!-- 載入客戶端邏輯 -->
-  <script src="appBlock.js?v=20260919-alignment"></script>
-  <script src="appIr.js?v=20260919-alignment"></script>
-  <script src="appJson.js?v=20260919-alignment"></script>
-  <script src="app.js?v=20260919-alignment"></script>
+  <script src="appBlock.js?v=20261009-nolegacy"></script>
+  <script src="appIr.js?v=20261009-nolegacy"></script>
+  <script src="appJson.js?v=20261009-nolegacy"></script>
+  <script src="app.js?v=20261009-nolegacy"></script>
   <style>
     /* 極簡佈局 - 確保座標系統完全原生 */
     body {
@@ -173,13 +173,21 @@
       <block type="arduino_digitalRead"></block>
       <block type="arduino_analogWrite"></block>
       <block type="arduino_analogRead"></block>
-      <block type="arduino_delay"></block>
+      <block type="arduino_delay">
+        <value name="DELAY_TIME"><shadow type="math_number"><field name="NUM">1000</field></shadow></value>
+      </block>
       <block type="message_print"></block>
       <block type="plot_print"></block>
       <block type="arduino_millis"></block>
     </category>
     <category name="流程控制" colour="210">
       <block type="controls_if"></block>
+      <block type="controls_repeat_ext">
+        <value name="TIMES">
+          <shadow type="math_number"><field name="NUM">3</field></shadow>
+        </value>
+      </block>
+      <block type="controls_whileUntil"></block>
     </category>
     <category name="數學" colour="230">
       <block type="math_number">
@@ -190,6 +198,7 @@
     <category name="邏輯" colour="210">
       <block type="logic_boolean"></block>
       <block type="logic_compare"></block>
+      <block type="logic_operation"></block>
       <block type="logic_negate"></block>
     </category>
     <category name="變數" colour="330" custom="VARIABLE"></category>
@@ -198,16 +207,23 @@
       <block type="lego_button"></block>
     </category>
     <category name="馬達模組" colour="290">
-      <block type="motor_pwm"></block>
+      <block type="motor_pwm">
+        <value name="PWM"><shadow type="math_number"><field name="NUM">50</field></shadow></value>
+      </block>
       <block type="motor_stop"></block>
-      <block type="motor_speed"></block>
+      <block type="motor_speed">
+        <value name="RPM"><shadow type="math_number"><field name="NUM">120</field></shadow></value>
+      </block>
       <block type="motor_zero"></block>
-      <block type="motor_position"></block>
-      <block type="motor_move_by"></block>
-      <block type="servo_set"></block>
-      <sep></sep>
-      <block type="馬達"></block>
-      <block type="舵機"></block>
+      <block type="motor_position">
+        <value name="DEG"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+      </block>
+      <block type="motor_move_by">
+        <value name="DEG"><shadow type="math_number"><field name="NUM">90</field></shadow></value>
+      </block>
+      <block type="servo_set">
+        <value name="DEG"><shadow type="math_number"><field name="NUM">90</field></shadow></value>
+      </block>
     </category>
   </xml>
 

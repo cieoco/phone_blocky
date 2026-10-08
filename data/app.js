@@ -104,7 +104,7 @@ function initWebSocket() {
 
       // 韌體回報錯誤（如 PROG 解析失敗 / 程式過大）→ 明確顯示，不再靜默
       if (data.ok === false || data.err) {
-        appendSensorOutput("❌ 韌體錯誤: " + (data.err || '未知錯誤'));
+        appendSensorOutput("❌ 韌體錯誤: " + (FIRMWARE_ERROR_TEXT[data.err] || data.err || '未知錯誤'));
         return;
       }
 
@@ -133,15 +133,89 @@ function resetCode() {
 
 function resetAndGoHome() { resetCode(); setTimeout(() => location.href = 'index.html', 200); }
 
+// 積木巢狀上限（if / repeat / while 互相包的層數），需與韌體 PROG_MAX_BLOCK_DEPTH 一致
+const MAX_BLOCK_DEPTH = 8;
+
+// 計算 PROG 指令陣列的最大巢狀層數（頂層指令本身為 0 層）
+function progNestingDepth(cmds) {
+  let max = 0;
+  for (const c of cmds || []) {
+    const children = [c.then, c.else, c.do].filter(Array.isArray);
+    if (children.length === 0) continue;
+    for (const list of children) max = Math.max(max, 1 + progNestingDepth(list));
+  }
+  return max;
+}
+
+// IR → PROG JSON，並在送出前檢查巢狀層數（超過時板子會拒絕整支程式）
+function buildProgJson(irNodes) {
+  const json = {
+    mode: 'PROG',
+    setup: irNodes.filter(n => n instanceof arduino_setupNode).flatMap(n => n.body.map(cmd => cmd.toJson())),
+    loop:  irNodes.filter(n => n instanceof arduino_loopNode).flatMap(n => n.body.map(cmd => cmd.toJson()))
+  };
+  const depth = Math.max(progNestingDepth(json.setup), progNestingDepth(json.loop));
+  if (depth > MAX_BLOCK_DEPTH) {
+    throw new Error(`積木巢狀太深：目前 ${depth} 層，最多 ${MAX_BLOCK_DEPTH} 層（如果／重複／當…重複互相包的層數）`);
+  }
+  return json;
+}
+
+// 韌體錯誤代碼 → 使用者看得懂的說明
+const FIRMWARE_ERROR_TEXT = {
+  nesting_too_deep: `積木巢狀太深（最多 ${MAX_BLOCK_DEPTH} 層）`,
+  json_parse_failed: '程式格式錯誤或巢狀太深，板子無法解析',
+  json_too_large: '程式太大，請減少積木數量',
+  unsupported_or_invalid_program_command: '程式含有不支援的積木或參數'
+};
+
+// 沒接在 setup／loop 裡的積木不會執行，明確提醒（以前會默默忽略）
+function warnStrayBlocks(irNodes) {
+  if (irNodes.strayBlocks > 0) {
+    appendSensorOutput(`⚠️ 有 ${irNodes.strayBlocks} 個積木沒有接在 setup／loop 裡，不會執行`);
+  }
+}
+
+// 舊存檔相容：馬達／舵機／延遲的數值原本是積木上的格子（field），
+// 現在改成可接積木的插槽（value）。載入前把舊格子換成「插槽 + 數字積木」，舊程式不用重做。
+const LEGACY_NUMBER_FIELDS = {
+  motor_pwm: ['PWM'], motor_speed: ['RPM'], motor_position: ['DEG'],
+  motor_move_by: ['DEG'], servo_set: ['DEG'], arduino_delay: ['DELAY_TIME']
+};
+
+function upgradeLegacyXml(dom) {
+  for (const blockEl of dom.getElementsByTagName('block')) {
+    const names = LEGACY_NUMBER_FIELDS[blockEl.getAttribute('type')];
+    if (!names) continue;
+    for (const child of Array.from(blockEl.children)) {
+      if (child.tagName.toLowerCase() !== 'field' || !names.includes(child.getAttribute('name'))) continue;
+      const doc = blockEl.ownerDocument;
+      const ns = blockEl.namespaceURI;
+      const value = doc.createElementNS(ns, 'value');
+      value.setAttribute('name', child.getAttribute('name'));
+      const shadow = doc.createElementNS(ns, 'shadow');
+      shadow.setAttribute('type', 'math_number');
+      const num = doc.createElementNS(ns, 'field');
+      num.setAttribute('name', 'NUM');
+      num.textContent = String(Number(child.textContent) || 0);
+      shadow.appendChild(num);
+      value.appendChild(shadow);
+      blockEl.replaceChild(value, child);
+    }
+  }
+  return dom;
+}
+
+function loadXmlIntoWorkspace(xmlText) {
+  workspace.clear();
+  Blockly.Xml.domToWorkspace(upgradeLegacyXml(Blockly.utils.xml.textToDom(xmlText)), workspace);
+}
+
 function runBlocklyCode() {
   try {
     const irNodes = parseWorkspaceToIR(workspace);
-
-    const payload = {
-      mode: 'PROG',
-      setup: irNodes.filter(n => n instanceof arduino_setupNode).flatMap(n => n.body.map(cmd => cmd.toJson())),
-      loop: irNodes.filter(n => n instanceof arduino_loopNode).flatMap(n => n.body.map(cmd => cmd.toJson()))
-    };
+    const payload = buildProgJson(irNodes);
+    warnStrayBlocks(irNodes);
 
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(payload));
@@ -163,11 +237,8 @@ function buildProgPayload() {
   const xml = Blockly.Xml.workspaceToDom(workspace);
   const xmlText = Blockly.Xml.domToText(xml);
   const irNodes = parseWorkspaceToIR(workspace);
-  const json = {
-    mode: 'PROG',
-    setup: irNodes.filter(n => n instanceof arduino_setupNode).flatMap(n => n.body.map(cmd => cmd.toJson())),
-    loop:  irNodes.filter(n => n instanceof arduino_loopNode).flatMap(n => n.body.map(cmd => cmd.toJson()))
-  };
+  const json = buildProgJson(irNodes);
+  warnStrayBlocks(irNodes);
   return { json, xml: xmlText, source: 'blockly' };
 }
 
@@ -189,7 +260,7 @@ async function saveFile() {
       }
       appendSensorOutput(`💾 已存入 ESP32，讀回驗證成功 (${payload.json.setup.length + payload.json.loop.length} 個指令)`);
     } else {
-      appendSensorOutput(`❌ 存檔失敗: ${data.error || '未知錯誤'}`);
+      appendSensorOutput(`❌ 存檔失敗: ${FIRMWARE_ERROR_TEXT[data.error] || data.error || '未知錯誤'}`);
     }
   } catch (e) {
     appendSensorOutput(`❌ 存檔失敗: ${e.message}`);
@@ -205,8 +276,7 @@ async function openFile() {
       return;
     }
     if (data.xml) {
-      workspace.clear();
-      Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(data.xml), workspace);
+      loadXmlIntoWorkspace(data.xml);
       const src = data.meta?.source || 'unknown';
       appendSensorOutput(`📂 已從 ESP32 載入 (來源: ${src})`);
     } else {
@@ -224,8 +294,7 @@ async function autoLoadFromEsp32() {
     if (!resp.ok) return;
     const data = await resp.json();
     if (data.ok && data.has_program && data.xml) {
-      workspace.clear();
-      Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(data.xml), workspace);
+      loadXmlIntoWorkspace(data.xml);
       const src = data.meta?.source || 'unknown';
       appendSensorOutput(`已自動載入 ESP32 上的存檔 (來源: ${src})`);
     }
