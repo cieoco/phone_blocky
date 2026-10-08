@@ -104,4 +104,21 @@ vm.runInContext(`
     workspace = {getTopBlocks:()=>[setupOnly, strayRepeat]};
 `, context);
 assert.equal(value('parseWorkspaceToIR(workspace).strayBlocks'), 1);
-console.log('Frontend syntax, IR units, legacy shapes, flat payload, loops, nesting limit, value slots, AND/OR, unknown/stray blocks: PASS');
+// Math blocks: abs / random / constrain / map translate to named-argument JSON; empty slots fail loudly
+const n = v => ({command:'math_number', number:v});
+vm.runInContext(`var num = v => fakeBlock('math_number', {NUM: v}, {});`, context);
+assert.deepEqual(value(`translateMathAbs(fakeBlock('math_abs', {}, {VALUE: num(-5)})).toJson()`),
+    {command:'math_abs', value:n(-5)});
+assert.deepEqual(value(`translateMathRandomInt(fakeBlock('math_random_int', {}, {FROM: num(1), TO: num(6)})).toJson()`),
+    {command:'math_random', from:n(1), to:n(6)});
+assert.deepEqual(value(`translateMathConstrain(fakeBlock('math_constrain', {}, {VALUE: num(150), LOW: num(0), HIGH: num(100)})).toJson()`),
+    {command:'math_constrain', value:n(150), low:n(0), high:n(100)});
+assert.deepEqual(value(`translateMathMap(fakeBlock('math_map', {}, {VALUE: num(50), FROM_LOW: num(0), FROM_HIGH: num(100),
+        TO_LOW: num(0), TO_HIGH: num(180)})).toJson()`),
+    {command:'math_map', value:n(50), fromLow:n(0), fromHigh:n(100), toLow:n(0), toHigh:n(180)});
+assert.deepEqual(value(`translateMathArithmetic(fakeBlock('math_arithmetic', {OP:'MODULO'}, {A: num(7), B: num(3)})).toJson()`),
+    {command:'math_arithmetic', operator:'MODULO', left:n(7), right:n(3)});
+assert.throws(() => value(`translateMathMap(fakeBlock('math_map', {}, {VALUE: num(1)}))`), /對應換算/);
+assert.throws(() => value(`translateMathArithmetic(fakeBlock('math_arithmetic', {OP:'ADD'}, {A: num(1)}))`), /運算/);
+assert.throws(() => value(`translateLogicCompare(fakeBlock('logic_compare', {OP:'LT'}, {B: num(1)}))`), /比較/);
+console.log('Frontend syntax, IR units, flat payload, loops, nesting limit, value slots, AND/OR, math functions, unknown/stray blocks: PASS');

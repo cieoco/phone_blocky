@@ -52,6 +52,8 @@ struct BlocklyValueExpression {
   int auxPin = -1;
   std::shared_ptr<BlocklyValueExpression> left;
   std::shared_ptr<BlocklyValueExpression> right;
+  // 多參數函式（math_random / math_constrain / math_map）依固定順序存放的參數
+  std::vector<std::shared_ptr<BlocklyValueExpression>> args;
 };
 
 struct BlocklyCommand {
@@ -1958,6 +1960,28 @@ public:
       expr->left = parseValueExpression(obj["left"]);
       expr->right = parseValueExpression(obj["right"]);
       if (!expr->left || !expr->right) return nullptr;
+    } else if (strcmp(kind, "math_abs") == 0) {
+      // {"command":"math_abs","value":<值>}
+      expr->kind = kind;
+      expr->left = parseValueExpression(obj["value"]);
+      if (!expr->left) return nullptr;
+    } else if (strcmp(kind, "math_random") == 0 || strcmp(kind, "math_constrain") == 0 ||
+               strcmp(kind, "math_map") == 0) {
+      // 多參數數學函式：參數以具名鍵傳入，依下列順序存進 args
+      static const char *const RANDOM_KEYS[] = {"from", "to"};
+      static const char *const CONSTRAIN_KEYS[] = {"value", "low", "high"};
+      static const char *const MAP_KEYS[] = {"value", "fromLow", "fromHigh", "toLow", "toHigh"};
+      const char *const *keys = MAP_KEYS;
+      size_t count = 5;
+      if (strcmp(kind, "math_random") == 0) { keys = RANDOM_KEYS; count = 2; }
+      else if (strcmp(kind, "math_constrain") == 0) { keys = CONSTRAIN_KEYS; count = 3; }
+      expr->kind = kind;
+      for (size_t i = 0; i < count; i++) {
+        if (!obj.containsKey(keys[i])) return nullptr;
+        auto arg = parseValueExpression(obj[keys[i]]);
+        if (!arg) return nullptr;
+        expr->args.push_back(arg);
+      }
     } else if (strcmp(kind, "logic_boolean") == 0) {
       expr->kind = "constant";
       expr->value = (obj["value"] | false) ? 1 : 0;
@@ -2104,7 +2128,8 @@ public:
             cmd.message = contentCommand;
             if (strcmp(contentCommand, "variable_get") == 0)
               cmd.message = cmd.valueExpr ? cmd.valueExpr->variableName : "變數";
-            else if (strcmp(contentCommand, "math_arithmetic") == 0) cmd.message = "運算結果";
+            else if (strncmp(contentCommand, "math_", 5) == 0 &&
+                     strcmp(contentCommand, "math_number") != 0) cmd.message = "運算結果";
             else if (strcmp(contentCommand, "logic_compare") == 0 ||
                      strcmp(contentCommand, "logic_negate") == 0 ||
                      strcmp(contentCommand, "logic_operation") == 0) cmd.message = "條件結果";
@@ -2280,7 +2305,36 @@ public:
       if (expr->op == "ADD") return left + right;
       if (expr->op == "MINUS") return left - right;
       if (expr->op == "MULTIPLY") return left * right;
-      return right == 0 ? 0 : left / right; // DIVIDE
+      if (expr->op == "MODULO") return right == 0 ? 0 : left % right; // 餘數，正負號跟左邊
+      return right == 0 ? 0 : left / right; // DIVIDE（整數除法，除以 0 得 0）
+    }
+    if (expr->kind == "math_abs") {
+      int v = evaluateValueExpression(expr->left);
+      return v < 0 ? -v : v;
+    }
+    if (expr->kind == "math_random") {
+      // 含兩端的隨機整數；from > to 時自動對調
+      long a = evaluateValueExpression(expr->args[0]);
+      long b = evaluateValueExpression(expr->args[1]);
+      if (a > b) { long t = a; a = b; b = t; }
+      return (int)random(a, b + 1);
+    }
+    if (expr->kind == "math_constrain") {
+      int v = evaluateValueExpression(expr->args[0]);
+      int lo = evaluateValueExpression(expr->args[1]);
+      int hi = evaluateValueExpression(expr->args[2]);
+      if (lo > hi) { int t = lo; lo = hi; hi = t; }
+      return v < lo ? lo : (v > hi ? hi : v);
+    }
+    if (expr->kind == "math_map") {
+      // 與 Arduino map() 相同的整數線性換算（不夾限；需要時外面再包「限制」）
+      long long x = evaluateValueExpression(expr->args[0]);
+      long long inLo = evaluateValueExpression(expr->args[1]);
+      long long inHi = evaluateValueExpression(expr->args[2]);
+      long long outLo = evaluateValueExpression(expr->args[3]);
+      long long outHi = evaluateValueExpression(expr->args[4]);
+      if (inHi == inLo) return (int)outLo;
+      return (int)((x - inLo) * (outHi - outLo) / (inHi - inLo) + outLo);
     }
     if (expr->kind == "logic_compare") {
       int left = evaluateValueExpression(expr->left);

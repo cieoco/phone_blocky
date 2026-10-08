@@ -155,7 +155,8 @@ hw_config.json        ← 前端硬體元資料
 **不要在 `programYield()` 裡呼叫 WebSocket 逾時檢查**：Blockly 頁沒有心跳，會提早停掉正常的延遲動作。
 AI 子集（`prompts.py` / `schema.py` / `ai.html`）目前不產生迴圈。
 
-其餘積木：`arduino_setup/loop`、`arduino_delay`、`logic_*`（含 `logic_operation` 且／或）、`math_*`、
+其餘積木：`arduino_setup/loop`、`arduino_delay`、`logic_*`（含 `logic_operation` 且／或）、
+`math_*`（`math_arithmetic` 含 MODULO、`math_abs`、`math_random_int`→`math_random`、`math_constrain`、`math_map`，整數運算）、
 `arduino_ultrasonic`、`lego_button`、`arduino_digitalRead/Write`、`arduino_analogRead/Write`、`arduino_pinMode`、
 `arduino_millis`、`arduino_serial_println`、`message_print`、`plot_print`。
 

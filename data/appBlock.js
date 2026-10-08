@@ -251,15 +251,67 @@ Blockly.Blocks['math_arithmetic'] = {
     this.appendValueInput("A").setCheck("Number");
     this.appendDummyInput().appendField(new Blockly.FieldDropdown([
       ["+", "ADD"],
-      ["-", "MINUS"],
-      ["*", "MULTIPLY"],
-      ["/", "DIVIDE"]
+      ["−", "MINUS"],
+      ["×", "MULTIPLY"],
+      ["÷", "DIVIDE"],
+      ["餘數", "MODULO"]
     ]), "OP");
     this.appendValueInput("B").setCheck("Number");
     this.setInputsInline(true);
     this.setOutput(true, "Number");
     this.setColour(230);
-    this.setTooltip("進行兩數的運算");
+    this.setTooltip("兩數運算（整數）。÷ 會捨去小數；餘數的正負號跟左邊；除以 0 得 0。");
+  }
+};
+
+// 絕對值
+Blockly.Blocks['math_abs'] = {
+  init: function () {
+    this.appendValueInput("VALUE").setCheck("Number").appendField("絕對值");
+    this.setOutput(true, "Number");
+    this.setColour(230);
+    this.setTooltip("去掉負號，例如 -5 → 5");
+  }
+};
+
+// 隨機整數（含兩端）
+Blockly.Blocks['math_random_int'] = {
+  init: function () {
+    this.appendValueInput("FROM").setCheck("Number").appendField("隨機整數 從");
+    this.appendValueInput("TO").setCheck("Number").appendField("到");
+    this.setInputsInline(true);
+    this.setOutput(true, "Number");
+    this.setColour(230);
+    this.setTooltip("每次執行到時，產生一個介於兩數之間（含兩端）的整數");
+  }
+};
+
+// 限制範圍（Arduino constrain）
+Blockly.Blocks['math_constrain'] = {
+  init: function () {
+    this.appendValueInput("VALUE").setCheck("Number").appendField("限制");
+    this.appendValueInput("LOW").setCheck("Number").appendField("在");
+    this.appendValueInput("HIGH").setCheck("Number").appendField("到");
+    this.appendDummyInput().appendField("之間");
+    this.setInputsInline(true);
+    this.setOutput(true, "Number");
+    this.setColour(230);
+    this.setTooltip("小於下限就用下限、大於上限就用上限，例如把動力限制在 0–100");
+  }
+};
+
+// 對應換算（Arduino map）：直式排列，手機上比較好看
+Blockly.Blocks['math_map'] = {
+  init: function () {
+    this.appendValueInput("VALUE").setCheck("Number").appendField("對應換算");
+    this.appendValueInput("FROM_LOW").setCheck("Number").setAlign(Blockly.ALIGN_RIGHT).appendField("原範圍 從");
+    this.appendValueInput("FROM_HIGH").setCheck("Number").setAlign(Blockly.ALIGN_RIGHT).appendField("到");
+    this.appendValueInput("TO_LOW").setCheck("Number").setAlign(Blockly.ALIGN_RIGHT).appendField("新範圍 從");
+    this.appendValueInput("TO_HIGH").setCheck("Number").setAlign(Blockly.ALIGN_RIGHT).appendField("到");
+    this.setInputsInline(false);
+    this.setOutput(true, "Number");
+    this.setColour(230);
+    this.setTooltip("按比例把數值從原範圍換到新範圍，例如距離 0–100 cm → 舵機 0–180°。超出原範圍時結果也會超出，需要時外面再包「限制」。");
   }
 };
 

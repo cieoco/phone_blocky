@@ -331,6 +331,23 @@ class MathArithmeticNode extends BaseNode {
     }
 }
 
+// 數學函式：絕對值／隨機整數／限制／對應換算
+// → {"command":"math_abs"|"math_random"|"math_constrain"|"math_map", <具名參數>: <值>...}
+class MathFunctionNode extends BaseNode {
+    constructor(command, args) {
+        super();
+        this.command = command;
+        this.args = args;
+    }
+    toJson() {
+        const json = { command: this.command };
+        for (const [key, node] of Object.entries(this.args)) {
+            json[key] = (node && typeof node.toJson === "function") ? node.toJson() : node;
+        }
+        return json;
+    }
+}
+
 class LogicBooleanNode extends BaseNode {
     constructor(boolStr) {
         super();
@@ -712,12 +729,48 @@ function translateMathNumber(block) {
     return new MathNumberNode(number);
 }
 
+// 讀必填的數值插槽（接任何數值積木）；空的就報錯，不再默默當成 0
+function requireValueInput(block, inputName, label) {
+    const target = block.getInputTargetBlock(inputName);
+    if (!target) throw new Error(`「${label}」積木有空的插槽，請放入數值`);
+    return getTranslator(target.type)(target);
+}
+
 function translateMathArithmetic(block) {
     const operator = block.getFieldValue("OP");
-    const leftOperand = getBlockValue(block, "A");
-    const rightOperand = getBlockValue(block, "B");
+    const leftOperand = requireValueInput(block, "A", "運算");
+    const rightOperand = requireValueInput(block, "B", "運算");
     return new MathArithmeticNode(operator, leftOperand, rightOperand);
   }
+
+function translateMathAbs(block) {
+    return new MathFunctionNode("math_abs", { value: requireValueInput(block, "VALUE", "絕對值") });
+}
+
+function translateMathRandomInt(block) {
+    return new MathFunctionNode("math_random", {
+        from: requireValueInput(block, "FROM", "隨機整數"),
+        to: requireValueInput(block, "TO", "隨機整數")
+    });
+}
+
+function translateMathConstrain(block) {
+    return new MathFunctionNode("math_constrain", {
+        value: requireValueInput(block, "VALUE", "限制"),
+        low: requireValueInput(block, "LOW", "限制"),
+        high: requireValueInput(block, "HIGH", "限制")
+    });
+}
+
+function translateMathMap(block) {
+    return new MathFunctionNode("math_map", {
+        value: requireValueInput(block, "VALUE", "對應換算"),
+        fromLow: requireValueInput(block, "FROM_LOW", "對應換算"),
+        fromHigh: requireValueInput(block, "FROM_HIGH", "對應換算"),
+        toLow: requireValueInput(block, "TO_LOW", "對應換算"),
+        toHigh: requireValueInput(block, "TO_HIGH", "對應換算")
+    });
+}
 
 
 function translateLogicBoolean(block) {
@@ -727,8 +780,8 @@ function translateLogicBoolean(block) {
 
 function translateLogicCompare(block) {
     const operator = block.getFieldValue("OP");
-    const leftOperand = getBlockValue(block, "A");
-    const rightOperand = getBlockValue(block, "B");
+    const leftOperand = requireValueInput(block, "A", "比較");
+    const rightOperand = requireValueInput(block, "B", "比較");
     return new LogicCompareNode(operator, leftOperand, rightOperand);
 }
 
@@ -853,6 +906,14 @@ function getTranslator(blockType) {
             return translateMathNumber;
         case "math_arithmetic":
             return translateMathArithmetic;
+        case "math_abs":
+            return translateMathAbs;
+        case "math_random_int":
+            return translateMathRandomInt;
+        case "math_constrain":
+            return translateMathConstrain;
+        case "math_map":
+            return translateMathMap;
         case "logic_boolean":
             return translateLogicBoolean;
         case "logic_compare":

@@ -8,10 +8,10 @@
   <!-- 載入 Blockly -->
   <script src="blockly.min.js"></script>
   <!-- 載入客戶端邏輯 -->
-  <script src="appBlock.js?v=20261009-nolegacy"></script>
-  <script src="appIr.js?v=20261009-nolegacy"></script>
-  <script src="appJson.js?v=20261009-nolegacy"></script>
-  <script src="app.js?v=20261009-nolegacy"></script>
+  <script src="appBlock.js?v=20261009-math"></script>
+  <script src="appIr.js?v=20261009-math"></script>
+  <script src="appJson.js?v=20261009-math"></script>
+  <script src="app.js?v=20261009-math"></script>
   <style>
     /* 極簡佈局 - 確保座標系統完全原生 */
     body {
@@ -193,7 +193,29 @@
       <block type="math_number">
         <field name="NUM">0</field>
       </block>
-      <block type="math_arithmetic"></block>
+      <block type="math_arithmetic">
+        <value name="A"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+        <value name="B"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+      </block>
+      <block type="math_abs">
+        <value name="VALUE"><shadow type="math_number"><field name="NUM">-5</field></shadow></value>
+      </block>
+      <block type="math_random_int">
+        <value name="FROM"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+        <value name="TO"><shadow type="math_number"><field name="NUM">100</field></shadow></value>
+      </block>
+      <block type="math_constrain">
+        <value name="VALUE"><shadow type="math_number"><field name="NUM">50</field></shadow></value>
+        <value name="LOW"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        <value name="HIGH"><shadow type="math_number"><field name="NUM">100</field></shadow></value>
+      </block>
+      <block type="math_map">
+        <value name="VALUE"><shadow type="math_number"><field name="NUM">50</field></shadow></value>
+        <value name="FROM_LOW"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        <value name="FROM_HIGH"><shadow type="math_number"><field name="NUM">100</field></shadow></value>
+        <value name="TO_LOW"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        <value name="TO_HIGH"><shadow type="math_number"><field name="NUM">180</field></shadow></value>
+      </block>
     </category>
     <category name="邏輯" colour="210">
       <block type="logic_boolean"></block>

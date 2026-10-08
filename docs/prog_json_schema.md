@@ -344,7 +344,11 @@ AI 子集不是整個 Blockly 語言。Blockly 比較的數字積木會輸出 `{
 | `plot_print` | series、unit、value 數值表達式 |
 | `variable_declare` / `variable_set` / `math_change` | variableName；後兩者帶 value |
 | `math_number` / `variable_get` | number / variableName |
-| `math_arithmetic` | operator（ADD/MINUS/MULTIPLY/DIVIDE）、left、right；整數運算 |
+| `math_arithmetic` | operator（ADD/MINUS/MULTIPLY/DIVIDE/MODULO）、left、right；整數運算，除以 0 得 0，餘數正負號跟左邊 |
+| `math_abs` | value；絕對值 |
+| `math_random` | from、to；含兩端的隨機整數（from > to 自動對調），每次求值重抽 |
+| `math_constrain` | value、low、high；夾在 low–high 之間（low > high 自動對調） |
+| `math_map` | value、fromLow、fromHigh、toLow、toHigh；同 Arduino `map()` 的整數線性換算，不夾限；原範圍寬度為 0 時回傳 toLow |
 | `logic_boolean` / `logic_negate` | value 布林 / content 表達式 |
 | `logic_operation` | operator（AND／OR）、left、right；短路求值（AND 左邊不成立、OR 左邊成立就不讀右邊） |
 | `logic_compare` | operator、left、right；可巢狀數值表達式 |
