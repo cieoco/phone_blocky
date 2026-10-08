@@ -301,7 +301,14 @@
 
 ### NVS 配置
 
-| NVS key | 用途 |
+程式存在**專用 NVS 分割區 `prog`**（`partitions.csv`，128 KB，位於 flash 末端原本未使用的空間）。
+預設 NVS 只有 20 KB、單筆上限約 8 KB，Blockly XML 約 30 個積木就放不下，所以另開分割區。
+- 若燒錄時沒有更新分割表（找不到 `prog`），自動退回預設 NVS，功能照舊但容量小。
+- 第一次使用時會把預設 NVS 裡的舊存檔（含 autorun 設定）搬到 `prog`，並清掉舊位置。
+- 存檔上限：JSON + XML 合計 **32 KB**（約 140 個動作積木）；前端存檔前先檢查，韌體也會擋（`program_too_large`）。
+  上限來自讀回時 XML 與回應字串要同時放在 heap，不是 NVS 容量。
+
+| NVS key（namespace `program`） | 用途 |
 |------|------|
 | `program/json` | PROG JSON,ESP32 執行用 (autorun 讀這個) |
 | `program/xml` | Blockly workspace XML,**只有從 Blockly 存才有** |
@@ -314,8 +321,8 @@
 
 | Method | Path | Body | 回傳 |
 |--------|------|------|------|
-| `GET` | `/api/program` | — | `{ok, has_program, json, xml, meta, autorun}` |
-| `POST` | `/api/program` | `{json, xml?, source}` | `{ok, source, has_xml}` |
+| `GET` | `/api/program` | — | `{ok, has_program, json, xml, meta, autorun}`（存的 JSON 損毀時 `json:null, json_parse_error`） |
+| `POST` | `/api/program` | `{json, xml?, source}` | `{ok, source, has_xml}`；失敗 `{ok:false, error:<代碼>}` |
 | `DELETE` | `/api/program` | — | `{ok}` |
 | `GET` | `/api/program/autorun` | — | `{ok, on}` |
 | `POST` | `/api/program/autorun` | `{on: bool}` | `{ok, on}` |
@@ -333,6 +340,11 @@ POST `/api/program` 的 body 範例:
 - `json.mode` 必須是 `"PROG"`，setup/loop 必須是陣列，且通過韌體解析與 16KB JSON 容量檢查，否則回 400；檢查不執行任何指令
 - `xml` 是 optional,ai.html 不會附,Blockly 會附
 - `source` 是字串標籤,顯示「這份檔是誰存的」
+- 錯誤代碼：`bad_json`、`missing_json`、`mode_must_be_prog`、`program_too_large`（請求 > 64 KB 時 413）、
+  `nvs_write_failed`、`program_persistence_verification_failed`，以及 PROG 解析錯誤（`nesting_too_deep` 等）
+- 請求與回應的解析／組裝在 [src/ProgramPayload.h](../src/ProgramPayload.h)：POST 以 zero-copy 解析（容量依節點數估算），
+  GET 直接把存好的 JSON／XML 文字組成回應，不經固定大小的 JsonDocument
+- Blockly 存的 XML 不含積木 ID（`workspaceToDom(ws, true)`），約小 20%；變數 ID 保留，與 JSON 一致
 
 ### 開機 autorun 行為
 

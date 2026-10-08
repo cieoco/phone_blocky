@@ -171,6 +171,11 @@ AI 子集（`prompts.py` / `schema.py` / `ai.html`）目前不產生迴圈。
 setup／loop／procedures（stage 與存檔驗證共用），拒絕遞迴，呼叫算一層計入 8 層上限。
 被停用（disabled）的積木不翻譯、不執行。
 
+**存檔**：`ProgramStore.h` 存在專用 NVS 分割區 `prog`（`partitions.csv`，128 KB），找不到時退回預設 NVS；
+`/api/program` 的解析與回應在 `ProgramPayload.h`（不要再用固定大小 JsonDocument 裝 XML）。
+存檔上限 JSON+XML 32 KB，前端 `MAX_SAVE_BYTES` 與韌體 `PROGRAM_STORE_MAX_BYTES` 需一致。
+改了 `partitions.csv` 需 `pio run --target upload`（會寫入分割表）；`uploadfs` 不受影響。
+
 **不默默略過積木**：`getTranslator` 遇到不認得的積木會丟出錯誤；沒接在 setup／loop 裡的積木
 不翻譯，只在執行／存檔時顯示「有 N 個積木不會執行」。新增積木時務必在 `getTranslator` 登記。
 

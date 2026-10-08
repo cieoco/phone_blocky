@@ -216,6 +216,12 @@ const FIRMWARE_ERROR_TEXT = {
   recursive_procedure: '副程式不能直接或間接呼叫自己',
   unknown_procedure: '呼叫了不存在的副程式',
   duplicate_procedure: '有兩個同名的副程式',
+  program_too_large: '程式太大，超過 ESP32 存檔或執行上限',
+  bad_json: '送出的資料格式錯誤',
+  missing_json: '存檔資料缺少程式內容',
+  mode_must_be_prog: '存檔資料不是積木程式',
+  nvs_write_failed: '寫入 ESP32 儲存區失敗（空間可能不足）',
+  program_persistence_verification_failed: '寫入後讀回不一致，請再存一次',
   unsupported_or_invalid_program_command: '程式含有不支援的積木或參數'
 };
 
@@ -283,12 +289,31 @@ function runBlocklyCode() {
 // 端點: GET/POST/DELETE /api/program  (見 src/ProgramStore.h)
 // ============================================================================
 
+// 存檔上限（JSON + XML 合計），需與韌體 ProgramPayload.h 的 PROGRAM_STORE_MAX_BYTES 一致
+const MAX_SAVE_BYTES = 32768;
+
+// 計算指令數（含 if／迴圈內部與副程式本體），只用來顯示
+function countProgCommands(cmds) {
+  let n = 0;
+  for (const c of cmds || []) {
+    n += 1;
+    for (const list of [c.then, c.else, c.do]) if (Array.isArray(list)) n += countProgCommands(list);
+  }
+  return n;
+}
+
 function buildProgPayload() {
-  const xml = Blockly.Xml.workspaceToDom(workspace);
+  // noId：不存積木 ID（載入時 Blockly 會重新產生），XML 約小 20%；變數 ID 仍保留
+  const xml = Blockly.Xml.workspaceToDom(workspace, true);
   const xmlText = Blockly.Xml.domToText(xml);
   const irNodes = parseWorkspaceToIR(workspace);
   const json = buildProgJson(irNodes);
   warnStrayBlocks(irNodes);
+  const size = xmlText.length + JSON.stringify(json).length;
+  if (size > MAX_SAVE_BYTES) {
+    throw new Error(`程式太大，無法存檔（目前約 ${Math.ceil(size / 1024)} KB，上限 ${MAX_SAVE_BYTES / 1024} KB）。` +
+                    `可以把重複的動作改成副程式或迴圈來縮小`);
+  }
   return { json, xml: xmlText, source: 'blockly' };
 }
 
@@ -305,10 +330,14 @@ async function saveFile() {
       // 讀回驗證，讓畫面上的成功訊息代表資料確實可再被開啟。
       const verifyResp = await fetch('/api/program', { cache: 'no-store' });
       const verify = await verifyResp.json();
-      if (!verify.ok || !verify.has_program || !verify.xml) {
+      if (!verify.ok || !verify.has_program || verify.xml !== payload.xml) {
         throw new Error('ESP32 未能讀回剛儲存的程式');
       }
-      appendSensorOutput(`💾 已存入 ESP32，讀回驗證成功 (${payload.json.setup.length + payload.json.loop.length} 個指令)`);
+      const j = payload.json;
+      const total = countProgCommands(j.setup) + countProgCommands(j.loop) +
+                    (j.procedures || []).reduce((s, p) => s + countProgCommands(p.body), 0);
+      const kb = ((payload.xml.length + JSON.stringify(j).length) / 1024).toFixed(1);
+      appendSensorOutput(`💾 已存入 ESP32，讀回驗證成功（${total} 個指令，${kb} KB／上限 ${MAX_SAVE_BYTES / 1024} KB）`);
     } else {
       appendSensorOutput(`❌ 存檔失敗: ${FIRMWARE_ERROR_TEXT[data.error] || data.error || '未知錯誤'}`);
     }

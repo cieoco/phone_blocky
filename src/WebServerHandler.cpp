@@ -1,5 +1,6 @@
 #include "WebServerHandler.h"
 #include "ProgramStore.h"
+#include "ProgramPayload.h"
 
 // 靜態成員定義
 WebServerHandler *WebServerHandler::instance = nullptr;
@@ -279,36 +280,17 @@ void WebServerHandler::checkWebSocketTimeout() {
 // ============================================================================
 
 void WebServerHandler::handleProgramGet(AsyncWebServerRequest *request) {
-  DynamicJsonDocument doc(8192);
-  doc["ok"] = true;
-  doc["has_program"] = ProgramStore::exists();
-
-  if (ProgramStore::exists()) {
-    // 把 program.json 內容當成巢狀物件還原回去
-    String jsonStr = ProgramStore::loadJson();
-    DynamicJsonDocument progDoc(4096);
-    DeserializationError err = deserializeJson(progDoc, jsonStr);
-    if (!err) {
-      doc["json"] = progDoc.as<JsonVariant>();
-    } else {
-      doc["json"] = nullptr;
-      doc["json_parse_error"] = err.c_str();
-    }
-
-    String xml = ProgramStore::loadXml();
-    if (xml.length() > 0) doc["xml"] = xml;
-
-    String metaStr = ProgramStore::loadMeta();
-    DynamicJsonDocument metaDoc(256);
-    if (!deserializeJson(metaDoc, metaStr)) {
-      doc["meta"] = metaDoc.as<JsonVariant>();
-    }
+  // 直接把存好的 JSON / XML 文字組成回應，不再塞進固定大小的 JsonDocument
+  // （舊做法 8 KB 文件約 30 個積木就溢位，XML 被默默丟掉 → 前端讀回驗證失敗）。
+  const bool hasProgram = ProgramStore::exists();
+  String json, xml, meta;
+  if (hasProgram) {
+    json = ProgramStore::loadJson();
+    xml = ProgramStore::loadXml();
+    meta = ProgramStore::loadMeta();
   }
-
-  doc["autorun"] = ProgramStore::isAutorun();
-
-  String out;
-  serializeJson(doc, out);
+  String out = ProgramPayload::buildGetResponse(hasProgram, json, xml, meta,
+                                                ProgramStore::isAutorun());
   request->send(200, "application/json", out);
 }
 
@@ -318,78 +300,79 @@ void WebServerHandler::handleProgramPost(AsyncWebServerRequest *request,
   // 累積多段 chunk (XML 可能 > 1 packet)
   if (index == 0) {
     programPostBuffer = "";
+    // 請求內容含 JSON 跳脫，上限抓存檔上限的 2 倍；太大直接拒絕，不配置記憶體
+    programPostRejected = total == 0 || total > PROGRAM_STORE_MAX_BYTES * 2;
+    if (programPostRejected) {
+      request->send(413, "application/json",
+                    "{\"ok\":false,\"error\":\"program_too_large\"}");
+      return;
+    }
     programPostBuffer.reserve(total + 1);
   }
+  if (programPostRejected) return;
   for (size_t i = 0; i < len; i++) {
     programPostBuffer += (char)data[i];
   }
   if (index + len < total) return; // 還沒收完
 
-  // 收完了,解析
-  DynamicJsonDocument doc(programPostBuffer.length() + 1024);
-  DeserializationError err = deserializeJson(doc, programPostBuffer);
-  if (err) {
+  // 收完了,解析（zero-copy：XML 直接留在 programPostBuffer 裡，存檔時才寫入 NVS）
+  ProgramPayload::SaveRequest req;
+  if (!ProgramPayload::parseSaveBody(&programPostBuffer[0], programPostBuffer.length(), req)) {
     request->send(400, "application/json",
-                  String("{\"ok\":false,\"error\":\"bad json: ") + err.c_str() +
-                      "\"}");
+                  String("{\"ok\":false,\"error\":\"") + req.error + "\"}");
+    programPostBuffer = String();
     return;
   }
-
-  // 必須有 json,且必須是 PROG mode
-  if (!doc.containsKey("json") || !doc["json"].is<JsonObject>()) {
-    request->send(400, "application/json",
-                  "{\"ok\":false,\"error\":\"missing 'json' object\"}");
-    return;
-  }
-  const char *mode = doc["json"]["mode"] | "";
-  if (strcmp(mode, "PROG") != 0) {
-    request->send(400, "application/json",
-                  "{\"ok\":false,\"error\":\"json.mode must be 'PROG'\"}");
-    return;
-  }
-
-  String progJsonStr;
-  serializeJson(doc["json"], progJsonStr);
+  const String &progJsonStr = req.json;
 
   // Use the execution parser without staging or running any commands.
   // Match its JSON capacity so a saved program can actually be loaded.
-  DynamicJsonDocument executable(16384);
-  std::vector<BlocklyCommand> parsedSetup, parsedLoop;
-  std::vector<BlocklyProcedure> parsedProcedures;
-  cmdProcessor.lastParseError = nullptr;
-  if (deserializeJson(executable, progJsonStr) || executable.overflowed() ||
-      !cmdProcessor.parseProgramDoc(executable, parsedSetup, parsedLoop, parsedProcedures)) {
-    const char *parseErr = cmdProcessor.lastParseError ? cmdProcessor.lastParseError
-                                                        : "unsupported_or_invalid_program_command";
+  // （放在區塊內：驗證完立刻釋放 16 KB 文件，再寫 NVS）
+  const char *parseErr = nullptr;
+  {
+    DynamicJsonDocument executable(16384);
+    std::vector<BlocklyCommand> parsedSetup, parsedLoop;
+    std::vector<BlocklyProcedure> parsedProcedures;
+    cmdProcessor.lastParseError = nullptr;
+    DeserializationError execErr = deserializeJson(executable, progJsonStr);
+    const bool tooLarge = execErr == DeserializationError::NoMemory || executable.overflowed();
+    if (execErr || tooLarge ||
+        !cmdProcessor.parseProgramDoc(executable, parsedSetup, parsedLoop, parsedProcedures)) {
+      // 執行時同樣用 16 KB 文件解析，超過代表即使存下來也跑不動
+      parseErr = tooLarge ? "program_too_large"
+               : cmdProcessor.lastParseError ? cmdProcessor.lastParseError
+                                             : "unsupported_or_invalid_program_command";
+    }
+  }
+  if (parseErr) {
+    programPostBuffer = String();
     request->send(400, "application/json",
                   String("{\"ok\":false,\"error\":\"") + parseErr + "\"}");
     return;
   }
 
-  String xmlStr = doc["xml"] | "";
-  String source = doc["source"] | "unknown";
-
-  if (!ProgramStore::save(progJsonStr, xmlStr, source)) {
+  const bool hasXml = req.xmlLen > 0;
+  const bool saved = ProgramStore::save(progJsonStr, req.xml, req.xmlLen, req.source);
+  programPostBuffer = String();   // XML 已寫入 NVS，釋放請求緩衝（req.xml 之後不可再用）
+  if (!saved) {
     request->send(500, "application/json",
-                  "{\"ok\":false,\"error\":\"nvs write failed\"}");
+                  "{\"ok\":false,\"error\":\"nvs_write_failed\"}");
     return;
   }
 
   // 寫入完成後立刻讀回，避免只回報「已接收」卻沒有真正持久化。
   if (!ProgramStore::exists() || ProgramStore::loadJson() != progJsonStr) {
     request->send(500, "application/json",
-                  "{\"ok\":false,\"error\":\"program persistence verification failed\"}");
+                  "{\"ok\":false,\"error\":\"program_persistence_verification_failed\"}");
     return;
   }
 
   Serial.printf("[ProgramStore] 已存檔 (source=%s, has_xml=%d, json_len=%d)\n",
-                source.c_str(), xmlStr.length() > 0 ? 1 : 0,
-                progJsonStr.length());
+                req.source.c_str(), hasXml ? 1 : 0, progJsonStr.length());
 
   request->send(200, "application/json",
-                String("{\"ok\":true,\"source\":\"") + source +
-                    "\",\"has_xml\":" + (xmlStr.length() > 0 ? "true" : "false") +
-                    "}");
+                String("{\"ok\":true,\"source\":\"") + req.source +
+                    "\",\"has_xml\":" + (hasXml ? "true" : "false") + "}");
 }
 
 void WebServerHandler::handleProgramDelete(AsyncWebServerRequest *request) {
