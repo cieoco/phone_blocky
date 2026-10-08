@@ -28,3 +28,7 @@ venv/
 
 # Claude Code local tooling
 .claude/
+
+# Local secrets (Azure key for inst.py) — never commit
+config.py
+.env
