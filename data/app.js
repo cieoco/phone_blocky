@@ -90,6 +90,21 @@ window.addEventListener('load', function () {
   document.getElementById('openFileBtn').onclick = openFile;
   const saveAsBtn = document.getElementById('saveAsNewBtn');
   if (saveAsBtn) saveAsBtn.onclick = downloadFile;
+  const openLocalBtn = document.getElementById('openLocalBtn');
+  const localFileInput = document.getElementById('localFileInput');
+  if (openLocalBtn && localFileInput) {
+    openLocalBtn.onclick = () => {
+      if (!confirmReplaceWorkspace()) return;
+      localFileInput.value = '';          // 同一個檔案可以再選一次
+      localFileInput.click();
+    };
+    localFileInput.onchange = () => openLocalFile(localFileInput.files[0]);
+  }
+
+  // 追蹤「畫面上有沒有還沒存的修改」：只看會改變程式的事件，載入／存檔後歸零
+  workspace.addChangeListener((e) => {
+    if (!e.isUiEvent && !suppressDirtyTracking) workspaceDirty = true;
+  });
 
   // 開頁時自動載入 ESP32 上的存檔(若有)
   setTimeout(autoLoadFromEsp32, 300);
@@ -262,9 +277,45 @@ function upgradeLegacyXml(dom) {
   return dom;
 }
 
+// 畫面上是否有尚未存檔的修改；以及畫面上的程式是否就是 ESP32 上那一支
+let workspaceDirty = false;
+let workspaceMatchesEsp32 = false;
+let suppressDirtyTracking = false;
+
+// 載入 XML；失敗時還原成載入前的積木（不會因為壞檔案把畫面清空）
 function loadXmlIntoWorkspace(xmlText) {
-  workspace.clear();
-  Blockly.Xml.domToWorkspace(upgradeLegacyXml(Blockly.utils.xml.textToDom(xmlText)), workspace);
+  const dom = upgradeLegacyXml(Blockly.utils.xml.textToDom(xmlText));   // 不是 XML 會在這裡丟錯
+  const backup = Blockly.Xml.workspaceToDom(workspace);
+  suppressDirtyTracking = true;
+  try {
+    workspace.clear();
+    Blockly.Xml.domToWorkspace(dom, workspace);
+  } catch (e) {
+    workspace.clear();
+    Blockly.Xml.domToWorkspace(backup, workspace);
+    throw e;
+  } finally {
+    // Blockly 的變更事件是非同步送出的，等它們送完再恢復追蹤
+    setTimeout(() => { suppressDirtyTracking = false; workspaceDirty = false; }, 0);
+  }
+}
+
+// 畫面上有積木、而且有還沒存的修改時，先確認再取代
+function confirmReplaceWorkspace() {
+  const hasContent = workspace.getAllBlocks(false)
+    .some(b => b.type !== 'arduino_setup' && b.type !== 'arduino_loop');
+  if (!hasContent || !workspaceDirty) return true;
+  return window.confirm('目前畫面上的積木還沒存檔，開啟後會被取代。確定要開啟嗎？');
+}
+
+// 把 Blockly 載入錯誤轉成看得懂的說明
+function describeLoadError(e) {
+  const msg = String(e && e.message || e);
+  if (/textToDom|parse|XML/i.test(msg)) return '這不是積木程式檔（.xml 格式不正確）';
+  if (/block|type/i.test(msg)) {
+    return '檔案裡有目前不支援的積木（可能是舊版「馬達」「舵機」積木），無法開啟';
+  }
+  return msg;
 }
 
 function runBlocklyCode() {
@@ -320,6 +371,15 @@ function buildProgPayload() {
 async function saveFile() {
   try {
     const payload = buildProgPayload();
+    // 板子上只存一支：畫面上的程式不是從 ESP32 開的、而板子上已經有程式時，先確認會覆蓋
+    if (!workspaceMatchesEsp32) {
+      const existing = await (await fetch('/api/program', { cache: 'no-store' })).json();
+      if (existing.ok && existing.has_program &&
+          !window.confirm('ESP32 上已經有一支程式，存檔會把它蓋掉。確定要存嗎？\n（想保留的話，可以先從 ESP32 開啟後「下載到本機」）')) {
+        appendSensorOutput('已取消存到 ESP32');
+        return;
+      }
+    }
     const resp = await fetch('/api/program', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -338,6 +398,8 @@ async function saveFile() {
                     (j.procedures || []).reduce((s, p) => s + countProgCommands(p.body), 0);
       const kb = ((payload.xml.length + JSON.stringify(j).length) / 1024).toFixed(1);
       appendSensorOutput(`💾 已存入 ESP32，讀回驗證成功（${total} 個指令，${kb} KB／上限 ${MAX_SAVE_BYTES / 1024} KB）`);
+      workspaceDirty = false;
+      workspaceMatchesEsp32 = true;
     } else {
       appendSensorOutput(`❌ 存檔失敗: ${FIRMWARE_ERROR_TEXT[data.error] || data.error || '未知錯誤'}`);
     }
@@ -348,6 +410,7 @@ async function saveFile() {
 
 async function openFile() {
   try {
+    if (!confirmReplaceWorkspace()) return;
     const resp = await fetch('/api/program');
     const data = await resp.json();
     if (!data.ok || !data.has_program) {
@@ -356,14 +419,28 @@ async function openFile() {
     }
     if (data.xml) {
       loadXmlIntoWorkspace(data.xml);
+      workspaceMatchesEsp32 = true;
       const src = data.meta?.source || 'unknown';
-      appendSensorOutput(`📂 已從 ESP32 載入 (來源: ${src})`);
+      appendSensorOutput(`📂 已從 ESP32 開啟 (來源: ${src})`);
     } else {
       // 只有 JSON,沒 XML — 可能是 ai.html 存的,Blockly 無法視覺還原
       appendSensorOutput("⚠️ ESP32 上的存檔由 AI 產生,Blockly 無法還原視覺積木");
     }
   } catch (e) {
-    appendSensorOutput(`❌ 載入失敗: ${e.message}`);
+    appendSensorOutput(`❌ 從 ESP32 開啟失敗: ${describeLoadError(e)}`);
+  }
+}
+
+// 從電腦／手機選一個 .xml 檔載入
+async function openLocalFile(file) {
+  if (!file) return;
+  try {
+    if (file.size > 1024 * 1024) throw new Error('檔案太大，不像是積木程式檔');
+    loadXmlIntoWorkspace(await file.text());
+    workspaceMatchesEsp32 = false;   // 這支還沒存到板子上
+    appendSensorOutput(`⬆️ 已從本機開啟「${file.name}」（還沒存到 ESP32，要執行或開機自動跑請按「存到 ESP32」）`);
+  } catch (e) {
+    appendSensorOutput(`❌ 無法開啟「${file.name}」：${describeLoadError(e)}`);
   }
 }
 
@@ -374,6 +451,7 @@ async function autoLoadFromEsp32() {
     const data = await resp.json();
     if (data.ok && data.has_program && data.xml) {
       loadXmlIntoWorkspace(data.xml);
+      workspaceMatchesEsp32 = true;
       const src = data.meta?.source || 'unknown';
       appendSensorOutput(`已自動載入 ESP32 上的存檔 (來源: ${src})`);
     }
@@ -383,17 +461,31 @@ async function autoLoadFromEsp32() {
 }
 
 // 「另存」改成下載到本機,作為跨裝置備份手段
+// 把檔名裡不能用的字元換掉，並確保副檔名是 .xml
+function sanitizeFileName(name) {
+  const base = String(name).trim().replace(/\.xml$/i, '').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0, 60);
+  return (base || 'phone_blocky') + '.xml';
+}
+
 function downloadFile() {
-  const xml = Blockly.Xml.workspaceToDom(workspace);
-  const xmlText = Blockly.Xml.domToText(xml);
+  // 與存到 ESP32 相同：不含積木 ID 的 XML（變數 ID 保留），可用「從本機開啟」載回
+  const xmlText = Blockly.Xml.domToText(Blockly.Xml.workspaceToDom(workspace, true));
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const suggested = `phone_blocky_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+  const name = window.prompt('檔名（存到電腦或手機的下載資料夾）', suggested);
+  if (name === null) return;                       // 取消
+  const fileName = sanitizeFileName(name);
   const blob = new Blob([xmlText], { type: 'application/xml' });
   const a = document.createElement('a');
-  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   a.href = URL.createObjectURL(blob);
-  a.download = `phone_blocky_${ts}.xml`;
+  a.download = fileName;
+  document.body.appendChild(a);                    // Firefox 需要在頁面上才會觸發
   a.click();
-  URL.revokeObjectURL(a.href);
-  appendSensorOutput("📁 已下載 .xml 備份到本機");
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);   // 太早釋放會讓 iPhone Safari 下載失敗
+  workspaceDirty = false;
+  appendSensorOutput(`⬇️ 已下載「${fileName}」到本機（${(xmlText.length / 1024).toFixed(1)} KB）`);
 }
 
 function optimizeTouchExperience() { }

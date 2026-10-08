@@ -8,10 +8,10 @@
   <!-- 載入 Blockly -->
   <script src="blockly.min.js"></script>
   <!-- 載入客戶端邏輯 -->
-  <script src="appBlock.js?v=20261009-save"></script>
-  <script src="appIr.js?v=20261009-save"></script>
-  <script src="appJson.js?v=20261009-save"></script>
-  <script src="app.js?v=20261009-save"></script>
+  <script src="appBlock.js?v=20261009-files"></script>
+  <script src="appIr.js?v=20261009-files"></script>
+  <script src="appJson.js?v=20261009-files"></script>
+  <script src="app.js?v=20261009-files"></script>
   <style>
     /* 極簡佈局 - 確保座標系統完全原生 */
     body {
@@ -52,6 +52,25 @@
 
     .blockly-section {
       margin: 20px 0;
+    }
+
+    /* 程式操作：ESP32 與本機分兩組，按鈕在手機上可換行 */
+    .file-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin: 8px 0;
+    }
+
+    .file-group-label {
+      flex-basis: 100%;
+      font-size: 0.85em;
+      color: #666;
+    }
+
+    .btn-local {
+      background: #2f9e6b;
     }
 
     #blocklyDiv {
@@ -150,9 +169,17 @@
 
     <div class="info-section">
       <div class="section-title">🎮 程式操作</div>
-      <button class="btn" id="saveBtn">💾 儲存</button>
-      <button class="btn" id="saveAsNewBtn">📁 另存</button>
-      <button class="btn" id="openFileBtn">📂 開啟</button>
+      <div class="file-group">
+        <span class="file-group-label">ESP32（板子上只存一支，開機自動執行跑這支）</span>
+        <button class="btn" id="saveBtn">💾 存到 ESP32</button>
+        <button class="btn" id="openFileBtn">📂 從 ESP32 開啟</button>
+      </div>
+      <div class="file-group">
+        <span class="file-group-label">本機（電腦／手機的 .xml 檔，可備份、分享）</span>
+        <button class="btn btn-local" id="saveAsNewBtn">⬇️ 下載到本機</button>
+        <button class="btn btn-local" id="openLocalBtn">⬆️ 從本機開啟</button>
+        <input type="file" id="localFileInput" accept=".xml,application/xml,text/xml" hidden>
+      </div>
     </div>
 
     <div class="info-section" id="sensorOutput">

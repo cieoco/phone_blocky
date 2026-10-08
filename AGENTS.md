@@ -174,6 +174,8 @@ setup／loop／procedures（stage 與存檔驗證共用），拒絕遞迴，呼�
 **存檔**：`ProgramStore.h` 存在專用 NVS 分割區 `prog`（`partitions.csv`，128 KB），找不到時退回預設 NVS；
 `/api/program` 的解析與回應在 `ProgramPayload.h`（不要再用固定大小 JsonDocument 裝 XML）。
 存檔上限 JSON+XML 32 KB，前端 `MAX_SAVE_BYTES` 與韌體 `PROGRAM_STORE_MAX_BYTES` 需一致。
+積木頁「程式操作」分 ESP32（`saveFile` / `openFile`，板子只存一支）與本機（`downloadFile` / `openLocalFile`，.xml）兩組；
+`loadXmlIntoWorkspace` 失敗會還原原本積木，`workspaceDirty` / `workspaceMatchesEsp32` 決定是否跳確認。
 改了 `partitions.csv` 需 `pio run --target upload`（會寫入分割表）；`uploadfs` 不受影響。
 
 **不默默略過積木**：`getTranslator` 遇到不認得的積木會丟出錯誤；沒接在 setup／loop 裡的積木

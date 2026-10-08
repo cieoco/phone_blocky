@@ -152,4 +152,10 @@ assert.throws(() => value(`buildProgJson([loopWith(new ProcedureCallNode('不存
 vm.runInContext(`workspace = {getTopBlocks: () => [procDef('B', [], null)]};`, context);
 assert.equal(value('parseWorkspaceToIR(workspace).strayBlocks'), 0);
 assert.equal(value('parseWorkspaceToIR(workspace)[0] instanceof ProcedureDefNode'), true);
-console.log('Frontend syntax, IR units, flat payload, loops, nesting limit, value slots, AND/OR, math functions, subroutines, unknown/stray blocks: PASS');
+// Local files: safe download names; readable load errors
+assert.equal(value(`sanitizeFileName('我的 程式')`), '我的 程式.xml');
+assert.equal(value(`sanitizeFileName('a/b:c*?.XML')`), 'a_b_c__.xml');
+assert.equal(value(`sanitizeFileName('   ')`), 'phone_blocky.xml');
+assert.match(value(`describeLoadError(new Error('textToDom was unable to parse: x'))`), /不是積木程式檔/);
+assert.match(value(`describeLoadError(new Error('Invalid block definition for type: 馬達'))`), /不支援的積木/);
+console.log('Frontend syntax, IR units, flat payload, loops, nesting limit, value slots, AND/OR, math functions, subroutines, local files, unknown/stray blocks: PASS');
