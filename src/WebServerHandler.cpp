@@ -355,12 +355,10 @@ void WebServerHandler::handleProgramPost(AsyncWebServerRequest *request,
   // Match its JSON capacity so a saved program can actually be loaded.
   DynamicJsonDocument executable(16384);
   std::vector<BlocklyCommand> parsedSetup, parsedLoop;
+  std::vector<BlocklyProcedure> parsedProcedures;
   cmdProcessor.lastParseError = nullptr;
   if (deserializeJson(executable, progJsonStr) || executable.overflowed() ||
-      !executable["setup"].is<JsonArrayConst>() ||
-      !executable["loop"].is<JsonArrayConst>() ||
-      !cmdProcessor.parseCommandArray(executable["setup"].as<JsonArrayConst>(), parsedSetup) ||
-      !cmdProcessor.parseCommandArray(executable["loop"].as<JsonArrayConst>(), parsedLoop)) {
+      !cmdProcessor.parseProgramDoc(executable, parsedSetup, parsedLoop, parsedProcedures)) {
     const char *parseErr = cmdProcessor.lastParseError ? cmdProcessor.lastParseError
                                                         : "unsupported_or_invalid_program_command";
     request->send(400, "application/json",

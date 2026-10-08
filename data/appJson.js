@@ -14,7 +14,11 @@ function parseWorkspaceToIR(workspace) {
   
       let current = block;
       while (current) {
-        if (current.type === "arduino_setup" || current.type === "arduino_loop") {
+        if (typeof current.isEnabled === "function" && !current.isEnabled()) {
+          // 被停用的積木不執行（Blockly 的慣例）
+        } else if (current.type === "arduino_setup" || current.type === "arduino_loop" ||
+            current.type.startsWith("procedures_def")) {
+          // setup／loop 與副程式定義都在最外層；有回傳值的副程式由 getTranslator 明確報錯
           const node = getTranslator(current.type)(current);
           if (node) irNodes.push(node);
         } else {
@@ -35,10 +39,12 @@ function parseWorkspaceToIR(workspace) {
     let current = block;
     // 只解析線性連結，不遍歷 inputList（由控制積木自己處理）
     while (current) {
-      // 不認得的積木由 getTranslator 回傳的函式直接報錯，不會默默略過
-      const node = getTranslator(current.type)(current);
-      if (node) {
-        nodes.push(node);
+      // 被停用的積木不執行；不認得的積木由 getTranslator 回傳的函式直接報錯，不會默默略過
+      if (typeof current.isEnabled !== "function" || current.isEnabled()) {
+        const node = getTranslator(current.type)(current);
+        if (node) {
+          nodes.push(node);
+        }
       }
       current = current.getNextBlock();
     }

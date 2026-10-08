@@ -8,10 +8,10 @@
   <!-- 載入 Blockly -->
   <script src="blockly.min.js"></script>
   <!-- 載入客戶端邏輯 -->
-  <script src="appBlock.js?v=20261009-math"></script>
-  <script src="appIr.js?v=20261009-math"></script>
-  <script src="appJson.js?v=20261009-math"></script>
-  <script src="app.js?v=20261009-math"></script>
+  <script src="appBlock.js?v=20261009-proc"></script>
+  <script src="appIr.js?v=20261009-proc"></script>
+  <script src="appJson.js?v=20261009-proc"></script>
+  <script src="app.js?v=20261009-proc"></script>
   <style>
     /* 極簡佈局 - 確保座標系統完全原生 */
     body {
@@ -247,6 +247,8 @@
         <value name="DEG"><shadow type="math_number"><field name="NUM">90</field></shadow></value>
       </block>
     </category>
+    <!-- 內容由 app.js 的 subroutineFlyout() 動態產生：定義積木 + 目前每個副程式的呼叫積木 -->
+    <category name="副程式" colour="290" custom="SUBROUTINE"></category>
   </xml>
 
   <script>
@@ -256,6 +258,22 @@
       Blockly.Msg["DUPLICATE_BLOCK"] = "複製積木";
       Blockly.Msg["DELETE_BLOCK"] = "刪除積木";
       Blockly.Msg["CLEAN_UP"] = "整理積木";
+      // 副程式（Blockly 內建 procedures 積木）中文化
+      Blockly.Msg["PROCEDURES_DEFNORETURN_TITLE"] = "副程式";
+      Blockly.Msg["PROCEDURES_DEFNORETURN_PROCEDURE"] = "我的副程式";
+      Blockly.Msg["PROCEDURES_DEFNORETURN_TOOLTIP"] = "把一段積木包成副程式，之後用「呼叫」積木重複使用。可在齒輪裡加參數。";
+      Blockly.Msg["PROCEDURES_DEFNORETURN_COMMENT"] = "";
+      Blockly.Msg["PROCEDURES_BEFORE_PARAMS"] = "參數：";
+      Blockly.Msg["PROCEDURES_CALL_BEFORE_PARAMS"] = "參數：";
+      Blockly.Msg["PROCEDURES_CALLNORETURN_TOOLTIP"] = "執行副程式「%1」";
+      Blockly.Msg["PROCEDURES_MUTATORCONTAINER_TITLE"] = "參數";
+      Blockly.Msg["PROCEDURES_MUTATORCONTAINER_TOOLTIP"] = "新增、移除或調整參數順序";
+      Blockly.Msg["PROCEDURES_MUTATORARG_TITLE"] = "參數名稱：";
+      Blockly.Msg["PROCEDURES_MUTATORARG_TOOLTIP"] = "新增一個參數";
+      Blockly.Msg["PROCEDURES_CREATE_DO"] = "建立「%1」的呼叫積木";
+      Blockly.Msg["PROCEDURES_HIGHLIGHT_DEF"] = "找到副程式定義";
+      Blockly.Msg["PROCEDURES_DEF_DUPLICATE_WARNING"] = "已經有同名的副程式了";
+      Blockly.Msg["PROCEDURES_CALL_DISABLED_DEF_WARNING"] = "這個副程式已被停用，無法呼叫";
 
       if (Blockly.Workspace && Blockly.Workspace.prototype) {
         Blockly.Workspace.prototype.getVariable = function (name, type) {

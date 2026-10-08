@@ -19,6 +19,7 @@
 - 巢狀容器為 `if`（then/else）、`repeat`、`while`（do），可互相包，**最多 8 層**（韌體 `PROG_MAX_BLOCK_DEPTH`，前端 `MAX_BLOCK_DEPTH`）。超過時前端擋下、韌體回 `nesting_too_deep`。AI 子集目前不產生迴圈。
 - 一次性動作全部放 `setup`，`loop: []`；`stop` 只停馬達，**不會終止 loop**。
 - 新 Blockly 輸出扁平陣列；韌體仍接受舊 `{command:"arduino_setup"|"arduino_loop", body:[...]}` 包裝。
+- 選用的 `procedures` 陣列放副程式定義（見下方「副程式」）；沒有副程式時 Blockly 不輸出這個鍵。
 
 ## 即時控制路由與單位
 
@@ -201,6 +202,35 @@
 | times | object \| int | 數值表達式（常數、變數、感測器、算式）；**進入迴圈時求值一次**，≤0 不執行 |
 | do | array | 迴圈本體，必填（可空） |
 
+### 副程式 — `procedures` 與 `call`（Blockly 延伸，AI 不產生）
+
+```json
+{
+  "mode": "PROG",
+  "setup": [],
+  "loop": [ { "command": "call", "name": "夾爪", "args": [30] },
+            { "command": "call", "name": "夾爪", "args": [150] } ],
+  "procedures": [
+    { "name": "夾爪", "params": ["vdeg"],
+      "body": [ { "cmd": "servo", "ch": 1, "deg": { "command": "variable_get", "variableName": "vdeg" } },
+                { "cmd": "delay", "ms": 500 } ] }
+  ]
+}
+```
+
+| 欄位 | 說明 |
+|------|------|
+| procedures[].name | 副程式名稱，不可重複（`duplicate_procedure`） |
+| procedures[].params | 參數 = 全域變數名（Blockly 送變數 ID）；可省略 = 無參數 |
+| procedures[].body | 指令陣列，可含 if／迴圈／呼叫其他副程式 |
+| call.name | 要呼叫的副程式；不存在回 `unknown_procedure` |
+| call.args | 數值表達式陣列，個數必須等於 params 個數 |
+
+- 呼叫時**先算出全部參數值再寫入**參數變數，然後同步執行 body（同 if／迴圈）。參數是全域變數，副程式結束後仍保留最後的值。
+- 副程式可以呼叫其他副程式（不論定義先後），但**不可直接或間接呼叫自己**（`recursive_procedure`）：遞迴會把韌體堆疊用光。
+- 每次呼叫算一層巢狀，與 if／迴圈合計（展開所有呼叫後）最多 8 層，超過回 `nesting_too_deep`。
+- 不支援回傳值；Blockly 的「有回傳值副程式」會在前端被擋下。
+
 ### `while` — 當／直到重複（Blockly 延伸，AI 不產生）
 
 ```json
@@ -355,6 +385,6 @@ AI 子集不是整個 Blockly 語言。Blockly 比較的數字積木會輸出 `{
 | `digitalRead` / `analogRead` / `legoButton` | pin |
 | `arduinoUltrasonic` / `arduino_millis` | trigPin、echoPin / 無參數 |
 
-韌體保留舊數字字串與預設值相容性，並非完整的 AI 嚴格驗證器。未知動作、非法馬達／舵機 ID、缺欄位的迴圈會拒絕整份 PROG（`unsupported_or_invalid_program_command`）；巢狀超過 8 層回 `nesting_too_deep`；兩者都不取代正在執行的程式。JSON 解析深度由 `platformio.ini` 的 `ARDUINOJSON_DEFAULT_NESTING_LIMIT=32` 放寬（預設 10 只夠 3 層積木）。缺 setup/loop 陣列回 `invalid_program_arrays`。若需要停止舊程式，送出完整空 PROG。
+韌體保留舊數字字串與預設值相容性，並非完整的 AI 嚴格驗證器。未知動作、非法馬達／舵機 ID、缺欄位的迴圈會拒絕整份 PROG（`unsupported_or_invalid_program_command`）；巢狀超過 8 層回 `nesting_too_deep`；副程式錯誤回 `unknown_procedure` / `recursive_procedure` / `duplicate_procedure`；以上都不取代正在執行的程式。JSON 解析深度由 `platformio.ini` 的 `ARDUINOJSON_DEFAULT_NESTING_LIMIT=32` 放寬（預設 10 只夠 3 層積木）。缺 setup/loop 陣列回 `invalid_program_arrays`。若需要停止舊程式，送出完整空 PROG。
 
 setup、if 分支與 repeat／while 迴圈同步執行；delay 與每圈迴圈都經 `programYield()` 讓出並更新控制。新 PROG 到達時跳出等待、迴圈與剩餘分支／setup，下一安全點套用新程式。這不等於即時硬體急停，實際延遲仍需實機驗證。

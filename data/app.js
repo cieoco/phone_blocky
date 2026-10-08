@@ -60,6 +60,7 @@ window.addEventListener('load', function () {
     zoom: { controls: true, wheel: true, startScale: isTouchOrSmall ? 1.3 : 1.0 },
     move: { scrollbars: true, drag: true, wheel: true }
   });
+  workspace.registerToolboxCategoryCallback('SUBROUTINE', subroutineFlyout);
 
   // Blockly 會在 inject 當下快取注入區的尺寸/位置來換算滑鼠座標；
   // 若之後版面位移（載入遮罩消失、視窗縮放/瀏覽器縮放）卻沒重新整理，
@@ -136,27 +137,73 @@ function resetAndGoHome() { resetCode(); setTimeout(() => location.href = 'index
 // 積木巢狀上限（if / repeat / while 互相包的層數），需與韌體 PROG_MAX_BLOCK_DEPTH 一致
 const MAX_BLOCK_DEPTH = 8;
 
-// 計算 PROG 指令陣列的最大巢狀層數（頂層指令本身為 0 層）
-function progNestingDepth(cmds) {
+// 「副程式」分類的積木清單：一個定義積木，加上目前每個副程式的呼叫積木。
+// 只提供「沒有回傳值」的副程式（直譯器目前不支援回傳值）。
+function subroutineFlyout(ws) {
+  const el = (tag, attrs = {}) => {
+    const e = Blockly.utils.xml.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    return e;
+  };
+  const def = el('block', { type: 'procedures_defnoreturn', gap: '24' });
+  const nameField = el('field', { name: 'NAME' });
+  nameField.textContent = Blockly.Msg['PROCEDURES_DEFNORETURN_PROCEDURE'] || '我的副程式';
+  def.appendChild(nameField);
+  const items = [def];
+  const [noReturn] = Blockly.Procedures.allProcedures(ws);
+  noReturn.sort((a, b) => a[0].localeCompare(b[0])).forEach(([name, args]) => {
+    const call = el('block', { type: 'procedures_callnoreturn', gap: '16' });
+    const mutation = el('mutation', { name });
+    args.forEach(arg => mutation.appendChild(el('arg', { name: arg })));
+    call.appendChild(mutation);
+    items.push(call);
+  });
+  return items;
+}
+
+// 計算 PROG 指令陣列的最大巢狀層數（頂層指令本身為 0 層）。
+// 呼叫副程式算一層，再加上該副程式本體的層數；副程式不可直接或間接呼叫自己。
+function progNestingDepth(cmds, procs = {}, visiting = new Set(), memo = new Map()) {
   let max = 0;
   for (const c of cmds || []) {
-    const children = [c.then, c.else, c.do].filter(Array.isArray);
-    if (children.length === 0) continue;
-    for (const list of children) max = Math.max(max, 1 + progNestingDepth(list));
+    let d = 0;
+    if (c.command === 'call') {
+      d = 1 + procedureDepth(c.name, procs, visiting, memo);
+    } else {
+      for (const list of [c.then, c.else, c.do].filter(Array.isArray)) {
+        d = Math.max(d, 1 + progNestingDepth(list, procs, visiting, memo));
+      }
+    }
+    max = Math.max(max, d);
   }
   return max;
 }
 
-// IR → PROG JSON，並在送出前檢查巢狀層數（超過時板子會拒絕整支程式）
+function procedureDepth(name, procs, visiting, memo) {
+  if (memo.has(name)) return memo.get(name);
+  if (!Object.prototype.hasOwnProperty.call(procs, name)) throw new Error(`找不到副程式「${name}」`);
+  if (visiting.has(name)) throw new Error(`副程式「${name}」不能直接或間接呼叫自己`);
+  visiting.add(name);
+  const d = progNestingDepth(procs[name].body, procs, visiting, memo);
+  visiting.delete(name);
+  memo.set(name, d);
+  return d;
+}
+
+// IR → PROG JSON，並在送出前檢查巢狀層數與副程式呼叫（超過時板子會拒絕整支程式）
 function buildProgJson(irNodes) {
   const json = {
     mode: 'PROG',
     setup: irNodes.filter(n => n instanceof arduino_setupNode).flatMap(n => n.body.map(cmd => cmd.toJson())),
     loop:  irNodes.filter(n => n instanceof arduino_loopNode).flatMap(n => n.body.map(cmd => cmd.toJson()))
   };
-  const depth = Math.max(progNestingDepth(json.setup), progNestingDepth(json.loop));
+  const procedures = irNodes.filter(n => n instanceof ProcedureDefNode).map(n => n.toJson());
+  if (procedures.length) json.procedures = procedures;   // 沒有副程式時維持原本 JSON 形狀
+  const procs = Object.fromEntries(procedures.map(p => [p.name, p]));
+  const depth = Math.max(progNestingDepth(json.setup, procs), progNestingDepth(json.loop, procs),
+                         ...procedures.map(p => procedureDepth(p.name, procs, new Set(), new Map())));
   if (depth > MAX_BLOCK_DEPTH) {
-    throw new Error(`積木巢狀太深：目前 ${depth} 層，最多 ${MAX_BLOCK_DEPTH} 層（如果／重複／當…重複互相包的層數）`);
+    throw new Error(`積木巢狀太深：目前 ${depth} 層，最多 ${MAX_BLOCK_DEPTH} 層（如果／重複／當…重複互相包的層數，呼叫副程式也算一層）`);
   }
   return json;
 }
@@ -166,6 +213,9 @@ const FIRMWARE_ERROR_TEXT = {
   nesting_too_deep: `積木巢狀太深（最多 ${MAX_BLOCK_DEPTH} 層）`,
   json_parse_failed: '程式格式錯誤或巢狀太深，板子無法解析',
   json_too_large: '程式太大，請減少積木數量',
+  recursive_procedure: '副程式不能直接或間接呼叫自己',
+  unknown_procedure: '呼叫了不存在的副程式',
+  duplicate_procedure: '有兩個同名的副程式',
   unsupported_or_invalid_program_command: '程式含有不支援的積木或參數'
 };
 

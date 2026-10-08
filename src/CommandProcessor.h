@@ -36,6 +36,7 @@ enum CommandType {
   CMD_IF,
   CMD_REPEAT,   // 重複 N 次：valueExpr = 次數，nested_commands_then = 迴圈本體
   CMD_WHILE,    // 當／直到：valueExpr = 條件，direction 'W'/'U'，nested_commands_then = 迴圈本體
+  CMD_CALL,     // 呼叫副程式：value = 副程式索引，argExprs = 參數值
 };
 
 // 積木巢狀上限（if / repeat / while 互相包的層數）。前端 app.js 的 MAX_BLOCK_DEPTH 需一致。
@@ -74,6 +75,15 @@ struct BlocklyCommand {
 
   std::vector<BlocklyCommand> nested_commands_then;   // if.then；repeat / while 的迴圈本體
   std::vector<BlocklyCommand> nested_commands_else;
+  std::vector<std::shared_ptr<BlocklyValueExpression>> argExprs;   // CMD_CALL 的參數
+};
+
+// 副程式（Blockly「副程式」積木）。參數是全域變數名（Blockly 變數 ID），
+// 呼叫時先求出所有參數值再寫入，之後執行 body。不支援回傳值；禁止遞迴（解析時檢查）。
+struct BlocklyProcedure {
+  String name;
+  std::vector<String> params;
+  std::vector<BlocklyCommand> body;
 };
 // --- 效能優化結束 ---
 
@@ -237,6 +247,7 @@ private:
 
   std::vector<BlocklyCommand> setupCommands;
   std::vector<BlocklyCommand> loopCommands;
+  std::vector<BlocklyProcedure> procedures;
   size_t loopIndex = 0;
 
   // programYield() 的控制節拍時間戳（約每 10ms 跑一次角度/速度控制）
@@ -247,6 +258,7 @@ private:
   // 杜絕「另一核心 clear/realloc 向量 → 執行端持有的參考懸空（use-after-free）」。
   std::vector<BlocklyCommand> pendingSetupCommands;
   std::vector<BlocklyCommand> pendingLoopCommands;
+  std::vector<BlocklyProcedure> pendingProcedures;
   volatile bool pendingProgram = false;
   SemaphoreHandle_t progMutex = nullptr;
   MotorRuntimeState motorState[NUM_MOTORS + 1];
@@ -1297,6 +1309,7 @@ public:
     if (!pendingProgram) return;
 
     std::vector<BlocklyCommand> incomingSetup, incomingLoop;
+    std::vector<BlocklyProcedure> incomingProcedures;
     if (progMutex) xSemaphoreTake(progMutex, portMAX_DELAY);
     if (!pendingProgram) {            // 上鎖後再確認一次（雙重檢查）
       if (progMutex) xSemaphoreGive(progMutex);
@@ -1304,11 +1317,13 @@ public:
     }
     incomingSetup.swap(pendingSetupCommands);   // 快速搬出，鎖只持有極短時間
     incomingLoop.swap(pendingLoopCommands);
+    incomingProcedures.swap(pendingProcedures);
     pendingProgram = false;
     if (progMutex) xSemaphoreGive(progMutex);
 
     setupCommands.swap(incomingSetup);          // 舊程式落到 incoming*，離開作用域即釋放
     loopCommands.swap(incomingLoop);
+    procedures.swap(incomingProcedures);
     loopIndex = 0;
     runtimeVariables.clear();
     clearManualControlState();
@@ -1675,6 +1690,7 @@ public:
 
     setupCommands.clear();
     loopCommands.clear();
+    procedures.clear();
     loopIndex = 0;
     Serial.println("Actuators reset and command queues cleared.");
   }
@@ -1908,22 +1924,16 @@ public:
 
     std::vector<BlocklyCommand> newSetup;
     std::vector<BlocklyCommand> newLoop;
-    if (doc.containsKey("setup") && doc["setup"].is<JsonArrayConst>()) {
-      if (!parseCommandArray(doc["setup"].as<JsonArrayConst>(), newSetup)) {
-        sendError(lastParseError ? lastParseError : "unsupported_or_invalid_program_command");
-        return;
-      }
-    }
-    if (doc.containsKey("loop") && doc["loop"].is<JsonArrayConst>()) {
-      if (!parseCommandArray(doc["loop"].as<JsonArrayConst>(), newLoop)) {
-        sendError(lastParseError ? lastParseError : "unsupported_or_invalid_program_command");
-        return;
-      }
+    std::vector<BlocklyProcedure> newProcedures;
+    if (!parseProgramDoc(doc, newSetup, newLoop, newProcedures)) {
+      sendError(lastParseError ? lastParseError : "unsupported_or_invalid_program_command");
+      return;
     }
 
     if (progMutex) xSemaphoreTake(progMutex, portMAX_DELAY);
     pendingSetupCommands.swap(newSetup);
     pendingLoopCommands.swap(newLoop);
+    pendingProcedures.swap(newProcedures);
     pendingProgram = true;
     if (progMutex) xSemaphoreGive(progMutex);
     Serial.println("[PROG] Parsing complete.");
@@ -2017,12 +2027,105 @@ public:
     runtimeVariables.push_back({name, value});
   }
 
-  // 最近一次 parseCommandArray 失敗的具體原因（nullptr = 一般格式錯誤）。
+  // 最近一次 parseCommandArray / parseProgramDoc 失敗的具體原因（nullptr = 一般格式錯誤）。
   const char *lastParseError = nullptr;
 
+  // 解析整份 PROG（setup / loop / 選用的 procedures），不碰執行中的資料；存檔驗證也用它。
+  // procedures: [{"name":"…","params":["變數ID",…],"body":[…]}]
+  bool parseProgramDoc(const JsonDocument &doc, std::vector<BlocklyCommand> &setupOut,
+                       std::vector<BlocklyCommand> &loopOut,
+                       std::vector<BlocklyProcedure> &procsOut) {
+    lastParseError = nullptr;
+    if (!doc["setup"].is<JsonArrayConst>() || !doc["loop"].is<JsonArrayConst>()) return false;
+
+    JsonArrayConst procArr;
+    if (doc.containsKey("procedures")) {
+      if (!doc["procedures"].is<JsonArrayConst>()) return false;
+      procArr = doc["procedures"].as<JsonArrayConst>();
+    }
+    // 第一輪：先登記名稱與參數，讓副程式之間可以互相呼叫（不論定義順序）
+    for (JsonVariantConst item : procArr) {
+      if (!item.is<JsonObjectConst>()) return false;
+      const char *name = item["name"] | "";
+      if (strlen(name) == 0) return false;
+      for (const auto &p : procsOut) {
+        if (p.name == name) { lastParseError = "duplicate_procedure"; return false; }
+      }
+      BlocklyProcedure proc;
+      proc.name = name;
+      if (item.containsKey("params")) {
+        if (!item["params"].is<JsonArrayConst>()) return false;
+        for (JsonVariantConst param : item["params"].as<JsonArrayConst>()) {
+          if (!param.is<const char *>()) return false;
+          proc.params.push_back(param.as<const char *>());
+        }
+      }
+      if (!item["body"].is<JsonArrayConst>()) return false;
+      procsOut.push_back(proc);
+    }
+    // 第二輪：解析各副程式本體與 setup / loop
+    size_t i = 0;
+    for (JsonVariantConst item : procArr) {
+      if (!parseCommandArray(item["body"].as<JsonArrayConst>(), procsOut[i++].body, 0, &procsOut))
+        return false;
+    }
+    if (!parseCommandArray(doc["setup"].as<JsonArrayConst>(), setupOut, 0, &procsOut)) return false;
+    if (!parseCommandArray(doc["loop"].as<JsonArrayConst>(), loopOut, 0, &procsOut)) return false;
+
+    // 呼叫展開後的總層數（每次呼叫算一層）不得超過上限；副程式不得直接或間接呼叫自己
+    std::vector<int> state(procsOut.size(), 0), memo(procsOut.size(), 0);
+    int depth = 0;
+    for (auto *list : {&setupOut, &loopOut}) {
+      int d = effectiveDepth(*list, procsOut, state, memo);
+      if (d < 0) { lastParseError = "recursive_procedure"; return false; }
+      if (d > depth) depth = d;
+    }
+    for (size_t p = 0; p < procsOut.size(); p++) {
+      int d = procedureDepth(p, procsOut, state, memo);
+      if (d < 0) { lastParseError = "recursive_procedure"; return false; }
+      if (d > depth) depth = d;
+    }
+    if (depth > PROG_MAX_BLOCK_DEPTH) { lastParseError = "nesting_too_deep"; return false; }
+    return true;
+  }
+
+  // 指令串展開呼叫後的巢狀層數；-1 = 發現遞迴。state: 0 未看 / 1 計算中 / 2 完成。
+  int effectiveDepth(const std::vector<BlocklyCommand> &cmds, const std::vector<BlocklyProcedure> &procs,
+                     std::vector<int> &state, std::vector<int> &memo) {
+    int best = 0;
+    for (const auto &c : cmds) {
+      int d = 0;
+      if (c.type == CMD_IF || c.type == CMD_REPEAT || c.type == CMD_WHILE) {
+        int a = effectiveDepth(c.nested_commands_then, procs, state, memo);
+        int b = effectiveDepth(c.nested_commands_else, procs, state, memo);
+        if (a < 0 || b < 0) return -1;
+        d = 1 + (a > b ? a : b);
+      } else if (c.type == CMD_CALL) {
+        int p = procedureDepth((size_t)c.value, procs, state, memo);
+        if (p < 0) return -1;
+        d = 1 + p;
+      }
+      if (d > best) best = d;
+    }
+    return best;
+  }
+
+  int procedureDepth(size_t idx, const std::vector<BlocklyProcedure> &procs,
+                     std::vector<int> &state, std::vector<int> &memo) {
+    if (state[idx] == 1) return -1;          // 正在計算自己 → 遞迴
+    if (state[idx] == 2) return memo[idx];
+    state[idx] = 1;
+    int d = effectiveDepth(procs[idx].body, procs, state, memo);
+    if (d < 0) return -1;
+    state[idx] = 2;
+    memo[idx] = d;
+    return d;
+  }
+
   // depth = 外層 if / repeat / while 的層數；頂層呼叫用預設 0。
+  // procs = 可呼叫的副程式表（parseProgramDoc 傳入）；沒有時遇到 call 會失敗。
   bool parseCommandArray(JsonArrayConst jsonArr, std::vector<BlocklyCommand> &commandList,
-                         int depth = 0) {
+                         int depth = 0, const std::vector<BlocklyProcedure> *procs = nullptr) {
     if (depth == 0) lastParseError = nullptr;
     for (JsonVariantConst item : jsonArr) {
       if (!item.is<JsonObjectConst>()) return false;
@@ -2032,7 +2135,7 @@ public:
       if (jsonObj.containsKey("body") && jsonObj["body"].is<JsonArrayConst>()) {
         const char *wrapper = jsonObj["command"] | "";
         if (strcmp(wrapper, "arduino_setup") != 0 && strcmp(wrapper, "arduino_loop") != 0) return false;
-        if (!parseCommandArray(jsonObj["body"].as<JsonArrayConst>(), commandList, depth)) return false;
+        if (!parseCommandArray(jsonObj["body"].as<JsonArrayConst>(), commandList, depth, procs)) return false;
         continue;
       }
 
@@ -2089,11 +2192,11 @@ public:
           // then / else 陣列遞迴解析
           if (jsonObj["then"].is<JsonArrayConst>()) {
             if (!parseCommandArray(jsonObj["then"].as<JsonArrayConst>(),
-                              cmd.nested_commands_then, depth + 1)) return false;
+                              cmd.nested_commands_then, depth + 1, procs)) return false;
           }
           if (jsonObj["else"].is<JsonArrayConst>()) {
             if (!parseCommandArray(jsonObj["else"].as<JsonArrayConst>(),
-                              cmd.nested_commands_else, depth + 1)) return false;
+                              cmd.nested_commands_else, depth + 1, procs)) return false;
           }
         } else if (strcmp(commandStr, "repeat") == 0 || strcmp(commandStr, "while") == 0) {
           // {"command":"repeat","times":<值>,"do":[...]}
@@ -2116,7 +2219,31 @@ public:
             return false;
           }
           if (!parseCommandArray(jsonObj["do"].as<JsonArrayConst>(),
-                                 cmd.nested_commands_then, depth + 1)) return false;
+                                 cmd.nested_commands_then, depth + 1, procs)) return false;
+        } else if (strcmp(commandStr, "call") == 0) {
+          // {"command":"call","name":"副程式名稱","args":[<值>,…]}
+          cmd.type = CMD_CALL;
+          const char *procName = jsonObj["name"] | "";
+          int found = -1;
+          if (procs) {
+            for (size_t p = 0; p < procs->size(); p++) {
+              if ((*procs)[p].name == procName) { found = (int)p; break; }
+            }
+          }
+          if (found < 0) { lastParseError = "unknown_procedure"; return false; }
+          cmd.value = found;
+          size_t expected = (*procs)[found].params.size();
+          size_t given = 0;
+          if (jsonObj.containsKey("args")) {
+            if (!jsonObj["args"].is<JsonArrayConst>()) return false;
+            for (JsonVariantConst arg : jsonObj["args"].as<JsonArrayConst>()) {
+              auto e = parseValueExpression(arg);
+              if (!e) return false;
+              cmd.argExprs.push_back(e);
+              given++;
+            }
+          }
+          if (given != expected) return false;
         } else if (strcmp(commandStr, "serial_println") == 0 ||
                    strcmp(commandStr, "message_print") == 0) {
           cmd.type = CMD_PRINT;
@@ -2458,6 +2585,19 @@ public:
         bool branch = readBlocklyValue(cmd) != 0;
         executeCommandList(branch ? cmd.nested_commands_then
                                   : cmd.nested_commands_else);
+        break;
+      }
+      case CMD_CALL: {
+        if (cmd.value < 0 || (size_t)cmd.value >= procedures.size()) break;
+        const BlocklyProcedure &proc = procedures[cmd.value];
+        // 先求出全部參數值再寫入，避免參數之間互相影響（例如 f(b, a)）
+        std::vector<int> values;
+        values.reserve(cmd.argExprs.size());
+        for (const auto &e : cmd.argExprs) values.push_back(evaluateValueExpression(e));
+        for (size_t p = 0; p < proc.params.size() && p < values.size(); p++) {
+          setRuntimeVariable(proc.params[p], values[p]);
+        }
+        executeCommandList(proc.body);
         break;
       }
       case CMD_REPEAT: {

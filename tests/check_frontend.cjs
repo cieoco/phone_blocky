@@ -121,4 +121,35 @@ assert.deepEqual(value(`translateMathArithmetic(fakeBlock('math_arithmetic', {OP
 assert.throws(() => value(`translateMathMap(fakeBlock('math_map', {}, {VALUE: num(1)}))`), /對應換算/);
 assert.throws(() => value(`translateMathArithmetic(fakeBlock('math_arithmetic', {OP:'ADD'}, {A: num(1)}))`), /運算/);
 assert.throws(() => value(`translateLogicCompare(fakeBlock('logic_compare', {OP:'LT'}, {B: num(1)}))`), /比較/);
-console.log('Frontend syntax, IR units, flat payload, loops, nesting limit, value slots, AND/OR, math functions, unknown/stray blocks: PASS');
+// Subroutines: definitions go to top-level "procedures", calls are {command:"call"}; depth counts calls; recursion refused
+vm.runInContext(`
+    var procDef = (name, params, body) => Object.assign(fakeBlock('procedures_defnoreturn', {NAME: name}, {STACK: body || null}),
+        {getVarModels: () => params.map(id => ({getId: () => id})), getParent: () => null});
+    var procCall = (name, argBlocks) => Object.assign(fakeBlock('procedures_callnoreturn', {},
+        Object.fromEntries((argBlocks || []).map((b, i) => ['ARG' + i, b]))),
+        {getProcedureCall: () => name, getVars: () => (argBlocks || []).map((_, i) => 'p' + i)});
+    var loopWith = node => Object.assign(Object.create(arduino_loopNode.prototype), {body: [node]});
+`, context);
+assert.deepEqual(value(`translateProcedureDef(procDef('夾爪', ['vid1'], procCall('其他', []))).toJson()`),
+    {name:'夾爪', params:['vid1'], body:[{command:'call', name:'其他', args:[]}]});
+assert.deepEqual(value(`translateProcedureCall(procCall('夾爪', [num(60)])).toJson()`),
+    {command:'call', name:'夾爪', args:[n(60)]});
+assert.throws(() => value(`translateProcedureCall(Object.assign(procCall('夾爪', [num(1)]), {getInputTargetBlock: () => null}))`), /參數/);
+assert.throws(() => value(`getTranslator('procedures_defreturn')({})`), /回傳值/);
+// payload: procedures present only when defined; old shape unchanged otherwise
+assert.deepEqual(value(`buildProgJson([loopWith(new ProcedureCallNode('A', [])), new ProcedureDefNode('A', [], [new DelayNode(10)])])`),
+    {mode:'PROG', setup:[], loop:[{command:'call', name:'A', args:[]}], procedures:[{name:'A', params:[], body:[{cmd:'delay', ms:10}]}]});
+assert.equal(value(`'procedures' in buildProgJson([loopWith(new DelayNode(10))])`), false);
+// call counts as a level: loop → call A (1) → A has 7 nested repeats → 8 total OK; 8 nested → 9 → refused
+assert.equal(value(`buildProgJson([loopWith(new ProcedureCallNode('A', [])), new ProcedureDefNode('A', [], [nestRepeat(7)])]).loop.length`), 1);
+assert.throws(() => value(`buildProgJson([loopWith(new ProcedureCallNode('A', [])), new ProcedureDefNode('A', [], [nestRepeat(8)])])`), /最多 8 層/);
+// recursion (direct and indirect) and unknown names refused
+assert.throws(() => value(`buildProgJson([new ProcedureDefNode('A', [], [new ProcedureCallNode('A', [])])])`), /不能直接或間接呼叫自己/);
+assert.throws(() => value(`buildProgJson([new ProcedureDefNode('A', [], [new ProcedureCallNode('B', [])]),
+    new ProcedureDefNode('B', [], [new RepeatNode(new MathNumberNode(2), [new ProcedureCallNode('A', [])])])])`), /不能直接或間接呼叫自己/);
+assert.throws(() => value(`buildProgJson([loopWith(new ProcedureCallNode('不存在', []))])`), /找不到副程式/);
+// top-level procedure definitions are translated, not counted as stray
+vm.runInContext(`workspace = {getTopBlocks: () => [procDef('B', [], null)]};`, context);
+assert.equal(value('parseWorkspaceToIR(workspace).strayBlocks'), 0);
+assert.equal(value('parseWorkspaceToIR(workspace)[0] instanceof ProcedureDefNode'), true);
+console.log('Frontend syntax, IR units, flat payload, loops, nesting limit, value slots, AND/OR, math functions, subroutines, unknown/stray blocks: PASS');

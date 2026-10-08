@@ -331,6 +331,31 @@ class MathArithmeticNode extends BaseNode {
     }
 }
 
+// 副程式定義 → PROG 頂層 procedures 陣列的一項：{"name","params":[變數ID…],"body":[…]}
+class ProcedureDefNode extends BaseNode {
+    constructor(name, params, body) {
+        super();
+        this.name = name;
+        this.params = params;
+        this.body = body;
+    }
+    toJson() {
+        return { name: this.name, params: this.params, body: this.body.map(node => node.toJson()) };
+    }
+}
+
+// 呼叫副程式 → {"command":"call","name","args":[值…]}（參數值依定義順序）
+class ProcedureCallNode extends BaseNode {
+    constructor(name, args) {
+        super();
+        this.name = name;
+        this.args = args;
+    }
+    toJson() {
+        return { command: "call", name: this.name, args: this.args.map(arg => arg.toJson()) };
+    }
+}
+
 // 數學函式：絕對值／隨機整數／限制／對應換算
 // → {"command":"math_abs"|"math_random"|"math_constrain"|"math_map", <具名參數>: <值>...}
 class MathFunctionNode extends BaseNode {
@@ -743,6 +768,25 @@ function translateMathArithmetic(block) {
     return new MathArithmeticNode(operator, leftOperand, rightOperand);
   }
 
+function translateProcedureDef(block) {
+    const name = block.getFieldValue("NAME");
+    // 參數在 Blockly 裡是變數；用變數 ID，與副程式內「取得變數」積木輸出的名稱一致
+    const params = block.getVarModels().map(v => v.getId());
+    const stack = block.getInputTargetBlock("STACK");
+    return new ProcedureDefNode(name, params, stack ? parseBlockChain(stack) : []);
+}
+
+function translateProcedureCall(block) {
+    const name = block.getProcedureCall();
+    const args = block.getVars().map((paramName, i) =>
+        requireValueInput(block, "ARG" + i, `呼叫「${name}」的參數 ${paramName}`));
+    return new ProcedureCallNode(name, args);
+}
+
+function translateProcedureWithReturn(block) {
+    throw new Error("副程式目前不支援回傳值，請改用沒有回傳值的副程式");
+}
+
 function translateMathAbs(block) {
     return new MathFunctionNode("math_abs", { value: requireValueInput(block, "VALUE", "絕對值") });
 }
@@ -908,6 +952,14 @@ function getTranslator(blockType) {
             return translateMathArithmetic;
         case "math_abs":
             return translateMathAbs;
+        case "procedures_defnoreturn":
+            return translateProcedureDef;
+        case "procedures_callnoreturn":
+            return translateProcedureCall;
+        case "procedures_defreturn":
+        case "procedures_callreturn":
+        case "procedures_ifreturn":
+            return translateProcedureWithReturn;
         case "math_random_int":
             return translateMathRandomInt;
         case "math_constrain":

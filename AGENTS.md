@@ -165,6 +165,12 @@ AI 子集（`prompts.py` / `schema.py` / `ai.html`）目前不產生迴圈。
 `parseNumericArg` / `numericArg` 在執行時求值並夾限。舊存檔（數值是 field）載入時由 `app.js`
 的 `upgradeLegacyXml` 轉成插槽，新增這類積木時要一併登記到 `LEGACY_NUMBER_FIELDS`。
 
+**副程式**：工具箱「副程式」分類由 `app.js` 的 `subroutineFlyout()` 動態產生（只放無回傳值的
+`procedures_defnoreturn` / `procedures_callnoreturn`）。PROG 頂層選用 `procedures:[{name,params,body}]`，
+呼叫為 `{command:"call",name,args}`；參數用 Blockly 變數 ID。韌體 `parseProgramDoc` 統一解析
+setup／loop／procedures（stage 與存檔驗證共用），拒絕遞迴，呼叫算一層計入 8 層上限。
+被停用（disabled）的積木不翻譯、不執行。
+
 **不默默略過積木**：`getTranslator` 遇到不認得的積木會丟出錯誤；沒接在 setup／loop 裡的積木
 不翻譯，只在執行／存檔時顯示「有 N 個積木不會執行」。新增積木時務必在 `getTranslator` 登記。
 
