@@ -27,6 +27,7 @@ private:
 
   // /api/program POST 累積緩衝 (XML 可能大於單一 chunk)
   String programPostBuffer;
+  bool programPostRejected = false;   // 本次 POST 已因過大而回應，忽略後續 chunk
 
 public:
   // static 讓外部可用 sendJsonResponse

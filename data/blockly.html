@@ -8,10 +8,10 @@
   <!-- 載入 Blockly -->
   <script src="blockly.min.js"></script>
   <!-- 載入客戶端邏輯 -->
-  <script src="appBlock.js?v=1.3.40-plotter3"></script>
-  <script src="appIr.js?v=1.3.40-plotter3"></script>
-  <script src="appJson.js?v=1.3.40-plotter3"></script>
-  <script src="app.js?v=1.3.40-plotter4"></script>
+  <script src="appBlock.js?v=20261009-files"></script>
+  <script src="appIr.js?v=20261009-files"></script>
+  <script src="appJson.js?v=20261009-files"></script>
+  <script src="app.js?v=20261009-files"></script>
   <style>
     /* 極簡佈局 - 確保座標系統完全原生 */
     body {
@@ -52,6 +52,25 @@
 
     .blockly-section {
       margin: 20px 0;
+    }
+
+    /* 程式操作：ESP32 與本機分兩組，按鈕在手機上可換行 */
+    .file-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin: 8px 0;
+    }
+
+    .file-group-label {
+      flex-basis: 100%;
+      font-size: 0.85em;
+      color: #666;
+    }
+
+    .btn-local {
+      background: #2f9e6b;
     }
 
     #blocklyDiv {
@@ -150,21 +169,30 @@
 
     <div class="info-section">
       <div class="section-title">🎮 程式操作</div>
-      <button class="btn" id="saveBtn">💾 儲存</button>
-      <button class="btn" id="saveAsNewBtn">📁 另存</button>
-      <button class="btn" id="openFileBtn">📂 開啟</button>
-      <!-- 開機自動執行：原本只在 ai.html。學生在這一頁寫完程式存檔後，若沒有
-           跑去另一頁打開這個開關，斷電之後程式就不會自己跑 —— 主端遙控介面的
-           按鈕會全部失效，而且很難自己想通原因。放在存檔旁邊才是它該在的位置。
-           兩頁共用同一個 /api/program/autorun 端點，狀態一致。 -->
-      <label id="autorunLabel"
-             style="display:flex;align-items:center;gap:8px;cursor:pointer;
-                    margin-top:10px;font-weight:600;">
-        <input type="checkbox" id="autorunToggle" />
-        <span>⚡ 開機自動執行</span>
-      </label>
-      <div id="autorunHint" style="font-size:0.82em;color:#666;margin-top:4px;">
-        開啟後，模組一上電就會自動載入並執行已儲存的程式。
+      <div class="file-group">
+        <span class="file-group-label">ESP32（板子上只存一支，開機自動執行跑這支）</span>
+        <button class="btn" id="saveBtn">💾 存到 ESP32</button>
+        <button class="btn" id="openFileBtn">📂 從 ESP32 開啟</button>
+        <!-- 開機自動執行：原本只在 ai.html。學生在這一頁寫完程式存檔後，若沒有
+             跑去另一頁打開這個開關，斷電之後程式就不會自己跑 —— 主端遙控介面的
+             按鈕會全部失效，而且很難自己想通原因。放在「存到 ESP32」旁邊才是它
+             該在的位置（autorun 跑的就是板子上這一支）。
+             兩頁共用同一個 /api/program/autorun 端點，狀態一致。 -->
+        <label id="autorunLabel"
+               style="display:flex;align-items:center;gap:8px;cursor:pointer;
+                      margin-top:10px;font-weight:600;">
+          <input type="checkbox" id="autorunToggle" />
+          <span>⚡ 開機自動執行</span>
+        </label>
+        <div id="autorunHint" style="font-size:0.82em;color:#666;margin-top:4px;">
+          開啟後，模組一上電就會自動載入並執行已儲存的程式。
+        </div>
+      </div>
+      <div class="file-group">
+        <span class="file-group-label">本機（電腦／手機的 .xml 檔，可備份、分享）</span>
+        <button class="btn btn-local" id="saveAsNewBtn">⬇️ 下載到本機</button>
+        <button class="btn btn-local" id="openLocalBtn">⬆️ 從本機開啟</button>
+        <input type="file" id="localFileInput" accept=".xml,application/xml,text/xml" hidden>
       </div>
     </div>
 
@@ -186,23 +214,54 @@
       <block type="arduino_digitalRead"></block>
       <block type="arduino_analogWrite"></block>
       <block type="arduino_analogRead"></block>
-      <block type="arduino_delay"></block>
+      <block type="arduino_delay">
+        <value name="DELAY_TIME"><shadow type="math_number"><field name="NUM">1000</field></shadow></value>
+      </block>
       <block type="message_print"></block>
       <block type="plot_print"></block>
       <block type="arduino_millis"></block>
     </category>
     <category name="流程控制" colour="210">
       <block type="controls_if"></block>
+      <block type="controls_repeat_ext">
+        <value name="TIMES">
+          <shadow type="math_number"><field name="NUM">3</field></shadow>
+        </value>
+      </block>
+      <block type="controls_whileUntil"></block>
     </category>
     <category name="數學" colour="230">
       <block type="math_number">
         <field name="NUM">0</field>
       </block>
-      <block type="math_arithmetic"></block>
+      <block type="math_arithmetic">
+        <value name="A"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+        <value name="B"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+      </block>
+      <block type="math_abs">
+        <value name="VALUE"><shadow type="math_number"><field name="NUM">-5</field></shadow></value>
+      </block>
+      <block type="math_random_int">
+        <value name="FROM"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+        <value name="TO"><shadow type="math_number"><field name="NUM">100</field></shadow></value>
+      </block>
+      <block type="math_constrain">
+        <value name="VALUE"><shadow type="math_number"><field name="NUM">50</field></shadow></value>
+        <value name="LOW"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        <value name="HIGH"><shadow type="math_number"><field name="NUM">100</field></shadow></value>
+      </block>
+      <block type="math_map">
+        <value name="VALUE"><shadow type="math_number"><field name="NUM">50</field></shadow></value>
+        <value name="FROM_LOW"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        <value name="FROM_HIGH"><shadow type="math_number"><field name="NUM">100</field></shadow></value>
+        <value name="TO_LOW"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        <value name="TO_HIGH"><shadow type="math_number"><field name="NUM">180</field></shadow></value>
+      </block>
     </category>
     <category name="邏輯" colour="210">
       <block type="logic_boolean"></block>
       <block type="logic_compare"></block>
+      <block type="logic_operation"></block>
       <block type="logic_negate"></block>
     </category>
     <category name="變數" colour="330" custom="VARIABLE"></category>
@@ -216,17 +275,26 @@
       <block type="blockly_func_set"></block>
     </category>
     <category name="馬達模組" colour="290">
-      <block type="motor_pwm"></block>
+      <block type="motor_pwm">
+        <value name="PWM"><shadow type="math_number"><field name="NUM">50</field></shadow></value>
+      </block>
       <block type="motor_stop"></block>
-      <block type="motor_speed"></block>
+      <block type="motor_speed">
+        <value name="RPM"><shadow type="math_number"><field name="NUM">120</field></shadow></value>
+      </block>
       <block type="motor_zero"></block>
-      <block type="motor_position"></block>
-      <block type="motor_move_by"></block>
-      <block type="servo_set"></block>
-      <sep></sep>
-      <block type="馬達"></block>
-      <block type="舵機"></block>
+      <block type="motor_position">
+        <value name="DEG"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+      </block>
+      <block type="motor_move_by">
+        <value name="DEG"><shadow type="math_number"><field name="NUM">90</field></shadow></value>
+      </block>
+      <block type="servo_set">
+        <value name="DEG"><shadow type="math_number"><field name="NUM">90</field></shadow></value>
+      </block>
     </category>
+    <!-- 內容由 app.js 的 subroutineFlyout() 動態產生：定義積木 + 目前每個副程式的呼叫積木 -->
+    <category name="副程式" colour="290" custom="SUBROUTINE"></category>
   </xml>
 
   <script>
@@ -236,6 +304,22 @@
       Blockly.Msg["DUPLICATE_BLOCK"] = "複製積木";
       Blockly.Msg["DELETE_BLOCK"] = "刪除積木";
       Blockly.Msg["CLEAN_UP"] = "整理積木";
+      // 副程式（Blockly 內建 procedures 積木）中文化
+      Blockly.Msg["PROCEDURES_DEFNORETURN_TITLE"] = "副程式";
+      Blockly.Msg["PROCEDURES_DEFNORETURN_PROCEDURE"] = "我的副程式";
+      Blockly.Msg["PROCEDURES_DEFNORETURN_TOOLTIP"] = "把一段積木包成副程式，之後用「呼叫」積木重複使用。可在齒輪裡加參數。";
+      Blockly.Msg["PROCEDURES_DEFNORETURN_COMMENT"] = "";
+      Blockly.Msg["PROCEDURES_BEFORE_PARAMS"] = "參數：";
+      Blockly.Msg["PROCEDURES_CALL_BEFORE_PARAMS"] = "參數：";
+      Blockly.Msg["PROCEDURES_CALLNORETURN_TOOLTIP"] = "執行副程式「%1」";
+      Blockly.Msg["PROCEDURES_MUTATORCONTAINER_TITLE"] = "參數";
+      Blockly.Msg["PROCEDURES_MUTATORCONTAINER_TOOLTIP"] = "新增、移除或調整參數順序";
+      Blockly.Msg["PROCEDURES_MUTATORARG_TITLE"] = "參數名稱：";
+      Blockly.Msg["PROCEDURES_MUTATORARG_TOOLTIP"] = "新增一個參數";
+      Blockly.Msg["PROCEDURES_CREATE_DO"] = "建立「%1」的呼叫積木";
+      Blockly.Msg["PROCEDURES_HIGHLIGHT_DEF"] = "找到副程式定義";
+      Blockly.Msg["PROCEDURES_DEF_DUPLICATE_WARNING"] = "已經有同名的副程式了";
+      Blockly.Msg["PROCEDURES_CALL_DISABLED_DEF_WARNING"] = "這個副程式已被停用，無法呼叫";
 
       if (Blockly.Workspace && Blockly.Workspace.prototype) {
         Blockly.Workspace.prototype.getVariable = function (name, type) {

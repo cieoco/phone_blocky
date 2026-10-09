@@ -63,6 +63,7 @@ window.addEventListener('load', function () {
     zoom: { controls: true, wheel: true, startScale: isTouchOrSmall ? 1.3 : 1.0 },
     move: { scrollbars: true, drag: true, wheel: true }
   });
+  workspace.registerToolboxCategoryCallback('SUBROUTINE', subroutineFlyout);
 
   // Blockly 會在 inject 當下快取注入區的尺寸/位置來換算滑鼠座標；
   // 若之後版面位移（載入遮罩消失、視窗縮放/瀏覽器縮放）卻沒重新整理，
@@ -92,6 +93,21 @@ window.addEventListener('load', function () {
   document.getElementById('openFileBtn').onclick = openFile;
   const saveAsBtn = document.getElementById('saveAsNewBtn');
   if (saveAsBtn) saveAsBtn.onclick = downloadFile;
+  const openLocalBtn = document.getElementById('openLocalBtn');
+  const localFileInput = document.getElementById('localFileInput');
+  if (openLocalBtn && localFileInput) {
+    openLocalBtn.onclick = () => {
+      if (!confirmReplaceWorkspace()) return;
+      localFileInput.value = '';          // 同一個檔案可以再選一次
+      localFileInput.click();
+    };
+    localFileInput.onchange = () => openLocalFile(localFileInput.files[0]);
+  }
+
+  // 追蹤「畫面上有沒有還沒存的修改」：只看會改變程式的事件，載入／存檔後歸零
+  workspace.addChangeListener((e) => {
+    if (!e.isUiEvent && !suppressDirtyTracking) workspaceDirty = true;
+  });
 
   const autorunToggle = document.getElementById('autorunToggle');
   if (autorunToggle) autorunToggle.onchange = () => setAutorun(autorunToggle.checked);
@@ -146,7 +162,7 @@ function initWebSocket() {
 
       // 韌體回報錯誤（如 PROG 解析失敗 / 程式過大）→ 明確顯示，不再靜默
       if (data.ok === false || data.err) {
-        appendSensorOutput("❌ 韌體錯誤: " + (data.err || '未知錯誤'));
+        appendSensorOutput("❌ 韌體錯誤: " + (FIRMWARE_ERROR_TEXT[data.err] || data.err || '未知錯誤'));
         return;
       }
 
@@ -186,29 +202,201 @@ function resetCode() {
 
 function resetAndGoHome() { resetCode(); setTimeout(() => location.href = 'index.html', 200); }
 
-// PROG payload 的單一來源。執行（runBlocklyCode）與存檔（buildProgPayload）
-// 共用同一份，否則「跑起來是對的、存下去卻不一樣」這種 bug 遲早會發生。
-function buildProgJson() {
-  const irNodes = parseWorkspaceToIR(workspace);
-  const { declarations, warnings } = collectFunctionDeclarations(workspace);
-  warnings.forEach(w => appendSensorOutput(`⚠️ 對外功能：${w}`));
-  return {
-    mode: 'PROG',
-    // 對外功能表拉到頂層：主機一套用就要讀得到，不能等 setup 跑完（SDD §6.1）
-    functions: declarations,
-    setup: irNodes.filter(n => n instanceof arduino_setupNode).map(n => n.toJson()),
-    loop: irNodes.filter(n => n instanceof arduino_loopNode).map(n => n.toJson())
+// 積木巢狀上限（if / repeat / while 互相包的層數），需與韌體 PROG_MAX_BLOCK_DEPTH 一致
+const MAX_BLOCK_DEPTH = 8;
+
+// 「副程式」分類的積木清單：一個定義積木，加上目前每個副程式的呼叫積木。
+// 只提供「沒有回傳值」的副程式（直譯器目前不支援回傳值）。
+function subroutineFlyout(ws) {
+  const el = (tag, attrs = {}) => {
+    const e = Blockly.utils.xml.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    return e;
   };
+  const def = el('block', { type: 'procedures_defnoreturn', gap: '24' });
+  const nameField = el('field', { name: 'NAME' });
+  nameField.textContent = Blockly.Msg['PROCEDURES_DEFNORETURN_PROCEDURE'] || '我的副程式';
+  def.appendChild(nameField);
+  const items = [def];
+  const [noReturn] = Blockly.Procedures.allProcedures(ws);
+  noReturn.sort((a, b) => a[0].localeCompare(b[0])).forEach(([name, args]) => {
+    const call = el('block', { type: 'procedures_callnoreturn', gap: '16' });
+    const mutation = el('mutation', { name });
+    args.forEach(arg => mutation.appendChild(el('arg', { name: arg })));
+    call.appendChild(mutation);
+    items.push(call);
+  });
+  return items;
+}
+
+// 計算 PROG 指令陣列的最大巢狀層數（頂層指令本身為 0 層）。
+// 呼叫副程式算一層，再加上該副程式本體的層數；副程式不可直接或間接呼叫自己。
+function progNestingDepth(cmds, procs = {}, visiting = new Set(), memo = new Map()) {
+  let max = 0;
+  for (const c of cmds || []) {
+    let d = 0;
+    if (c.command === 'call') {
+      d = 1 + procedureDepth(c.name, procs, visiting, memo);
+    } else {
+      for (const list of [c.then, c.else, c.do].filter(Array.isArray)) {
+        d = Math.max(d, 1 + progNestingDepth(list, procs, visiting, memo));
+      }
+    }
+    max = Math.max(max, d);
+  }
+  return max;
+}
+
+function procedureDepth(name, procs, visiting, memo) {
+  if (memo.has(name)) return memo.get(name);
+  if (!Object.prototype.hasOwnProperty.call(procs, name)) throw new Error(`找不到副程式「${name}」`);
+  if (visiting.has(name)) throw new Error(`副程式「${name}」不能直接或間接呼叫自己`);
+  visiting.add(name);
+  const d = progNestingDepth(procs[name].body, procs, visiting, memo);
+  visiting.delete(name);
+  memo.set(name, d);
+  return d;
+}
+
+// IR → PROG JSON，並在送出前檢查巢狀層數與副程式呼叫（超過時板子會拒絕整支程式）
+// ws 顯式傳入（而非沿用全域 workspace）：對外功能表是「掃整個工作區」得到的，
+// 跟 irNodes 不同源；寫成參數才看得出這個依賴，也讓 tests/check_frontend.cjs
+// 能單獨測巢狀深度而不必準備完整的 workspace 替身。
+function buildProgJson(irNodes, ws = null) {
+  const json = {
+    mode: 'PROG',
+    setup: irNodes.filter(n => n instanceof arduino_setupNode).flatMap(n => n.body.map(cmd => cmd.toJson())),
+    loop:  irNodes.filter(n => n instanceof arduino_loopNode).flatMap(n => n.body.map(cmd => cmd.toJson()))
+  };
+  // 對外功能表拉到頂層：主機一套用就要讀得到，不能等 setup 跑完（SDD §6.1）。
+  // 即使沒有宣告積木也要送空陣列 —— 韌體是用「functions 鍵存在不存在」決定要不要
+  // 換表的（CommandProcessor.h 的 haveDecls）。省略的話，學生刪掉所有宣告積木後
+  // 主機那邊會一直留著舊元件，怎麼重跑都清不掉。
+  if (ws) {
+    const { declarations, warnings } = collectFunctionDeclarations(ws);
+    json.functions = declarations;
+    warnings.forEach(w => appendSensorOutput(`⚠️ 對外功能：${w}`));
+  }
+  const procedures = irNodes.filter(n => n instanceof ProcedureDefNode).map(n => n.toJson());
+  if (procedures.length) json.procedures = procedures;   // 沒有副程式時維持原本 JSON 形狀
+  const procs = Object.fromEntries(procedures.map(p => [p.name, p]));
+  const depth = Math.max(progNestingDepth(json.setup, procs), progNestingDepth(json.loop, procs),
+                         ...procedures.map(p => procedureDepth(p.name, procs, new Set(), new Map())));
+  if (depth > MAX_BLOCK_DEPTH) {
+    throw new Error(`積木巢狀太深：目前 ${depth} 層，最多 ${MAX_BLOCK_DEPTH} 層（如果／重複／當…重複互相包的層數，呼叫副程式也算一層）`);
+  }
+  return json;
+}
+
+// 韌體錯誤代碼 → 使用者看得懂的說明
+const FIRMWARE_ERROR_TEXT = {
+  nesting_too_deep: `積木巢狀太深（最多 ${MAX_BLOCK_DEPTH} 層）`,
+  json_parse_failed: '程式格式錯誤或巢狀太深，板子無法解析',
+  json_too_large: '程式太大，請減少積木數量',
+  recursive_procedure: '副程式不能直接或間接呼叫自己',
+  unknown_procedure: '呼叫了不存在的副程式',
+  duplicate_procedure: '有兩個同名的副程式',
+  program_too_large: '程式太大，超過 ESP32 存檔或執行上限',
+  bad_json: '送出的資料格式錯誤',
+  missing_json: '存檔資料缺少程式內容',
+  mode_must_be_prog: '存檔資料不是積木程式',
+  nvs_write_failed: '寫入 ESP32 儲存區失敗（空間可能不足）',
+  program_persistence_verification_failed: '寫入後讀回不一致，請再存一次',
+  unsupported_or_invalid_program_command: '程式含有不支援的積木或參數'
+};
+
+// 沒接在 setup／loop 裡的積木不會執行，明確提醒（以前會默默忽略）
+function warnStrayBlocks(irNodes) {
+  if (irNodes.strayBlocks > 0) {
+    appendSensorOutput(`⚠️ 有 ${irNodes.strayBlocks} 個積木沒有接在 setup／loop 裡，不會執行`);
+  }
+}
+
+// 舊存檔相容：馬達／舵機／延遲的數值原本是積木上的格子（field），
+// 現在改成可接積木的插槽（value）。載入前把舊格子換成「插槽 + 數字積木」，舊程式不用重做。
+const LEGACY_NUMBER_FIELDS = {
+  motor_pwm: ['PWM'], motor_speed: ['RPM'], motor_position: ['DEG'],
+  motor_move_by: ['DEG'], servo_set: ['DEG'], arduino_delay: ['DELAY_TIME']
+};
+
+function upgradeLegacyXml(dom) {
+  for (const blockEl of dom.getElementsByTagName('block')) {
+    const names = LEGACY_NUMBER_FIELDS[blockEl.getAttribute('type')];
+    if (!names) continue;
+    for (const child of Array.from(blockEl.children)) {
+      if (child.tagName.toLowerCase() !== 'field' || !names.includes(child.getAttribute('name'))) continue;
+      const doc = blockEl.ownerDocument;
+      const ns = blockEl.namespaceURI;
+      const value = doc.createElementNS(ns, 'value');
+      value.setAttribute('name', child.getAttribute('name'));
+      const shadow = doc.createElementNS(ns, 'shadow');
+      shadow.setAttribute('type', 'math_number');
+      const num = doc.createElementNS(ns, 'field');
+      num.setAttribute('name', 'NUM');
+      num.textContent = String(Number(child.textContent) || 0);
+      shadow.appendChild(num);
+      value.appendChild(shadow);
+      blockEl.replaceChild(value, child);
+    }
+  }
+  return dom;
+}
+
+// 畫面上是否有尚未存檔的修改；以及畫面上的程式是否就是 ESP32 上那一支
+let workspaceDirty = false;
+let workspaceMatchesEsp32 = false;
+let suppressDirtyTracking = false;
+
+// 載入 XML；失敗時還原成載入前的積木（不會因為壞檔案把畫面清空）
+function loadXmlIntoWorkspace(xmlText) {
+  const dom = upgradeLegacyXml(Blockly.utils.xml.textToDom(xmlText));   // 不是 XML 會在這裡丟錯
+  const backup = Blockly.Xml.workspaceToDom(workspace);
+  suppressDirtyTracking = true;
+  try {
+    workspace.clear();
+    Blockly.Xml.domToWorkspace(dom, workspace);
+  } catch (e) {
+    workspace.clear();
+    Blockly.Xml.domToWorkspace(backup, workspace);
+    throw e;
+  } finally {
+    // Blockly 的變更事件是非同步送出的，等它們送完再恢復追蹤
+    setTimeout(() => { suppressDirtyTracking = false; workspaceDirty = false; }, 0);
+  }
+}
+
+// 畫面上有積木、而且有還沒存的修改時，先確認再取代
+function confirmReplaceWorkspace() {
+  const hasContent = workspace.getAllBlocks(false)
+    .some(b => b.type !== 'arduino_setup' && b.type !== 'arduino_loop');
+  if (!hasContent || !workspaceDirty) return true;
+  return window.confirm('目前畫面上的積木還沒存檔，開啟後會被取代。確定要開啟嗎？');
+}
+
+// 把 Blockly 載入錯誤轉成看得懂的說明
+function describeLoadError(e) {
+  const msg = String(e && e.message || e);
+  if (/textToDom|parse|XML/i.test(msg)) return '這不是積木程式檔（.xml 格式不正確）';
+  if (/block|type/i.test(msg)) {
+    return '檔案裡有目前不支援的積木（可能是舊版「馬達」「舵機」積木），無法開啟';
+  }
+  return msg;
 }
 
 function runBlocklyCode() {
-  const payload = buildProgJson();
+  try {
+    const irNodes = parseWorkspaceToIR(workspace);
+    const payload = buildProgJson(irNodes, workspace);
+    warnStrayBlocks(irNodes);
 
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(payload));
-    appendSensorOutput("🚀 程式已傳送 (v1.3.1)");
-  } else {
-    appendSensorOutput("❌ 錯誤: WebSocket 未連線");
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(payload));
+      appendSensorOutput("🚀 程式已傳送 (v1.3.1)");
+    } else {
+      appendSensorOutput("❌ 錯誤: WebSocket 未連線");
+    }
+  } catch (e) {
+    appendSensorOutput(`❌ 無法執行: ${e.message}`);
   }
 }
 
@@ -217,15 +405,46 @@ function runBlocklyCode() {
 // 端點: GET/POST/DELETE /api/program  (見 src/ProgramStore.h)
 // ============================================================================
 
+// 存檔上限（JSON + XML 合計），需與韌體 ProgramPayload.h 的 PROGRAM_STORE_MAX_BYTES 一致
+const MAX_SAVE_BYTES = 32768;
+
+// 計算指令數（含 if／迴圈內部與副程式本體），只用來顯示
+function countProgCommands(cmds) {
+  let n = 0;
+  for (const c of cmds || []) {
+    n += 1;
+    for (const list of [c.then, c.else, c.do]) if (Array.isArray(list)) n += countProgCommands(list);
+  }
+  return n;
+}
+
 function buildProgPayload() {
-  const xml = Blockly.Xml.workspaceToDom(workspace);
+  // noId：不存積木 ID（載入時 Blockly 會重新產生），XML 約小 20%；變數 ID 仍保留
+  const xml = Blockly.Xml.workspaceToDom(workspace, true);
   const xmlText = Blockly.Xml.domToText(xml);
-  return { json: buildProgJson(), xml: xmlText, source: 'blockly' };
+  const irNodes = parseWorkspaceToIR(workspace);
+  const json = buildProgJson(irNodes, workspace);
+  warnStrayBlocks(irNodes);
+  const size = xmlText.length + JSON.stringify(json).length;
+  if (size > MAX_SAVE_BYTES) {
+    throw new Error(`程式太大，無法存檔（目前約 ${Math.ceil(size / 1024)} KB，上限 ${MAX_SAVE_BYTES / 1024} KB）。` +
+                    `可以把重複的動作改成副程式或迴圈來縮小`);
+  }
+  return { json, xml: xmlText, source: 'blockly' };
 }
 
 async function saveFile() {
   try {
     const payload = buildProgPayload();
+    // 板子上只存一支：畫面上的程式不是從 ESP32 開的、而板子上已經有程式時，先確認會覆蓋
+    if (!workspaceMatchesEsp32) {
+      const existing = await (await fetch('/api/program', { cache: 'no-store' })).json();
+      if (existing.ok && existing.has_program &&
+          !window.confirm('ESP32 上已經有一支程式，存檔會把它蓋掉。確定要存嗎？\n（想保留的話，可以先從 ESP32 開啟後「下載到本機」）')) {
+        appendSensorOutput('已取消存到 ESP32');
+        return;
+      }
+    }
     const resp = await fetch('/api/program', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -236,12 +455,18 @@ async function saveFile() {
       // 讀回驗證，讓畫面上的成功訊息代表資料確實可再被開啟。
       const verifyResp = await fetch('/api/program', { cache: 'no-store' });
       const verify = await verifyResp.json();
-      if (!verify.ok || !verify.has_program || !verify.xml) {
+      if (!verify.ok || !verify.has_program || verify.xml !== payload.xml) {
         throw new Error('ESP32 未能讀回剛儲存的程式');
       }
-      appendSensorOutput(`💾 已存入 ESP32，讀回驗證成功 (${payload.json.setup.length + payload.json.loop.length} 個指令)`);
+      const j = payload.json;
+      const total = countProgCommands(j.setup) + countProgCommands(j.loop) +
+                    (j.procedures || []).reduce((s, p) => s + countProgCommands(p.body), 0);
+      const kb = ((payload.xml.length + JSON.stringify(j).length) / 1024).toFixed(1);
+      appendSensorOutput(`💾 已存入 ESP32，讀回驗證成功（${total} 個指令，${kb} KB／上限 ${MAX_SAVE_BYTES / 1024} KB）`);
+      workspaceDirty = false;
+      workspaceMatchesEsp32 = true;
     } else {
-      appendSensorOutput(`❌ 存檔失敗: ${data.error || '未知錯誤'}`);
+      appendSensorOutput(`❌ 存檔失敗: ${FIRMWARE_ERROR_TEXT[data.error] || data.error || '未知錯誤'}`);
     }
   } catch (e) {
     appendSensorOutput(`❌ 存檔失敗: ${e.message}`);
@@ -250,6 +475,7 @@ async function saveFile() {
 
 async function openFile() {
   try {
+    if (!confirmReplaceWorkspace()) return;
     const resp = await fetch('/api/program');
     const data = await resp.json();
     if (!data.ok || !data.has_program) {
@@ -257,16 +483,29 @@ async function openFile() {
       return;
     }
     if (data.xml) {
-      workspace.clear();
-      Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(data.xml), workspace);
+      loadXmlIntoWorkspace(data.xml);
+      workspaceMatchesEsp32 = true;
       const src = data.meta?.source || 'unknown';
-      appendSensorOutput(`📂 已從 ESP32 載入 (來源: ${src})`);
+      appendSensorOutput(`📂 已從 ESP32 開啟 (來源: ${src})`);
     } else {
       // 只有 JSON,沒 XML — 可能是 ai.html 存的,Blockly 無法視覺還原
       appendSensorOutput("⚠️ ESP32 上的存檔由 AI 產生,Blockly 無法還原視覺積木");
     }
   } catch (e) {
-    appendSensorOutput(`❌ 載入失敗: ${e.message}`);
+    appendSensorOutput(`❌ 從 ESP32 開啟失敗: ${describeLoadError(e)}`);
+  }
+}
+
+// 從電腦／手機選一個 .xml 檔載入
+async function openLocalFile(file) {
+  if (!file) return;
+  try {
+    if (file.size > 1024 * 1024) throw new Error('檔案太大，不像是積木程式檔');
+    loadXmlIntoWorkspace(await file.text());
+    workspaceMatchesEsp32 = false;   // 這支還沒存到板子上
+    appendSensorOutput(`⬆️ 已從本機開啟「${file.name}」（還沒存到 ESP32，要執行或開機自動跑請按「存到 ESP32」）`);
+  } catch (e) {
+    appendSensorOutput(`❌ 無法開啟「${file.name}」：${describeLoadError(e)}`);
   }
 }
 
@@ -279,8 +518,8 @@ async function autoLoadFromEsp32() {
     const toggle = document.getElementById('autorunToggle');
     if (toggle) toggle.checked = !!data.autorun;
     if (data.ok && data.has_program && data.xml) {
-      workspace.clear();
-      Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(data.xml), workspace);
+      loadXmlIntoWorkspace(data.xml);
+      workspaceMatchesEsp32 = true;
       const src = data.meta?.source || 'unknown';
       appendSensorOutput(`已自動載入 ESP32 上的存檔 (來源: ${src})`);
     }
@@ -290,17 +529,31 @@ async function autoLoadFromEsp32() {
 }
 
 // 「另存」改成下載到本機,作為跨裝置備份手段
+// 把檔名裡不能用的字元換掉，並確保副檔名是 .xml
+function sanitizeFileName(name) {
+  const base = String(name).trim().replace(/\.xml$/i, '').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0, 60);
+  return (base || 'phone_blocky') + '.xml';
+}
+
 function downloadFile() {
-  const xml = Blockly.Xml.workspaceToDom(workspace);
-  const xmlText = Blockly.Xml.domToText(xml);
+  // 與存到 ESP32 相同：不含積木 ID 的 XML（變數 ID 保留），可用「從本機開啟」載回
+  const xmlText = Blockly.Xml.domToText(Blockly.Xml.workspaceToDom(workspace, true));
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const suggested = `phone_blocky_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+  const name = window.prompt('檔名（存到電腦或手機的下載資料夾）', suggested);
+  if (name === null) return;                       // 取消
+  const fileName = sanitizeFileName(name);
   const blob = new Blob([xmlText], { type: 'application/xml' });
   const a = document.createElement('a');
-  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   a.href = URL.createObjectURL(blob);
-  a.download = `phone_blocky_${ts}.xml`;
+  a.download = fileName;
+  document.body.appendChild(a);                    // Firefox 需要在頁面上才會觸發
   a.click();
-  URL.revokeObjectURL(a.href);
-  appendSensorOutput("📁 已下載 .xml 備份到本機");
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);   // 太早釋放會讓 iPhone Safari 下載失敗
+  workspaceDirty = false;
+  appendSensorOutput(`⬇️ 已下載「${fileName}」到本機（${(xmlText.length / 1024).toFixed(1)} KB）`);
 }
 
 function optimizeTouchExperience() { }

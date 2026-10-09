@@ -5,6 +5,8 @@
 function parseWorkspaceToIR(workspace) {
     const topBlocks = workspace.getTopBlocks(true);
     const irNodes = [];
+    // 沒接在 setup／loop 裡的積木不會執行；只計數（不翻譯，避免半成品積木擋住整支程式）
+    let strayBlocks = 0;
   
     topBlocks.forEach(block => {
       // 如果該積木有父節點，則跳過，避免重複解析（因為它會由父積木解析）
@@ -12,18 +14,20 @@ function parseWorkspaceToIR(workspace) {
   
       let current = block;
       while (current) {
-        const translator = getTranslator(current.type);
-        if (translator) {
-          const node = translator(current);
-          if (node) {
-            irNodes.push(node);
-          }
+        if (typeof current.isEnabled === "function" && !current.isEnabled()) {
+          // 被停用的積木不執行（Blockly 的慣例）
+        } else if (current.type === "arduino_setup" || current.type === "arduino_loop" ||
+            current.type.startsWith("procedures_def")) {
+          // setup／loop 與副程式定義都在最外層；有回傳值的副程式由 getTranslator 明確報錯
+          const node = getTranslator(current.type)(current);
+          if (node) irNodes.push(node);
         } else {
-          console.warn("沒有對應的翻譯器:", current.type);
+          strayBlocks++;
         }
         current = current.getNextBlock();
       }
     });
+    irNodes.strayBlocks = strayBlocks;
     return irNodes;
   }
   
@@ -35,14 +39,12 @@ function parseWorkspaceToIR(workspace) {
     let current = block;
     // 只解析線性連結，不遍歷 inputList（由控制積木自己處理）
     while (current) {
-      const translator = getTranslator(current.type);
-      if (translator) {
-        const node = translator(current);
+      // 被停用的積木不執行；不認得的積木由 getTranslator 回傳的函式直接報錯，不會默默略過
+      if (typeof current.isEnabled !== "function" || current.isEnabled()) {
+        const node = getTranslator(current.type)(current);
         if (node) {
           nodes.push(node);
         }
-      } else {
-        console.warn("沒有對應的翻譯器:", current.type);
       }
       current = current.getNextBlock();
     }

@@ -1,13 +1,71 @@
 {
   "schema": "phone_blocky.hw_config/v1",
   "motors": [
-    {"id": 1, "label": "M1", "has_encoder": false, "afm_index": 1},
-    {"id": 2, "label": "M2", "has_encoder": false, "afm_index": 2},
-    {"id": 3, "label": "M3", "has_encoder": true, "afm_index": 3, "enc_a": 35, "enc_b": 34},
-    {"id": 4, "label": "M4", "has_encoder": true, "afm_index": 4, "enc_a": 36, "enc_b": 39}
+    {
+      "id": 1,
+      "label": "M1",
+      "has_encoder": false,
+      "afm_index": 1
+    },
+    {
+      "id": 2,
+      "label": "M2",
+      "has_encoder": false,
+      "afm_index": 2
+    },
+    {
+      "id": 3,
+      "label": "M3",
+      "has_encoder": true,
+      "afm_index": 3,
+      "enc_a": 35,
+      "enc_b": 34
+    },
+    {
+      "id": 4,
+      "label": "M4",
+      "has_encoder": true,
+      "afm_index": 4,
+      "enc_a": 36,
+      "enc_b": 39
+    }
   ],
   "servos": [
-    {"id": 1, "label": "S1", "pin": 5,  "min_deg": 0, "max_deg": 180},
-    {"id": 2, "label": "S2", "pin": 13, "min_deg": 0, "max_deg": 180}
-  ]
+    {
+      "id": 1,
+      "label": "S1",
+      "pin": 5,
+      "min_deg": 0,
+      "max_deg": 180
+    },
+    {
+      "id": 2,
+      "label": "S2",
+      "pin": 13,
+      "min_deg": 0,
+      "max_deg": 180
+    }
+  ],
+  "user_pins": {
+    "lego_button": 4,
+    "ultrasonic_trig": 2,
+    "ultrasonic_echo": 33,
+    "digital_input": 15,
+    "analog_input": 32
+  },
+  "pwm": {
+    "motor_channels": [
+      5,
+      2,
+      3,
+      4
+    ],
+    "servo_timer": 3,
+    "general_channels": [
+      0,
+      1,
+      8,
+      9
+    ]
+  }
 }

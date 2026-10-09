@@ -1074,7 +1074,8 @@
 		}
 
 		if (estopActive) {
-			if (Joy1.GetY() === 0 && Joy2.GetY() === 0 && newButton1Value === 0 && newButton2Value === 0) {
+			// JoyStick.GetY() returns a decimal string (toFixed), including "-0".
+			if (Number(Joy1.GetY()) === 0 && Number(Joy2.GetY()) === 0 && newButton1Value === 0 && newButton2Value === 0) {
 				estopActive = false;
 			} else {
 				joy1Y.value = 0;

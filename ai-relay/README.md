@@ -7,7 +7,9 @@ ai.html (ESP32) ──fetch──> ai-relay ──Azure OpenAI──> GPT-4o
                       <───validated PROG JSON───┘
 ```
 
-**為什麼要 relay**:Azure OpenAI 的 API key 不能放在 ESP32 的 `ai.html` 裡 (任何打開頁面的人都看得到)。把 key 留在 relay,ai.html 只打到本機 relay。
+**目前連線方式**：`data/ai.html` 直接呼叫使用者設定的 Azure endpoint，未接本 relay；relay 是可獨立呼叫的選用服務。兩端共用相同提示詞與 AI 子集契約。若要讓瀏覽器改走 relay，需另做連線設定整合。
+
+**為什麼要 relay**:Azure OpenAI 的 API key 不能放在 ESP32 的 `ai.html` 裡 (任何打開頁面的人都看得到)。relay 可把 key 留在服務端；目前 ai.html 的直接模式則由使用者在瀏覽器輸入 key。
 
 ## 安裝
 
@@ -52,12 +54,11 @@ Response (成功):
   "ok": true,
   "prog": {
     "mode": "PROG",
-    "setup": [],
-    "loop": [
+    "loop": [],
+    "setup": [
       {"cmd": "pwm", "motor": 1, "duty": 60},
       {"cmd": "delay", "ms": 2000},
-      {"cmd": "stop", "motor": 1},
-      {"cmd": "delay", "ms": 5000}
+      {"cmd": "stop", "motor": 1}
     ]
   },
   "raw": "...AI 原始輸出..."
@@ -74,7 +75,7 @@ Response (AI 輸出不合法):
 ```
 
 ### `POST /validate`
-單純跑 schema 驗證,不呼叫 Azure。ai.html 在使用者手動編輯 JSON 後可呼叫這支。
+單純跑 schema 驗證，不呼叫 Azure。目前 ai.html 手動編輯後使用本地 JS 驗證器；外部客戶端可呼叫此 API。
 
 Request body 直接是要驗證的 PROG 物件。
 
@@ -87,6 +88,10 @@ Request body 直接是要驗證的 PROG 物件。
 - `stop` — `motor` 0-4 (0=全部)
 - `servo`— `ch` 1-2, `deg` 0-180
 - `delay`— `ms` 0-10000
+- `move_to` / `move_by` — M3/M4，deg 為度×100
+- `zero` / `speed` — M3/M4，rpm 為 0 或 60..250
+- `if` + `logic_compare`，讀值支援超音波與 Lego 按鈕（原始電位）
+- 不支援 while/until/repeat；指令數含巢狀分支，預設上限 64
 
 驗證採用 [schema.py](schema.py) 的 Pydantic 模型,relay 強制 AI 輸出符合此格式。
 
@@ -109,3 +114,7 @@ curl -X POST http://localhost:8000/generate ^
 - `.env` 已加入 `.gitignore`,不要 commit
 - 目前 CORS 全開 (`allow_origins=["*"]`),只適合本機/區網。要上公網請改成 ESP32 的實際來源
 - relay 本身不做認證,假設你只在內網跑
+
+## 離線契約檢查
+
+在專案根目錄執行 `python -m unittest discover -s tests -v` 與 `node tests/check_frontend.cjs`（Python 環境需安裝 requirements.txt）。更新 prompts.py 後執行 `python tools/sync_ai_prompt.py` 同步 ai.html。測試不呼叫 Azure 或 ESP32。

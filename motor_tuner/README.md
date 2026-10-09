@@ -51,7 +51,7 @@ UI 分五個分頁（連線列與 log 共用）：
   超音波(Trig+Echo) 各一列，可設腳位、開始/停止輪詢（約 4Hz，`mode:"hardwareTest"`）、即時顯示讀值。
 - **接線**（移植自 `data/wiring.html`，純顯示）：板子圖 + 舵機/編碼器/使用者腳位/樂高 RJ12 接頭/禁用腳位的腳位參考表。
   圖檔以搜尋路徑指向 repo 的 `data/wemos.jpg`（不複製二進位進工具）。
-- **燒錄**：用 esptool 把四個分區 bin 寫入 ESP32（COM 埠自動偵測、Baud 預設 921600、Offset 預設帶入、可選「燒錄前清除 flash」）。
+- **燒錄**：用 esptool 把四個分區 bin 寫入 ESP32（直接使用最上方 USB 連線列選擇的 COM 埠、Baud 預設 921600、Offset 預設帶入、可選「燒錄前清除 flash」）。
   燒錄前需先「斷線」釋放 USB 序列埠。完整步驟見 [安裝教程](../docs/安裝教程.md)。
 
 ## 限制

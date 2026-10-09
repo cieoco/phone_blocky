@@ -24,6 +24,11 @@ __pycache__/
 *$py.class
 venv/
 .venv/
+.venv-check/
 
 # Claude Code local tooling
 .claude/
+
+# Local secrets (Azure key for inst.py) — never commit
+config.py
+.env

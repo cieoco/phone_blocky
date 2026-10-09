@@ -26,6 +26,10 @@ public:
 
   int getChannelForPin(int pin)
   {
+    // Board-owned pins must never be detached/reconfigured by generic PWM.
+    if (pin != 0 && pin != 2 && pin != 4 && pin != 15 && pin != 18 &&
+        pin != 21 && pin != 22 && pin != 26 && pin != 32 && pin != 33)
+      return -1;
     for (int ch = 0; ch < MAX_CHANNELS; ch++)
     {
       if (pinChannel[ch] == pin)
@@ -35,7 +39,8 @@ public:
     }
     for (int ch = 0; ch < MAX_CHANNELS; ch++)
     {
-      if (pinChannel[ch] == -1)
+      // Timer 0 only: motors use timers 1/2, servos use timer 3.
+      if ((ch == 0 || ch == 1 || ch == 8 || ch == 9) && pinChannel[ch] == -1)
       {
         pinChannel[ch] = pin;
         return ch;

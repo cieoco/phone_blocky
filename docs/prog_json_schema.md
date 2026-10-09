@@ -16,9 +16,35 @@
 - `setup` 與 `loop` 皆為陣列；可空但必須存在
 - `setup` 只在程式載入時跑一次
 - `loop` 內元素依序執行,跑完最後一個會回到第一個 (見 `CommandProcessor::executeLoopCommands`)
-- 巢狀僅限 `if.then` / `if.else` 兩個分支陣列 (見下方 `if` 一節)
+- 巢狀容器為 `if`（then/else）、`repeat`、`while`（do），可互相包，**最多 8 層**（韌體 `PROG_MAX_BLOCK_DEPTH`，前端 `MAX_BLOCK_DEPTH`）。超過時前端擋下、韌體回 `nesting_too_deep`。AI 子集目前不產生迴圈。
+- 一次性動作全部放 `setup`，`loop: []`；`stop` 只停馬達，**不會終止 loop**。
+- 新 Blockly 輸出扁平陣列；韌體仍接受舊 `{command:"arduino_setup"|"arduino_loop", body:[...]}` 包裝。
+- 選用的 `procedures` 陣列放副程式定義（見下方「副程式」）；沒有副程式時 Blockly 不輸出這個鍵。
+
+## 即時控制路由與單位
+
+`processCommands()` 先判斷 mode，再進入各自的解析器。以下封裝不能只按欄位名稱互換：
+
+| 來源／路由 | 例子 | 單位與相容性 |
+|---|---|---|
+| Blockly／AI PROG | `{mode:"PROG",setup:[],loop:[]}` | `type:"prog"` 不是支援的別名；不要用它代替 mode |
+| 即時舵機 `executeDirectCommand` | `{cmd:"servo",ch:2,deg:90}` | 舵機角度為度，不乘 100；joy.html 的滑桿使用此格式 |
+| 即時定位 `executeDirectCommand` | `{cmd:"move_to",motor:3,deg:9000}` | 馬達角度為度×100，與 PROG 相同 |
+| 搖桿 `mode:"joy"` | `{mode:"joy",Button1:1,Action3:2,M3A:90}`（片段） | M3A/M4A 是度；`updateJoyPositionTarget` 乘 100。進入角度模式／按鈕由 OFF→ON 時會歸零，不能當作 direct move_to 的無狀態替代 |
+| 搖桿 M3/M4 PWM | `{cmd:"pwm",motor:3,duty:-60}` 或 joy 封裝的 M3/M4 | ±100 百分比；Action3/4=1 且 Button1/2=1 時使用 joy 的值 |
+| 硬體測試舵機 `handleHardwareTest` | `{mode:"hardwareTest",test:"servoTest",servo:2,angle:90}` | servo/angle 為既有欄位；此路由也接受 ch/deg，回應為 servoAck + servo/angle |
+| 硬體測試馬達 `handleHardwareTest` | `{mode:"hardwareTest",type:"motorControl",motor:"M3",speed:-255}` | speed 為帶方向的原始 PWM ±255，不是 cmd:pwm 的 ±100；motor 是 M1..M4 字串 |
+| 舊直接舵機相容層 | `{command:"servo_control",servo:"2",angle:"90"}` | 由 CommandTranslator 轉成 cmd:servo/ch/deg；PROG 內由 parseCommandArray 接受 |
+
+`data/joy.js` 提供搖桿元件，真正封裝／發送命令在 `data/joy.html`；硬體測試的 `sendCommand()` 會加入 `mode:"hardwareTest"`。`servo` 與 `ch` 不是所有路由都通用的同義欄位。
 
 ## 指令(cmd)
+
+> **數值參數可用表達式（Blockly 延伸）**：`pwm.duty`、`servo.deg`、`move_to.deg`、`move_by.deg`、`speed.rpm`、`delay.ms`
+> 除了整數常數，也可以是數值表達式物件（`variable_get`、`math_arithmetic`、感測器讀值…），韌體在**執行到該指令時**求值。
+> 例：`{"cmd":"servo","ch":1,"deg":{"command":"math_arithmetic","operator":"MULTIPLY","left":{"command":"variable_get","variableName":"i"},"right":10}}`。
+> 表達式結果由韌體夾限：duty ±100、servo 0–180、delay 負值視為 0；`move_to/move_by` 的表達式需自行 ×100（Blockly 會自動包一層 ×100）。
+> Blockly 在插槽裡只放數字時仍輸出整數常數（並在前端檢查範圍），與舊格式相同。AI 子集只用常數。
 
 每個指令是一個物件,以 `cmd` 字串選擇類型,其他鍵依類型而定。
 
@@ -58,7 +84,7 @@
 
 | 欄位    | 型別 | 範圍   | 說明                                        |
 |--------|------|--------|---------------------------------------------|
-| motor  | int  | 3..4   | **僅 M3/M4 有編碼器**,其餘回 `no_encoder`    |
+| motor  | int  | 3..4   | **僅 M3/M4 有編碼器**,直接指令回 `no_encoder`，PROG 於解析時拒絕    |
 | deg    | int  | —      | 角度 × 100（固定小數點整數）,韌體除以 100 還原 |
 
 - `move_to` 為絕對角度（相對零點）、`move_by` 為相對目前位置
@@ -76,7 +102,15 @@
 | 欄位    | 型別 | 範圍     | 說明                              |
 |--------|------|----------|-----------------------------------|
 | motor  | int  | 3..4     | 僅 M3/M4 有編碼器                  |
-| rpm    | int  | 60..250  | 目標轉速;`0` 視為停止              |
+| rpm    | number | 依入口，見下方 | 目標轉速；0 視為停止 |
+
+速度範圍依入口區分（保留既有韌體能力）：
+
+- Blockly 的 `motor_speed` 欄位提供正向整數 60..250 RPM；停止使用 stop 積木。
+- AI 頁面與 relay 子集接受整數 60..250 或 0；不生成負 RPM。
+- 底層直接 `cmd:"speed"` 接受帶正負號的浮點 RPM，沒有硬編碼的 60..250 範圍檢查；絕對值小於 0.01 視為停止。
+- 韌體 PROG 的 `cmd:"speed"` 以整數解析，保留負值與範圍外值的既有相容性；0 停止。不要把直接指令支援的小數精度套用到 PROG。
+- 「可接受的指令值」不代表馬達一定能達到該速度；實際可用範圍由馬達、供電與調校決定，待實機驗證。本輪不新增韌體限速或擴充 UI／AI 可選範圍。
 
 ### `zero` — 重設角度零點
 
@@ -152,31 +186,93 @@
 | else | array | 條件不成立時執行,可省略 = 空陣列 |
 
 - **動作指令用 `cmd:`、if/感測器用 `command:`** — 兩種 key 在同一個程式裡可混用,parser 會自動分辨
-- 在 `loop` 內每個 tick 都會重新讀 sensor、重新判斷
-- `then` / `else` 內可再放 `if`,但建議不要超過 2 層,韌體記憶體有限
+- 每次輪到這個 `if` 指令時重新讀 sensor、重新判斷；不是所有 if 在每個 tick 同時執行
+- `then` / `else` 內可再放 `if` / `repeat` / `while`，與迴圈合計最多 8 層
 - 韌體執行單一 `if` 整支跑完 (同步) 才會回到 loop 排程
 
-### `digitalWrite` / `analogWrite` — GPIO (進階,AI 預設不產生)
+### `repeat` — 重複 N 次（Blockly 延伸，AI 不產生）
 
 ```json
-{ "cmd": "digitalWrite", "pin": 5, "state": "HIGH" }
-{ "cmd": "analogWrite",  "pin": 5, "value": 128 }
+{ "command": "repeat", "times": { "command": "math_number", "number": 3 },
+  "do": [ { "cmd": "servo", "ch": 1, "deg": 30 }, { "cmd": "delay", "ms": 500 } ] }
 ```
 
-> AI 生成預設限制在 `pwm`/`stop`/`servo`/`delay` 四種,以免亂寫 GPIO 造成短路。
+| 欄位 | 型別 | 說明 |
+|------|------|------|
+| times | object \| int | 數值表達式（常數、變數、感測器、算式）；**進入迴圈時求值一次**，≤0 不執行 |
+| do | array | 迴圈本體，必填（可空） |
 
-## 範例:讓 M1 前進 2 秒後停止
+### 副程式 — `procedures` 與 `call`（Blockly 延伸，AI 不產生）
 
 ```json
 {
   "mode": "PROG",
   "setup": [],
-  "loop": [
-    { "cmd": "pwm",   "motor": 1, "duty": 60 },
-    { "cmd": "delay", "ms": 2000 },
-    { "cmd": "stop",  "motor": 1 },
-    { "cmd": "delay", "ms": 1000 }
+  "loop": [ { "command": "call", "name": "夾爪", "args": [30] },
+            { "command": "call", "name": "夾爪", "args": [150] } ],
+  "procedures": [
+    { "name": "夾爪", "params": ["vdeg"],
+      "body": [ { "cmd": "servo", "ch": 1, "deg": { "command": "variable_get", "variableName": "vdeg" } },
+                { "cmd": "delay", "ms": 500 } ] }
   ]
+}
+```
+
+| 欄位 | 說明 |
+|------|------|
+| procedures[].name | 副程式名稱，不可重複（`duplicate_procedure`） |
+| procedures[].params | 參數 = 全域變數名（Blockly 送變數 ID）；可省略 = 無參數 |
+| procedures[].body | 指令陣列，可含 if／迴圈／呼叫其他副程式 |
+| call.name | 要呼叫的副程式；不存在回 `unknown_procedure` |
+| call.args | 數值表達式陣列，個數必須等於 params 個數 |
+
+- 呼叫時**先算出全部參數值再寫入**參數變數，然後同步執行 body（同 if／迴圈）。參數是全域變數，副程式結束後仍保留最後的值。
+- 副程式可以呼叫其他副程式（不論定義先後），但**不可直接或間接呼叫自己**（`recursive_procedure`）：遞迴會把韌體堆疊用光。
+- 每次呼叫算一層巢狀，與 if／迴圈合計（展開所有呼叫後）最多 8 層，超過回 `nesting_too_deep`。
+- 不支援回傳值；Blockly 的「有回傳值副程式」會在前端被擋下。
+
+### `while` — 當／直到重複（Blockly 延伸，AI 不產生）
+
+```json
+{ "command": "while", "mode": "WHILE",
+  "condition": { "command": "logic_compare", "operator": "GT",
+                 "left": { "command": "arduinoUltrasonic", "trigPin": "2", "echoPin": "33" }, "right": 20 },
+  "do": [ { "cmd": "pwm", "motor": 1, "duty": 60 }, { "cmd": "delay", "ms": 50 } ] }
+```
+
+| 欄位 | 型別 | 說明 |
+|------|------|------|
+| mode | string | `WHILE`：條件成立就繼續；`UNTIL`：條件成立就停止。省略視為 `WHILE` |
+| condition | object \| int | 條件表達式，**每圈開頭重新求值** |
+| do | array | 迴圈本體，必填（可空） |
+
+迴圈執行規則（`CommandProcessor` 的 `CMD_REPEAT` / `CMD_WHILE`）：
+
+- 同步執行：迴圈與其本體整段跑完才回到頂層 loop 排程，與 `if` 相同。本體內指令連續執行，**不像頂層 loop 每 10 ms 一條**；需要間隔請放 `delay`。
+- 每圈結束呼叫 `programYield()`：讓出 CPU、約每 10 ms 跑一次角度／速度控制（M3/M4 保持照常）。空迴圈不會卡死板子。
+- 新 PROG 到達（含按「停止」送出的空程式）時，各層迴圈立即跳出，與 `delay` 相同。
+- 條件永遠成立的 `while` 不會自行結束，迴圈後面的指令也不會執行；要持續判斷但仍能往下跑，請改用頂層 loop + if。
+
+### `digitalWrite` / `analogWrite` — GPIO (進階,AI 預設不產生)
+
+```json
+{ "cmd": "digitalWrite", "pin": 2, "state": "HIGH" }
+{ "cmd": "analogWrite",  "pin": 26, "value": 128 }
+```
+
+> AI 支援 `pwm`、`stop`、`servo`、`delay`、`speed`、`move_to`、`move_by`、`zero` 與 `if`；不產生 GPIO 寫入。一般 analogWrite 限 GPIO 0/2/4/15/18/21/22/26/32/33，使用 timer 0 的 ch 0/1/8/9，避開馬達 timer 1/2 與舵機 timer 3。
+
+## 範例:讓 M1 前進 2 秒後停止（只執行一次）
+
+```json
+{
+  "mode": "PROG",
+  "setup": [
+    { "cmd": "pwm", "motor": 1, "duty": 60 },
+    { "cmd": "delay", "ms": 2000 },
+    { "cmd": "stop", "motor": 1 }
+  ],
+  "loop": []
 }
 ```
 
@@ -205,7 +301,14 @@
 
 ### NVS 配置
 
-| NVS key | 用途 |
+程式存在**專用 NVS 分割區 `prog`**（`partitions.csv`，128 KB，位於 flash 末端原本未使用的空間）。
+預設 NVS 只有 20 KB、單筆上限約 8 KB，Blockly XML 約 30 個積木就放不下，所以另開分割區。
+- 若燒錄時沒有更新分割表（找不到 `prog`），自動退回預設 NVS，功能照舊但容量小。
+- 第一次使用時會把預設 NVS 裡的舊存檔（含 autorun 設定）搬到 `prog`，並清掉舊位置。
+- 存檔上限：JSON + XML 合計 **32 KB**（約 140 個動作積木）；前端存檔前先檢查，韌體也會擋（`program_too_large`）。
+  上限來自讀回時 XML 與回應字串要同時放在 heap，不是 NVS 容量。
+
+| NVS key（namespace `program`） | 用途 |
 |------|------|
 | `program/json` | PROG JSON,ESP32 執行用 (autorun 讀這個) |
 | `program/xml` | Blockly workspace XML,**只有從 Blockly 存才有** |
@@ -218,8 +321,8 @@
 
 | Method | Path | Body | 回傳 |
 |--------|------|------|------|
-| `GET` | `/api/program` | — | `{ok, has_program, json, xml, meta, autorun}` |
-| `POST` | `/api/program` | `{json, xml?, source}` | `{ok, source, has_xml}` |
+| `GET` | `/api/program` | — | `{ok, has_program, json, xml, meta, autorun}`（存的 JSON 損毀時 `json:null, json_parse_error`） |
+| `POST` | `/api/program` | `{json, xml?, source}` | `{ok, source, has_xml}`；失敗 `{ok:false, error:<代碼>}` |
 | `DELETE` | `/api/program` | — | `{ok}` |
 | `GET` | `/api/program/autorun` | — | `{ok, on}` |
 | `POST` | `/api/program/autorun` | `{on: bool}` | `{ok, on}` |
@@ -234,9 +337,14 @@ POST `/api/program` 的 body 範例:
 }
 ```
 
-- `json.mode` 必須是 `"PROG"`,否則回 400
+- `json.mode` 必須是 `"PROG"`，setup/loop 必須是陣列，且通過韌體解析與 16KB JSON 容量檢查，否則回 400；檢查不執行任何指令
 - `xml` 是 optional,ai.html 不會附,Blockly 會附
 - `source` 是字串標籤,顯示「這份檔是誰存的」
+- 錯誤代碼：`bad_json`、`missing_json`、`mode_must_be_prog`、`program_too_large`（請求 > 64 KB 時 413）、
+  `nvs_write_failed`、`program_persistence_verification_failed`，以及 PROG 解析錯誤（`nesting_too_deep` 等）
+- 請求與回應的解析／組裝在 [src/ProgramPayload.h](../src/ProgramPayload.h)：POST 以 zero-copy 解析（容量依節點數估算），
+  GET 直接把存好的 JSON／XML 文字組成回應，不經固定大小的 JsonDocument
+- Blockly 存的 XML 不含積木 ID（`workspaceToDom(ws, true)`），約小 20%；變數 ID 保留，與 JSON 一致
 
 ### 開機 autorun 行為
 
@@ -248,16 +356,47 @@ if (ProgramStore::isAutorun() && ProgramStore::exists()) {
 }
 ```
 
-PS4 模式不執行 autorun (那時 Web 伺服器也不會啟動)。
+目前 `main.cpp` 啟動 WiFi/Web 後呼叫 autorun，沒有 PS4 任務／模式分支。舊 LittleFS 遷移只搬 JSON/XML/來源標籤，autorun 須透過目前 API 明確設定。
 
-## 驗證規則 (relay/ai.html 兩端皆套用)
+## AI 子集驗證（relay 與 ai.html）
 
-1. 頂層 `mode == "PROG"`、`setup`/`loop` 為陣列
-2. 每個指令物件必須有 `cmd` 字串
-3. setup/loop 內每個物件必須是:
-   - `cmd:` 動作指令 (`pwm`, `stop`, `servo`, `delay`),或
-   - `command:` Blockly 形狀 (目前只 `if`)
-4. `if.condition` 必須是 `logic_compare` 物件;`condition.left`/`right` 是感測器物件或整數,感測器目前只支援 `arduinoUltrasonic`
-5. 各欄位範圍如上表
-6. 多餘的鍵會被忽略 (韌體端使用 ArduinoJson 預設值機制)
-7. 指令總數 (含 `then`/`else` 內的) 建議 ≤ 64,避免 ESP32 記憶體吃緊
+1. `mode == "PROG"`，`setup` / `loop` 必須存在且為陣列。
+2. 動作用 `cmd`，條件／讀值用 `command`；同一物件不得同時帶兩者。
+3. 動作支援 `pwm`、`stop`、`servo`、`delay`、`speed`、`move_to`、`move_by`、`zero`。範圍如前表；定位 deg 限 signed 32-bit 整數。
+4. `if.condition` 必須是 `logic_compare`；左右為整數、`arduinoUltrasonic` 或 `legoButton`。`then` 必填，`else` 可省略。
+5. `{ "command":"legoButton", "pin":"4" }` 讀取 INPUT_PULLUP 的原始 0/1，按下的值由接線決定。超音波無回波為 -1。
+6. 腳位接受 0..39 整數或只含 ASCII 數字的字串；這是格式範圍，不代表每個 GPIO 都可接外設，接線依 [腳位.md](腳位.md)。拒絕 `2junk`、空字串與布林值。
+7. 指令總數含 then/else，前端最多 64；relay 預設 64（環境變數 MAX_COMMANDS 可調整，配合前端時應維持 64）。
+8. 其餘多餘鍵忽略。布林與數字字串不可冒充動作的整數欄位。
+
+AI 子集不是整個 Blockly 語言。Blockly 比較的數字積木會輸出 `{command:"math_number",number:20}`，韌體可求值；AI 直接輸出常數 `20`。兩者在韌體中等價，但 Blockly 延伸程式不必通過 AI 子集驗證。
+
+## Blockly 延伸與必要舊格式
+
+韌體另接受以下 `command` 形狀，供 Blockly 使用：
+
+| 指令／表達式 | 欄位與行為 |
+|---|---|
+| `pinMode` | pin、mode（INPUT／OUTPUT／INPUT_PULLUP） |
+| `digitalWrite` / `analogWrite` | pin + state（HIGH／LOW）或 value（0..255） |
+| `delay`（舊） | delayTime；新 Blockly 輸出 cmd:delay/ms |
+| `motor_control`（舊） | motor、direction（F/B/R）、speed（0..255）；（Blockly 舊「馬達」積木已刪除，此格式僅供舊 JSON 相容） |
+| `servo_control`（舊） | servo、angle；新格式為 cmd:servo/ch/deg |
+| `serial_println` / `message_print` | content 數值表達式；分別輸出序列／網頁訊息 |
+| `plot_print` | series、unit、value 數值表達式 |
+| `variable_declare` / `variable_set` / `math_change` | variableName；後兩者帶 value |
+| `math_number` / `variable_get` | number / variableName |
+| `math_arithmetic` | operator（ADD/MINUS/MULTIPLY/DIVIDE/MODULO）、left、right；整數運算，除以 0 得 0，餘數正負號跟左邊 |
+| `math_abs` | value；絕對值 |
+| `math_random` | from、to；含兩端的隨機整數（from > to 自動對調），每次求值重抽 |
+| `math_constrain` | value、low、high；夾在 low–high 之間（low > high 自動對調） |
+| `math_map` | value、fromLow、fromHigh、toLow、toHigh；同 Arduino `map()` 的整數線性換算，不夾限；原範圍寬度為 0 時回傳 toLow |
+| `logic_boolean` / `logic_negate` | value 布林 / content 表達式 |
+| `logic_operation` | operator（AND／OR）、left、right；短路求值（AND 左邊不成立、OR 左邊成立就不讀右邊） |
+| `logic_compare` | operator、left、right；可巢狀數值表達式 |
+| `digitalRead` / `analogRead` / `legoButton` | pin |
+| `arduinoUltrasonic` / `arduino_millis` | trigPin、echoPin / 無參數 |
+
+韌體保留舊數字字串與預設值相容性，並非完整的 AI 嚴格驗證器。未知動作、非法馬達／舵機 ID、缺欄位的迴圈會拒絕整份 PROG（`unsupported_or_invalid_program_command`）；巢狀超過 8 層回 `nesting_too_deep`；副程式錯誤回 `unknown_procedure` / `recursive_procedure` / `duplicate_procedure`；以上都不取代正在執行的程式。JSON 解析深度由 `platformio.ini` 的 `ARDUINOJSON_DEFAULT_NESTING_LIMIT=32` 放寬（預設 10 只夠 3 層積木）。缺 setup/loop 陣列回 `invalid_program_arrays`。若需要停止舊程式，送出完整空 PROG。
+
+setup、if 分支與 repeat／while 迴圈同步執行；delay 與每圈迴圈都經 `programYield()` 讓出並更新控制。新 PROG 到達時跳出等待、迴圈與剩餘分支／setup，下一安全點套用新程式。這不等於即時硬體急停，實際延遲仍需實機驗證。

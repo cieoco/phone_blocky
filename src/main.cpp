@@ -422,14 +422,14 @@ void setup() {
   Serial.println("[初始化] Web 伺服器...");
   webServerHandler.begin();
 
-  // 開機 autorun:若 LittleFS 有存檔且 autorun flag 開,自動載入並執行
+  // 開機 autorun:若 NVS 有存檔且 autorun flag 開,自動載入並執行
   webServerHandler.runAutorunProgramIfEnabled();
 #endif
 
   // 建立一個新任務，將 JSON 處理工作分配給 core1
   xTaskCreatePinnedToCore(jsonTask,   // 任務函式
                           "JSONTask", // 任務名稱
-                          8192,       // 堆疊大小
+                          12288,      // 堆疊大小（巢狀 if/repeat/while 每層一次遞迴，最多 8 層）
                           NULL,       // 傳入參數
                           2,          // 任務優先權
                           NULL, // 任務句柄（不需要時可設為 NULL）

@@ -139,15 +139,44 @@ class ArduinoUltrasonicNode extends BaseNode {
     }
 }
 
+// ------------------------------------------------------------
+// 數值插槽共用：常數 → 數字（維持舊 JSON 形狀並檢查範圍）；
+// 接了變數／感測器／算式 → 表達式物件，交給韌體執行時求值（韌體負責夾限）。
+// ------------------------------------------------------------
+function isExprArg(v) {
+    return v !== null && typeof v === "object" && typeof v.toJson === "function";
+}
+
+// 表達式 × 常數（例：角度 ×100 轉成 centi-degree、反轉方向 ×-1）
+function scaleExprJson(node, factor) {
+    return { command: "math_arithmetic", operator: "MULTIPLY", left: node.toJson(), right: factor };
+}
+
+// 檢查常數參數範圍，超出時給出看得懂的錯誤
+function checkConstRange(value, min, max, label) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < min || n > max) {
+        throw new Error(`${label}必須介於 ${min}–${max}（目前：${value}）`);
+    }
+    return n;
+}
+
 class DelayNode extends BaseNode {
     constructor(delayTime) {
         super();
         this.delayTime = delayTime;
     }
     toJson() {
+        if (isExprArg(this.delayTime)) {
+            return { cmd: "delay", ms: this.delayTime.toJson() };   // 韌體：負值視為 0
+        }
+        const ms = Number(this.delayTime);
+        if (!Number.isInteger(ms) || ms < 0 || ms > 10000) {
+            throw new Error("延遲必須是 0–10000 毫秒的整數；較長等待請拆成多個積木。");
+        }
         return {
-            command: "delay",
-            delayTime: this.delayTime
+            cmd: "delay",
+            ms
         };
     }
 }
@@ -211,33 +240,53 @@ class IfNode extends BaseNode {
 
 
 
+// 重複 N 次 → {"command":"repeat","times":<值>,"do":[...]}；次數於進入迴圈時求值一次
 class RepeatNode extends BaseNode {
-    constructor(times) {
+    constructor(times, doCommands = []) {
         super();
         this.times = times;
+        this.doCommands = doCommands;
     }
     toJson() {
         return {
             command: "repeat",
-            times: this.times
+            times: (this.times && typeof this.times.toJson === "function") ?
+                this.times.toJson() : this.times,
+            do: this.doCommands.map(node => node.toJson())
         };
     }
 }
 
+// 當／直到重複 → {"command":"while","mode":"WHILE"|"UNTIL","condition":<值>,"do":[...]}
 class WhileNode extends BaseNode {
-    constructor(condition, doCommands, mode) {
+    constructor(condition, doCommands = [], mode = "WHILE") {
         super();
         this.condition = condition;
-        this.doCommands = doCommands || [];
-        this.mode = mode; // "WHILE" 或 "UNTIL"
+        this.doCommands = doCommands;
+        this.mode = mode === "UNTIL" ? "UNTIL" : "WHILE";
     }
     toJson() {
         return {
-            command: this.mode === "WHILE" ? "while" : "until",
+            command: "while",
+            mode: this.mode,
             condition: (this.condition && typeof this.condition.toJson === "function") ?
                 this.condition.toJson() : this.condition,
-            do: this.doCommands.map(cmd => (cmd.toJson ? cmd.toJson() : cmd))
+            do: this.doCommands.map(node => node.toJson())
         };
+    }
+}
+
+// 且／或 → {"command":"logic_operation","operator":"AND"|"OR","left":...,"right":...}
+class LogicOperationNode extends BaseNode {
+    constructor(operator, left, right) {
+        super();
+        this.operator = operator === "OR" ? "OR" : "AND";
+        this.left = left;
+        this.right = right;
+    }
+    toJson() {
+        return { command: "logic_operation", operator: this.operator,
+                 left: this.left.toJson(), right: this.right.toJson() };
     }
 }
 
@@ -279,6 +328,48 @@ class MathArithmeticNode extends BaseNode {
             left: (this.leftOperand && typeof this.leftOperand.toJson === "function") ? this.leftOperand.toJson() : this.leftOperand,
             right: (this.rightOperand && typeof this.rightOperand.toJson === "function") ? this.rightOperand.toJson() : this.rightOperand
         };
+    }
+}
+
+// 副程式定義 → PROG 頂層 procedures 陣列的一項：{"name","params":[變數ID…],"body":[…]}
+class ProcedureDefNode extends BaseNode {
+    constructor(name, params, body) {
+        super();
+        this.name = name;
+        this.params = params;
+        this.body = body;
+    }
+    toJson() {
+        return { name: this.name, params: this.params, body: this.body.map(node => node.toJson()) };
+    }
+}
+
+// 呼叫副程式 → {"command":"call","name","args":[值…]}（參數值依定義順序）
+class ProcedureCallNode extends BaseNode {
+    constructor(name, args) {
+        super();
+        this.name = name;
+        this.args = args;
+    }
+    toJson() {
+        return { command: "call", name: this.name, args: this.args.map(arg => arg.toJson()) };
+    }
+}
+
+// 數學函式：絕對值／隨機整數／限制／對應換算
+// → {"command":"math_abs"|"math_random"|"math_constrain"|"math_map", <具名參數>: <值>...}
+class MathFunctionNode extends BaseNode {
+    constructor(command, args) {
+        super();
+        this.command = command;
+        this.args = args;
+    }
+    toJson() {
+        const json = { command: this.command };
+        for (const [key, node] of Object.entries(this.args)) {
+            json[key] = (node && typeof node.toJson === "function") ? node.toJson() : node;
+        }
+        return json;
     }
 }
 
@@ -402,8 +493,18 @@ class MotorPwmNode extends BaseNode {
         this.pwm = pwm;
     }
     toJson() {
-        const duty = parseInt(this.pwm);
-        if (this.direction === 'STOP' || duty === 0) {
+        if (this.direction === 'STOP') {
+            return { cmd: 'stop', motor: parseInt(this.motor) };
+        }
+        if (isExprArg(this.pwm)) {
+            return {
+                cmd: 'pwm',
+                motor: parseInt(this.motor),
+                duty: this.direction === 'BACKWARD' ? scaleExprJson(this.pwm, -1) : this.pwm.toJson()
+            };
+        }
+        const duty = Math.round(checkConstRange(this.pwm, 0, 100, "馬達動力"));
+        if (duty === 0) {
             return { cmd: 'stop', motor: parseInt(this.motor) };
         }
         return {
@@ -437,7 +538,8 @@ class MotorSpeedNode extends BaseNode {
         return {
             cmd: "speed",
             motor: parseInt(this.motor),
-            rpm: parseInt(this.rpm)
+            rpm: isExprArg(this.rpm) ? this.rpm.toJson()
+                : Math.round(checkConstRange(this.rpm, 60, 250, "轉速 RPM"))
         };
     }
 }
@@ -452,7 +554,8 @@ class MotorMoveByNode extends BaseNode {
         return {
             cmd: "move_by",
             motor: parseInt(this.motor),
-            deg: Math.round(parseFloat(this.deg) * 100)
+            deg: isExprArg(this.deg) ? scaleExprJson(this.deg, 100)
+                : Math.round(checkConstRange(this.deg, -36000, 36000, "角度") * 100)
         };
     }
 }
@@ -467,7 +570,8 @@ class MotorPositionNode extends BaseNode {
         return {
             cmd: "move_to",
             motor: parseInt(this.motor),
-            deg: Math.round(parseFloat(this.deg) * 100)
+            deg: isExprArg(this.deg) ? scaleExprJson(this.deg, 100)
+                : Math.round(checkConstRange(this.deg, -36000, 36000, "角度") * 100)
         };
     }
 }
@@ -495,51 +599,11 @@ class ServoSetNode extends BaseNode {
         return {
             cmd: "servo",
             ch: parseInt(this.ch),
-            deg: parseInt(this.deg)
+            deg: isExprArg(this.deg) ? this.deg.toJson()   // 韌體夾 0–180
+                : Math.round(checkConstRange(this.deg, 0, 180, "舵機角度"))
         };
     }
 }
-
-// ============================================================
-// 舊格式 IR Nodes (deprecated shim)
-// ============================================================
-
-class MotorNode extends BaseNode {
-    constructor(motor, direction, power) {
-        super();
-        this.motor = motor;
-        this.direction = direction;
-        this.power = power;
-    }
-    toJson() {
-        const power = parseInt(this.power);
-        if (this.direction === "STOP" || power === 0) {
-            return { cmd: "stop", motor: parseInt(this.motor) };
-        }
-        return {
-            cmd: "pwm",
-            motor: parseInt(this.motor),
-            duty: this.direction === "BACKWARD" ? -power : power
-        };
-    }
-}
-
-class ServoNode extends BaseNode {
-    constructor(servo, angle) {
-        super();
-        this.servo = servo;
-        this.angle = angle;
-    }
-    toJson() {
-        return {
-            command: "servo_control",
-            servo: this.servo,
-            angle: this.angle
-        };
-    }
-}
-
-
 
 /********************************************
  * (3) 定義「翻譯器」：每個積木如何轉成 IR Node
@@ -619,9 +683,16 @@ function translateArduinoUltrasonic(block) {
     return new ArduinoUltrasonicNode(trig, echo);
 }
 
+// 讀數值插槽：接數字積木 → 數字；接其他積木 → 表達式 Node；空的 → 錯誤
+function translateNumberInput(block, inputName, label) {
+    const target = block.getInputTargetBlock(inputName);
+    if (!target) throw new Error(`「${label}」沒有放數值`);
+    if (target.type === "math_number") return Number(target.getFieldValue("NUM"));
+    return getTranslator(target.type)(target);
+}
+
 function translateDelay(block) {
-    const delayTime = block.getFieldValue("DELAY_TIME");
-    return new DelayNode(delayTime);
+    return new DelayNode(translateNumberInput(block, "DELAY_TIME", "延遲毫秒"));
 }
 
 function translateSerialPrintln(block) {
@@ -658,20 +729,20 @@ function translateIf(block) {
 
 
 function translateRepeat(block) {
-    const times = block.getFieldValue("TIMES");
-    return new RepeatNode(times);
+    const timesBlock = block.getInputTargetBlock("TIMES");
+    if (!timesBlock) throw new Error("「重複」積木缺少次數");
+    const times = getTranslator(timesBlock.type)(timesBlock);
+    const doBlock = block.getInputTargetBlock("DO");
+    return new RepeatNode(times, doBlock ? parseBlockChain(doBlock) : []);
 }
 
 function translateWhile(block) {
-    const mode = block.getFieldValue("MODE");
-    const conditionBlock = block.getInputTargetBlock("BOOL");
-    let condition = conditionBlock ? getTranslator(conditionBlock.type)(conditionBlock) : null;
-
-    // 使用 parseBlockChain 來解析 while 內部所有命令
+    const condBlock = block.getInputTargetBlock("BOOL");
+    if (!condBlock) throw new Error("「當／直到」積木缺少條件");
+    const condition = getTranslator(condBlock.type)(condBlock);
     const doBlock = block.getInputTargetBlock("DO");
-    let doCommands = doBlock ? parseBlockChain(doBlock) : [];
-
-    return new WhileNode(condition, doCommands, mode);
+    return new WhileNode(condition, doBlock ? parseBlockChain(doBlock) : [],
+                         block.getFieldValue("MODE"));
 }
 
 function translateMillis(block) {
@@ -683,12 +754,67 @@ function translateMathNumber(block) {
     return new MathNumberNode(number);
 }
 
+// 讀必填的數值插槽（接任何數值積木）；空的就報錯，不再默默當成 0
+function requireValueInput(block, inputName, label) {
+    const target = block.getInputTargetBlock(inputName);
+    if (!target) throw new Error(`「${label}」積木有空的插槽，請放入數值`);
+    return getTranslator(target.type)(target);
+}
+
 function translateMathArithmetic(block) {
     const operator = block.getFieldValue("OP");
-    const leftOperand = getBlockValue(block, "A");
-    const rightOperand = getBlockValue(block, "B");
+    const leftOperand = requireValueInput(block, "A", "運算");
+    const rightOperand = requireValueInput(block, "B", "運算");
     return new MathArithmeticNode(operator, leftOperand, rightOperand);
   }
+
+function translateProcedureDef(block) {
+    const name = block.getFieldValue("NAME");
+    // 參數在 Blockly 裡是變數；用變數 ID，與副程式內「取得變數」積木輸出的名稱一致
+    const params = block.getVarModels().map(v => v.getId());
+    const stack = block.getInputTargetBlock("STACK");
+    return new ProcedureDefNode(name, params, stack ? parseBlockChain(stack) : []);
+}
+
+function translateProcedureCall(block) {
+    const name = block.getProcedureCall();
+    const args = block.getVars().map((paramName, i) =>
+        requireValueInput(block, "ARG" + i, `呼叫「${name}」的參數 ${paramName}`));
+    return new ProcedureCallNode(name, args);
+}
+
+function translateProcedureWithReturn(block) {
+    throw new Error("副程式目前不支援回傳值，請改用沒有回傳值的副程式");
+}
+
+function translateMathAbs(block) {
+    return new MathFunctionNode("math_abs", { value: requireValueInput(block, "VALUE", "絕對值") });
+}
+
+function translateMathRandomInt(block) {
+    return new MathFunctionNode("math_random", {
+        from: requireValueInput(block, "FROM", "隨機整數"),
+        to: requireValueInput(block, "TO", "隨機整數")
+    });
+}
+
+function translateMathConstrain(block) {
+    return new MathFunctionNode("math_constrain", {
+        value: requireValueInput(block, "VALUE", "限制"),
+        low: requireValueInput(block, "LOW", "限制"),
+        high: requireValueInput(block, "HIGH", "限制")
+    });
+}
+
+function translateMathMap(block) {
+    return new MathFunctionNode("math_map", {
+        value: requireValueInput(block, "VALUE", "對應換算"),
+        fromLow: requireValueInput(block, "FROM_LOW", "對應換算"),
+        fromHigh: requireValueInput(block, "FROM_HIGH", "對應換算"),
+        toLow: requireValueInput(block, "TO_LOW", "對應換算"),
+        toHigh: requireValueInput(block, "TO_HIGH", "對應換算")
+    });
+}
 
 
 function translateLogicBoolean(block) {
@@ -698,9 +824,17 @@ function translateLogicBoolean(block) {
 
 function translateLogicCompare(block) {
     const operator = block.getFieldValue("OP");
-    const leftOperand = getBlockValue(block, "A");
-    const rightOperand = getBlockValue(block, "B");
+    const leftOperand = requireValueInput(block, "A", "比較");
+    const rightOperand = requireValueInput(block, "B", "比較");
     return new LogicCompareNode(operator, leftOperand, rightOperand);
+}
+
+function translateLogicOperation(block) {
+    const a = block.getInputTargetBlock("A");
+    const b = block.getInputTargetBlock("B");
+    if (!a || !b) throw new Error("「且／或」積木兩邊都要放條件");
+    return new LogicOperationNode(block.getFieldValue("OP"),
+        getTranslator(a.type)(a), getTranslator(b.type)(b));
 }
 
 function translateLogicNegate(block) {
@@ -769,7 +903,7 @@ function translateVariableGet(block) {
 function translateMotorPwm(block) {
     const motor = block.getFieldValue("MOTOR");
     const direction = block.getFieldValue("DIRECTION");
-    const pwm = block.getFieldValue("PWM");
+    const pwm = translateNumberInput(block, "PWM", "馬達動力");
     return new MotorPwmNode(motor, direction, pwm);
 }
 
@@ -780,19 +914,19 @@ function translateMotorStop(block) {
 
 function translateMotorSpeed(block) {
     const motor = block.getFieldValue("MOTOR");
-    const rpm = block.getFieldValue("RPM");
+    const rpm = translateNumberInput(block, "RPM", "轉速");
     return new MotorSpeedNode(motor, rpm);
 }
 
 function translateMotorMoveBy(block) {
     const motor = block.getFieldValue("MOTOR");
-    const deg = block.getFieldValue("DEG");
+    const deg = translateNumberInput(block, "DEG", "旋轉角度");
     return new MotorMoveByNode(motor, deg);
 }
 
 function translateMotorPosition(block) {
     const motor = block.getFieldValue("MOTOR");
-    const deg = block.getFieldValue("DEG");
+    const deg = translateNumberInput(block, "DEG", "目標角度");
     return new MotorPositionNode(motor, deg);
 }
 
@@ -803,22 +937,8 @@ function translateMotorZero(block) {
 
 function translateServoSet(block) {
     const ch = block.getFieldValue("CH");
-    const deg = block.getFieldValue("DEG");
+    const deg = translateNumberInput(block, "DEG", "舵機角度");
     return new ServoSetNode(ch, deg);
-}
-
-// Legacy translators (deprecated shim)
-function translateMotor(block) {
-    const motor = block.getFieldValue("MOTOR");
-    const direction = block.getFieldValue("DIRECTION");
-    const speed = block.getFieldValue("SPEED");
-    return new MotorNode(motor, direction, speed);
-}
-
-function translateServo(block) {
-    const servo = block.getFieldValue("SERVO");
-    const angle = block.getFieldValue("ANGLE");
-    return new ServoNode(servo, angle);
 }
 
 /********************************************
@@ -932,12 +1052,30 @@ function getTranslator(blockType) {
             return translateMathNumber;
         case "math_arithmetic":
             return translateMathArithmetic;
+        case "math_abs":
+            return translateMathAbs;
+        case "procedures_defnoreturn":
+            return translateProcedureDef;
+        case "procedures_callnoreturn":
+            return translateProcedureCall;
+        case "procedures_defreturn":
+        case "procedures_callreturn":
+        case "procedures_ifreturn":
+            return translateProcedureWithReturn;
+        case "math_random_int":
+            return translateMathRandomInt;
+        case "math_constrain":
+            return translateMathConstrain;
+        case "math_map":
+            return translateMathMap;
         case "logic_boolean":
             return translateLogicBoolean;
         case "logic_compare":
             return translateLogicCompare;
         case "logic_negate":
             return translateLogicNegate;
+        case "logic_operation":
+            return translateLogicOperation;
         case "variables_declare":
             return translateVariableDeclare;
         case "variables_set":
@@ -966,11 +1104,8 @@ function getTranslator(blockType) {
             return translateBlocklyFuncGet;
         case "blockly_func_set":
             return translateBlocklyFuncSet;
-        case "馬達":
-            return translateMotor;
-        case "舵機":
-            return translateServo;
         default:
-            return null;
+            // 不認得的積木：明確報錯，不再默默略過（以前只在 console 留警告，程式少一段也不知道）
+            return (block) => { throw new Error(`不支援的積木「${block.type}」，請移除後再執行`); };
     }
 }

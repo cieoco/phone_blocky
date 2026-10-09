@@ -8,6 +8,11 @@
 // Call once at the top of CommandProcessor::processCommands() before dispatch.
 class CommandTranslator {
 public:
+    static int legacyNumber(JsonVariantConst value, int fallback) {
+        if (value.is<const char *>()) return atoi(value.as<const char *>());
+        return value.is<int>() ? value.as<int>() : fallback;
+    }
+
     static void translate(JsonDocument &doc) {
         if (!doc.containsKey("command")) return;
 
@@ -16,7 +21,7 @@ public:
         if (strcmp(command, "motor_control") == 0) {
             int motor = doc["motor"].as<int>();
             const char *dirStr = doc["direction"] | "R";
-            int speed = doc["speed"] | 0;
+            int speed = legacyNumber(doc["speed"], 0);
             char dir = dirStr[0];
 
             doc.remove("command");
@@ -35,7 +40,7 @@ public:
             }
         } else if (strcmp(command, "servo_control") == 0) {
             int servo = doc["servo"].as<int>();
-            int angle = doc["angle"] | 90;
+            int angle = legacyNumber(doc["angle"], 90);
 
             doc.remove("command");
             doc.remove("servo");
