@@ -60,7 +60,15 @@ window.addEventListener('load', function () {
   workspace = Blockly.inject('blocklyDiv', {
     toolbox: document.getElementById('toolbox'),
     renderer: 'geras',
-    zoom: { controls: true, wheel: true, startScale: isTouchOrSmall ? 1.3 : 1.0 },
+    // maxScale / minScale 是給「看全部」用的護欄：zoomToFit 會算出剛好塞滿的
+    // 倍率，程式只有兩三個積木時那個倍率會大得離譜（積木佔滿整個螢幕），
+    // 程式很長時又會縮到看不見字。沒有上下限的話這顆按鈕反而難用。
+    // 註：pinch（雙指縮放）這版預設是 wheel||controls，兩者都開著所以已生效。
+    zoom: {
+      controls: true, wheel: true, pinch: true,
+      startScale: isTouchOrSmall ? 1.3 : 1.0,
+      maxScale: 2.0, minScale: 0.3
+    },
     move: { scrollbars: true, drag: true, wheel: true }
   });
   workspace.registerToolboxCategoryCallback('SUBROUTINE', subroutineFlyout);
@@ -112,9 +120,100 @@ window.addEventListener('load', function () {
   const autorunToggle = document.getElementById('autorunToggle');
   if (autorunToggle) autorunToggle.onchange = () => setAutorun(autorunToggle.checked);
 
+  initMobileShell();
+
   // 開頁時自動載入 ESP32 上的存檔(若有)
   setTimeout(autoLoadFromEsp32, 300);
 });
+
+// ============================================================================
+// 手機版面（app shell）的互動：看全部／整理／抽屜／訊息列
+//
+// 整頁不捲動，所以任何「改變畫布高度」的動作都必須跟著呼叫 Blockly.svgResize()。
+// Blockly 會在 inject 當下快取注入區的尺寸來換算指標座標，版面變了卻沒重算，
+// 下一次點擊就會落在錯的地方（積木像是「跳走」）—— 這一頁最難查的老問題。
+// ============================================================================
+function initMobileShell() {
+  const $ = (id) => document.getElementById(id);
+
+  // ---- 看全部：直接命中「在手機上看不到整支程式」這件事 ----
+  const fitBtn = $('fitBtn');
+  if (fitBtn) fitBtn.onclick = () => fitProgramToScreen();
+
+  // ---- 整理：把散落各處的積木排成一直欄，之後再按「看全部」就很整齊 ----
+  const tidyBtn = $('tidyBtn');
+  if (tidyBtn) {
+    tidyBtn.onclick = () => {
+      if (!workspace) return;
+      workspace.cleanUp();
+      fitProgramToScreen();
+    };
+  }
+
+  // ---- 抽屜：存檔／開啟／autorun／Plotter ----
+  const drawer = $('drawer');
+  const scrim = $('drawerScrim');
+  const setDrawer = (open) => {
+    if (!drawer || !scrim) return;
+    drawer.hidden = !open;
+    scrim.hidden = !open;
+  };
+  const menuBtn = $('menuBtn');
+  if (menuBtn) menuBtn.onclick = () => setDrawer(true);
+  const closeBtn = $('drawerCloseBtn');
+  if (closeBtn) closeBtn.onclick = () => setDrawer(false);
+  if (scrim) scrim.onclick = () => setDrawer(false);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') setDrawer(false);
+  });
+  // 存檔／開啟按完就把抽屜收起來，不然結果訊息被面板蓋住看不到
+  ['saveBtn', 'openFileBtn', 'saveAsNewBtn', 'openLocalBtn'].forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener('click', () => setTimeout(() => setDrawer(false), 150));
+  });
+
+  // ---- 訊息列：收起時一行，點開成面板 ----
+  const strip = $('statusStrip');
+  const panel = $('sensorOutput');
+  const latest = $('statusLatest');
+  if (strip && panel) {
+    strip.onclick = () => {
+      const open = panel.hidden;
+      panel.hidden = !open;
+      strip.setAttribute('aria-expanded', String(open));
+      if (open) panel.scrollTop = panel.scrollHeight;
+      // 面板佔掉畫布的高度，一定要重算座標
+      if (workspace) Blockly.svgResize(workspace);
+    };
+  }
+
+  // 把最新一條訊息鏡像到收起來的那一行。用 MutationObserver 而不是去改
+  // appendSensorOutput：那個函式有自己的去重與上限邏輯（而且 ai.html 之外
+  // 還有別處在用它的輸出格式），從外面觀察比插手它的內部省事也安全。
+  if (panel && latest && typeof MutationObserver !== 'undefined') {
+    const mirror = () => {
+      const ps = panel.querySelectorAll('p');
+      if (ps.length) latest.textContent = ps[ps.length - 1].textContent;
+      if (!panel.hidden) panel.scrollTop = panel.scrollHeight;
+    };
+    new MutationObserver(mirror).observe(panel, {
+      childList: true, subtree: true, characterData: true
+    });
+  }
+}
+
+// 把整支程式縮到剛好塞滿畫面並置中。
+// zoomToFit 在工作區完全沒有積木時算不出範圍，所以先擋掉那種情況。
+function fitProgramToScreen() {
+  if (!workspace) return;
+  if (workspace.getTopBlocks(false).length === 0) {
+    workspace.setScale(1.0);
+    workspace.scrollCenter();
+    return;
+  }
+  workspace.zoomToFit();   // 內部已經會 scrollCenter()，不必再呼叫一次
+}
 
 // 開機自動執行開關。與 ai.html 共用 /api/program/autorun 端點，兩頁狀態一致。
 //
