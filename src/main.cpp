@@ -453,6 +453,10 @@ void setup() {
 }
 
 void loop() {
-  // 主 loop 不再處理 Serial 指令，僅保留最小延遲
+  // 主 loop 不再處理 Serial 指令。wifiTick() 是非阻塞的：負責 STA 退避重連
+  // 與延遲重開機（設定頁存檔後的那一次），兩者都不能放在 AsyncWebServer 的
+  // callback 裡做 —— 那會卡住 AsyncTCP 任務。從機模式同樣要跑，WiFi 在兩種
+  // 模式下都是常駐的（見 platformio.ini 的 env:esp32dev_i2c 註解）。
+  webServerHandler.wifiTick();
   delay(10);
 }

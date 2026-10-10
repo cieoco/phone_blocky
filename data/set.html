@@ -372,6 +372,15 @@
 
     <form id="settingsForm" action="/setwifi" method="post">
       <div id="wifiSettings">
+        <!-- 目前狀態：以前這一頁存完就重開，完全看不出「存進去了沒有、為什麼連不上」，
+             只能接 USB 看序列輸出。內容由 loadWifiStatus() 從 /api/wifi 填入。 -->
+        <div id="wifiStatus"
+             style="margin-bottom:12px;padding:10px;border-radius:8px;
+                    background:#f0f9ff;border:1px solid #bee5eb;
+                    font-size:0.88em;line-height:1.6;color:#0c5460;">
+          正在讀取目前的 WiFi 狀態…
+        </div>
+
         <label for="ssid">WiFi SSID：</label>
         <input type="text" id="ssid" name="ssid" placeholder="請輸入 SSID" required>
 
@@ -839,8 +848,65 @@
     document.getElementById('enableName').addEventListener('change', updateSettingVisibility);
     document.getElementById('enablePID').addEventListener('change', updateSettingVisibility);
 
+    // 讀回目前設定與連線狀態（GET /api/wifi）。
+    //
+    // 密碼不回傳也不預填：伺服器只給長度。欄位留空代表「不改密碼」做不到——
+    // /setwifi 一定要收到密碼才寫得進去，所以這裡明確要求重新輸入，
+    // 而不是讓使用者以為留空就會沿用舊的。
+    async function loadWifiStatus() {
+      const box = document.getElementById('wifiStatus');
+      try {
+        const r = await fetch('/api/wifi', { cache: 'no-store' });
+        const d = await r.json();
+        const sta = d.sta || {};
+        const ap = d.ap || {};
+
+        // 預填已存的 SSID / 控制板名稱，讓人看得見板子上現在到底是什麼
+        if (sta.ssid) document.getElementById('ssid').value = sta.ssid;
+        if (ap.name) document.getElementById('name').placeholder = ap.name;
+
+        const lines = [];
+        if (!sta.ssid) {
+          lines.push('⚠️ <b>板子上沒有已儲存的 SSID</b>');
+        } else {
+          lines.push(`已儲存 SSID：<b>${escapeHtml(sta.ssid)}</b>（密碼 ${sta.password_len} 字元）`);
+          if (sta.password_len === 0) {
+            lines.push('⚠️ <b>密碼是空的，所以不會嘗試連線</b>（本韌體不支援無密碼的開放網路）');
+          }
+        }
+        if (sta.connected) {
+          lines.push(`✅ 已連上路由器，IP <b>${escapeHtml(sta.ip)}</b>（訊號 ${sta.rssi} dBm、channel ${sta.channel}）`);
+        } else if (sta.ssid) {
+          lines.push(`❌ 目前未連線：<b>${escapeHtml(sta.reason)}</b>（status=${sta.status}）`);
+          if (sta.retry_in_ms > 0) {
+            lines.push(`背景重試中，約 ${Math.ceil(sta.retry_in_ms / 1000)} 秒後再試一次。`);
+          }
+        }
+        // 顯示手機 WiFi 清單上真正看到的名字（STA 連上時是「末四碼-IP」的
+        // 精簡格式）。和設定的名稱不同時兩個都列，否則會對不起來。
+        const shown = ap.broadcast || ap.name || '';
+        let apLine = `AP：<b>${escapeHtml(shown)}</b>`;
+        if (ap.name && ap.broadcast && ap.name !== ap.broadcast) {
+          apLine += `（設定的名稱：${escapeHtml(ap.name)}）`;
+        }
+        apLine += `，IP ${escapeHtml(ap.ip || '')}，目前 ${ap.clients} 台連線中`;
+        lines.push(apLine);
+        box.innerHTML = lines.join('<br>');
+      } catch (e) {
+        box.innerHTML = `讀取狀態失敗：${escapeHtml(e.message)}`;
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g,
+        c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
     // 初始化顯示
     updateSettingVisibility();
+    loadWifiStatus();
+    // 連線是背景重試的，所以狀態要會自己更新，不必使用者手動重新整理
+    setInterval(loadWifiStatus, 5000);
   </script>
 </body>
 
