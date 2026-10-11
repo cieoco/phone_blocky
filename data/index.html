@@ -4,235 +4,206 @@
 <head>
   <meta charset="UTF-8">
   <title>🎮 ESP32 機器人控制中心</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <!-- 不鎖縮放：這一頁沒有會被縮放弄壞的版面，鎖住只會讓看不清楚的人沒辦法放大 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
+    /* ========================================================================
+       首頁＝手機桌面：六個方塊磁貼，整塊都可以點。
+       原本是六顆橫向長條按鈕，一顆佔滿整行，手機上要捲動才看得完，
+       而且「可點的範圍」其實只有那一條。改成方塊之後，一眼看得到全部，
+       每個目標也大得多（最小邊約 140px，遠超過觸控目標 44px 的下限）。
+       ===================================================================== */
     * {
       box-sizing: border-box;
     }
 
     html,
     body {
-      height: 100%;
       margin: 0;
       padding: 0;
-      overflow-x: hidden;
+      min-height: 100%;
     }
 
     body {
       background: linear-gradient(135deg, #667eea 0%, #4d7fff 100%);
       background-attachment: fixed;
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      margin: 0;
-      min-height: 100vh;
       display: flex;
       justify-content: center;
       align-items: flex-start;
-      padding: 20px;
-      position: relative;
+      padding: 16px;
+      /* iPhone 瀏海與底部手勢區 */
+      padding-top: calc(16px + env(safe-area-inset-top, 0px));
+      padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+      -webkit-tap-highlight-color: transparent;
     }
 
     .container {
       background: rgba(255, 255, 255, 0.95);
-      padding: 40px 48px;
+      padding: 24px;
       border-radius: 20px;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-      backdrop-filter: blur(10px);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
       text-align: center;
-      min-width: 320px;
-      max-width: min(95vw, 600px);
       width: 100%;
-      margin: 0 auto;
-      position: relative;
-      transform-origin: center;
-      transition: transform 0.2s ease-out;
-    }
-
-    .container:hover {
-      transform: scale(1.02);
+      /* 三欄排滿就夠寬了，再寬只會讓磁貼之間離得很遠 */
+      max-width: 560px;
     }
 
     h2 {
-      margin-bottom: 32px;
+      margin: 4px 0 20px;
       background: linear-gradient(45deg, #667eea, #4d7fff);
       -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
       background-clip: text;
+      -webkit-text-fill-color: transparent;
       letter-spacing: 2px;
-      font-size: 2.5em;
+      font-size: 1.6em;
       font-weight: 600;
     }
 
-    .btn-group {
+    /* 手機（約 390px 寬）剛好兩欄；平板與桌機自動變三欄。
+       用 auto-fit + minmax 讓欄數跟著寬度走，不必用 JS 偵測裝置。 */
+    .tiles {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+    }
+
+    .tile {
       display: flex;
       flex-direction: column;
-      gap: 24px;
-      margin-top: 24px;
       align-items: center;
-    }
-
-    .menu-btn {
-      background: linear-gradient(45deg, #667eea, #4d7fff);
-      color: #fff;
-      border: none;
-      border-radius: 15px;
-      padding: 18px 36px;
-      font-size: 1.2em;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s, box-shadow 0.2s;
+      justify-content: center;
+      gap: 6px;
+      /* 正方形比較像手機桌面；aspect-ratio 太舊的瀏覽器不支援，min-height 是後路 */
+      aspect-ratio: 1 / 1;
+      min-height: 130px;
+      padding: 10px;
+      border-radius: 18px;
+      background: #fff;
+      border: 1px solid #e8ebf5;
       box-shadow: 0 2px 8px rgba(60, 80, 180, 0.08);
-      width: 100%;
-      max-width: 320px;
-      margin: 0 auto;
+      color: #333;
+      text-decoration: none;
+      transition: transform 0.12s ease-out, box-shadow 0.12s ease-out;
     }
 
-    .menu-btn:hover {
-      background: linear-gradient(45deg, #4d7fff, #667eea);
-      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-      transform: translateY(-3px);
+    /* 按下去要有反應，手機上沒有 hover 可以依賴 */
+    .tile:active {
+      transform: scale(0.96);
+      box-shadow: 0 1px 4px rgba(60, 80, 180, 0.12);
     }
 
-    .menu-btn:active {
-      transform: translateY(-1px);
+    @media (hover: hover) {
+      .tile:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 20px rgba(60, 80, 180, 0.18);
+      }
     }
 
-    /* 縮放適配 */
-    @media (max-width: 600px) {
+    /* 圖示用各自的顏色，掃一眼就能分辨，不必真的讀完字 */
+    .tile-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 54px;
+      height: 54px;
+      border-radius: 16px;
+      background: var(--accent, #4d7fff);
+      font-size: 1.7em;
+      line-height: 1;
+    }
+
+    .tile-name {
+      font-size: 1em;
+      font-weight: 600;
+    }
+
+    .tile-sub {
+      font-size: 0.75em;
+      color: #7a8194;
+      line-height: 1.3;
+    }
+
+    @media (max-width: 360px) {
       body {
         padding: 10px;
       }
 
       .container {
-        padding: 20px 5vw;
-        min-width: unset;
+        padding: 16px 12px;
+        border-radius: 14px;
+      }
+
+      /* 很窄的螢幕仍維持兩欄：一欄會變回「要捲動才看得完」的老問題 */
+      .tiles {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+
+      .tile {
+        min-height: 112px;
         border-radius: 15px;
-        max-width: 100%;
       }
 
-      .container:hover {
-        transform: scale(1.01);
-      }
-
-      h2 {
+      .tile-icon {
+        width: 46px;
+        height: 46px;
         font-size: 1.5em;
-        margin-bottom: 20px;
       }
 
-      .menu-btn {
-        font-size: 1em;
-        padding: 16px 20px;
-        max-width: 100%;
+      .tile-name {
+        font-size: 0.9em;
       }
 
-      .btn-group {
-        gap: 16px;
+      .tile-sub {
+        display: none;      /* 擠不下時先捨棄說明，保留圖示與名稱 */
       }
     }
 
-    /* 超小螢幕優化 */
-    @media (max-width: 360px) {
-      body {
-        padding: 5px;
-      }
-
-      .container {
-        padding: 15px;
-        border-radius: 10px;
-      }
-
+    @media (min-width: 700px) {
       h2 {
-        font-size: 1.3em;
+        font-size: 2.1em;
       }
-    }
-
-    /* 大螢幕優化 */
-    @media (min-width: 1200px) {
-      .container {
-        max-width: 500px;
-        padding: 50px 60px;
-      }
-
-      h2 {
-        font-size: 3em;
-      }
-
-      .menu-btn {
-        font-size: 1.3em;
-        padding: 20px 40px;
-      }
-    }
-
-    /* 強制移動設備樣式 */
-    body.mobile-device {
-      padding: 8px !important;
-    }
-
-    body.mobile-device .container {
-      padding: 16px !important;
-      max-width: 100% !important;
-      min-width: unset !important;
-      border-radius: 12px !important;
-      transform: none !important;
-    }
-
-    body.mobile-device .container:hover {
-      transform: none !important;
-    }
-
-    body.mobile-device h2 {
-      font-size: 1.4em !important;
-      margin-bottom: 16px !important;
-    }
-
-    body.mobile-device .menu-btn {
-      font-size: 0.95em !important;
-      padding: 14px 18px !important;
-      max-width: 100% !important;
-    }
-
-    body.mobile-device .btn-group {
-      gap: 12px !important;
     }
   </style>
-  <script>
-    // 強制移動設備檢測和佈局調整
-    function detectMobileAndAdjust() {
-      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-        window.screen.width <= 768 ||
-        window.innerWidth <= 768 ||
-        ('ontouchstart' in window);
-
-      if (isMobile) {
-        if (document.body) {
-          document.body.classList.add('mobile-device');
-        }
-        // 強制設置viewport
-        const viewport = document.querySelector('meta[name=viewport]');
-        if (viewport) {
-          viewport.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
-        }
-      }
-    }
-
-    // 當 DOM 載入完成後執行
-    document.addEventListener('DOMContentLoaded', detectMobileAndAdjust);
-
-    // 當頁面完全載入後再次檢測（包含圖片等資源）
-    window.addEventListener('load', detectMobileAndAdjust);
-    window.addEventListener('resize', detectMobileAndAdjust);
-  </script>
 </head>
 
 <body>
   <div class="container">
     <h2>🎮 機器人控制器</h2>
-    <div class="btn-group">
-      <button class="menu-btn" onclick="location.href='blockly.html'">🧩 Blockly 程式積木</button>
-      <button class="menu-btn" onclick="location.href='ai.html'">🤖 AI 生成程式</button>
-      <button class="menu-btn" onclick="location.href='joy.html'">🕹️ 虛擬搖桿控制</button>
-      <button class="menu-btn" onclick="location.href='hardware_test.html'">🔧 硬體功能檢測</button>
-      <button class="menu-btn" onclick="location.href='set.html'">📶 相關設定</button>
-      <button class="menu-btn" onclick="location.href='wiring.html'">🔌 接線說明</button>
+    <!-- 用 <a> 而不是 button + location.href：整塊都是連結、可長按另開分頁，
+         而且沒有 JavaScript 也能用。 -->
+    <div class="tiles">
+      <a class="tile" href="blockly.html">
+        <span class="tile-icon" style="--accent:#e7efff">🧩</span>
+        <span class="tile-name">積木程式</span>
+        <span class="tile-sub">拖積木寫程式</span>
+      </a>
+      <a class="tile" href="ai.html">
+        <span class="tile-icon" style="--accent:#efe7ff">🤖</span>
+        <span class="tile-name">AI 生成</span>
+        <span class="tile-sub">講一句話產生程式</span>
+      </a>
+      <a class="tile" href="joy.html">
+        <span class="tile-icon" style="--accent:#e7fff2">🕹️</span>
+        <span class="tile-name">虛擬搖桿</span>
+        <span class="tile-sub">即時手動操作</span>
+      </a>
+      <a class="tile" href="hardware_test.html">
+        <span class="tile-icon" style="--accent:#fff2e0">🔧</span>
+        <span class="tile-name">硬體檢測</span>
+        <span class="tile-sub">馬達舵機一鍵測</span>
+      </a>
+      <a class="tile" href="set.html">
+        <span class="tile-icon" style="--accent:#e0f4ff">📶</span>
+        <span class="tile-name">相關設定</span>
+        <span class="tile-sub">WiFi、PID 參數</span>
+      </a>
+      <a class="tile" href="wiring.html">
+        <span class="tile-icon" style="--accent:#ffe7ef">🔌</span>
+        <span class="tile-name">接線說明</span>
+        <span class="tile-sub">腳位對照圖</span>
+      </a>
     </div>
   </div>
 </body>
