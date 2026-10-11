@@ -162,8 +162,11 @@ examples/             ← 內建範例程式（唯讀）：index.json 清單 + �
 
 `ir_digital` / `ir_analog` 是「具名版」的數位／類比讀取：欄位名同為 `PIN`，直接共用
 `translateDigitalRead` / `translateAnalogRead`，**產生的 JSON 與通用積木完全相同**，韌體不必
-認識新指令。板子上接的就是紅外線模組（硬體檢測頁的 GPIO15 / GPIO32 兩項測的也是它），
-通用的 `arduino_digitalRead` / `arduino_analogRead` 留在分類最後，給其他模組用。
+認識新指令。板子上接的就是紅外線模組（硬體檢測頁的 GPIO15 / GPIO32 兩項測的也是它）。
+
+`arduino_digitalRead` / `arduino_analogRead` **同時列在「Arduino」與「感測器」兩個分類**
+（Blockly 允許，拖出來是同一顆積木）：在 Arduino 分類它們是與 `digitalWrite` /
+`analogWrite` 成對的 GPIO 基本積木，在感測器分類則是給上面沒具名到的其他模組用。
 
 `encoder_read` 的 `read` 值與韌體 `ENCODER_READ_DEG/TICKS/RPM` 對應，角度相對 `zero` 的零點。
 

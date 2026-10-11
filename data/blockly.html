@@ -436,7 +436,7 @@
     <div class="info-section">
       <div class="section-title">🏠 離開</div>
       <button id="homeBtn" onclick="resetAndGoHome()" class="btn" style="background: #ee5a52;">🏠 停止程式並回首頁</button>
-      <div style="font-size:0.8em;color:#888;margin-top:8px;">v1.3.44 (2026-10-11) — 感測器分類補齊（紅外線、編碼器）</div>
+      <div style="font-size:0.8em;color:#888;margin-top:8px;">v1.3.45 (2026-10-11) — 感測器分類補齊（紅外線、編碼器）</div>
     </div>
   </div>
 
@@ -458,8 +458,13 @@
     <category name="Arduino" colour="120">
       <block type="arduino_setup"></block>
       <block type="arduino_loop"></block>
+      <!-- 數位／類比讀取在「感測器」分類裡也有一份。刻意重複：在這裡它們是與
+           digitalWrite / analogWrite 成對的 GPIO 基本積木，在那裡是「讀感測器」。
+           Blockly 允許同一種積木出現在多個分類，拖出來的是同一顆。 -->
       <block type="arduino_digitalWrite"></block>
+      <block type="arduino_digitalRead"></block>
       <block type="arduino_analogWrite"></block>
+      <block type="arduino_analogRead"></block>
       <block type="arduino_delay">
         <value name="DELAY_TIME"><shadow type="math_number"><field name="NUM">1000</field></shadow></value>
       </block>
