@@ -87,6 +87,19 @@
       background: #dde4f5;
     }
 
+    /* 頂列多了一顆按鈕之後，390px 的螢幕擺不下完整標題；
+       收掉文字只留 🧩，按鈕才不會被擠到換行或變形。 */
+    @media (max-width: 480px) {
+      .topbar .title-text {
+        display: none;
+      }
+
+      .topbar {
+        gap: 6px;
+        padding: 6px 8px;
+      }
+    }
+
     /* ---- 畫布：唯一會動的區域，吃掉所有剩餘空間 ---- */
     .canvas-wrap {
       flex: 1 1 auto;
@@ -256,6 +269,51 @@
       color: #666;
     }
 
+    /* 範例清單：一支一顆大按鈕（標題 + 標籤 + 說明），手機上單欄 */
+    #exampleList {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex-basis: 100%;
+      font-size: 0.85em;
+      color: #666;
+    }
+
+    .example-btn {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      width: 100%;
+      text-align: left;
+      background: #f0f3fa;
+      border: 1px solid #d6dbe8;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-family: inherit;
+      font-size: 1em;
+      color: #333;
+      cursor: pointer;
+    }
+
+    .example-btn:active {
+      background: #dde4f5;
+    }
+
+    .example-name {
+      font-weight: bold;
+    }
+
+    .example-tag {
+      font-size: 0.8em;
+      color: #4d7fff;
+    }
+
+    .example-desc {
+      font-size: 0.82em;
+      color: #666;
+      line-height: 1.4;
+    }
+
     .info-section {
       margin: 12px 0;
       padding: 12px;
@@ -305,10 +363,12 @@
 
   <div class="app">
     <div class="topbar">
-      <span class="title">🧩 積木程式設計</span>
+      <span class="title">🧩<span class="title-text"> 積木程式設計</span></span>
       <!-- 「看全部」是這一頁在手機上最需要的一顆：一下把整支程式縮到剛好塞滿畫面 -->
       <button class="iconbtn" id="fitBtn" title="看全部（把整支程式縮到剛好塞滿畫面）">⤢ 看全部</button>
       <button class="iconbtn" id="tidyBtn" title="整理積木（排成一直欄）">⇅</button>
+      <!-- 範例放頂列而不是抽屜裡：第一次用的人正是最需要它、也最不會去翻選單的人 -->
+      <button class="iconbtn" id="examplesBtn" title="範例（載入一支現成的程式）">📚</button>
       <button class="iconbtn" id="menuBtn" title="更多（存檔、開啟、Plotter）">☰</button>
     </div>
 
@@ -376,7 +436,21 @@
     <div class="info-section">
       <div class="section-title">🏠 離開</div>
       <button id="homeBtn" onclick="resetAndGoHome()" class="btn" style="background: #ee5a52;">🏠 停止程式並回首頁</button>
-      <div style="font-size:0.8em;color:#888;margin-top:8px;">v1.3.40 (2026-10-10) — 手機版面（app shell）</div>
+      <div style="font-size:0.8em;color:#888;margin-top:8px;">v1.3.44 (2026-10-11) — 感測器分類補齊（紅外線、編碼器）</div>
+    </div>
+  </div>
+
+  <!-- 範例面板：和抽屜共用遮罩與 .sheet 樣式，但各自是獨立的面板（一次只開一個）。
+       範例是唯讀教材，點一下取代畫布上的程式，不會動到板子上存的那一支。 -->
+  <div class="sheet" id="examplesSheet" hidden role="dialog" aria-modal="true" aria-label="範例程式">
+    <div class="sheet-head">
+      <span class="sheet-title">📚 範例</span>
+      <button class="iconbtn" id="examplesCloseBtn" title="關閉">✕</button>
+    </div>
+    <div class="file-group">
+      <span class="file-group-label">點一下載入到畫布，不會動到 ESP32 上的存檔；
+        想讓它開機自動跑，載入後還是要按「存到 ESP32」。</span>
+      <div id="exampleList">正在讀取範例…</div>
     </div>
   </div>
 

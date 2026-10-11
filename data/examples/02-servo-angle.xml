@@ -1,0 +1,58 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+  <block type="arduino_setup" x="20" y="20">
+    <statement name="SETUP_BODY">
+      <block type="servo_set">
+        <comment pinned="false" h="90" w="250">開機先回到 0°，每次執行都從同一個起點開始。舵機接 S1（GPIO 5）。</comment>
+        <field name="CH">1</field>
+        <value name="DEG">
+          <shadow type="math_number">
+            <field name="NUM">0</field>
+          </shadow>
+        </value>
+      </block>
+    </statement>
+    <next>
+      <block type="arduino_loop">
+        <statement name="LOOP_BODY">
+          <block type="servo_set">
+            <comment pinned="false" h="110" w="270">舵機角度只能 0–180°，而且會自己保持住位置（不需要編碼器，也沒有「設零點」這回事）。改成 45 或 180 看看。</comment>
+            <field name="CH">1</field>
+            <value name="DEG">
+              <shadow type="math_number">
+                <field name="NUM">90</field>
+              </shadow>
+            </value>
+            <next>
+              <block type="arduino_delay">
+                <value name="DELAY_TIME">
+                  <shadow type="math_number">
+                    <field name="NUM">2000</field>
+                  </shadow>
+                </value>
+                <next>
+                  <block type="servo_set">
+                    <field name="CH">1</field>
+                    <value name="DEG">
+                      <shadow type="math_number">
+                        <field name="NUM">0</field>
+                      </shadow>
+                    </value>
+                    <next>
+                      <block type="arduino_delay">
+                        <value name="DELAY_TIME">
+                          <shadow type="math_number">
+                            <field name="NUM">2000</field>
+                          </shadow>
+                        </value>
+                      </block>
+                    </next>
+                  </block>
+                </next>
+              </block>
+            </next>
+          </block>
+        </statement>
+      </block>
+    </next>
+  </block>
+</xml>

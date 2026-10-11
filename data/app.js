@@ -150,21 +150,36 @@ function initMobileShell() {
     };
   }
 
-  // ---- 抽屜：存檔／開啟／autorun／Plotter ----
+  // ---- 底部面板：抽屜（存檔／開啟／autorun／Plotter）與範例，共用一塊遮罩 ----
+  // 一次只開一個：兩個疊在一起的話，關掉上面那個會露出下面那個，看起來像沒關掉。
   const drawer = $('drawer');
+  const examplesSheet = $('examplesSheet');
   const scrim = $('drawerScrim');
-  const setDrawer = (open) => {
-    if (!drawer || !scrim) return;
-    drawer.hidden = !open;
-    scrim.hidden = !open;
+  const closeSheets = () => {
+    if (drawer) drawer.hidden = true;
+    if (examplesSheet) examplesSheet.hidden = true;
+    if (scrim) scrim.hidden = true;
   };
+  const openSheet = (el) => {
+    closeSheets();
+    if (!el || !scrim) return;
+    el.hidden = false;
+    scrim.hidden = false;
+  };
+  const setDrawer = (open) => (open ? openSheet(drawer) : closeSheets());
+  setDrawerOpen = (open) => (open ? openSheet(examplesSheet) : closeSheets());
   const menuBtn = $('menuBtn');
-  if (menuBtn) menuBtn.onclick = () => setDrawer(true);
+  if (menuBtn) menuBtn.onclick = () => openSheet(drawer);
+  // 範例在頂列：按下去同時開面板與抓清單（清單只抓一次）
+  const examplesBtn = $('examplesBtn');
+  if (examplesBtn) examplesBtn.onclick = () => { openSheet(examplesSheet); loadExampleList(); };
+  const examplesCloseBtn = $('examplesCloseBtn');
+  if (examplesCloseBtn) examplesCloseBtn.onclick = () => closeSheets();
   const closeBtn = $('drawerCloseBtn');
-  if (closeBtn) closeBtn.onclick = () => setDrawer(false);
-  if (scrim) scrim.onclick = () => setDrawer(false);
+  if (closeBtn) closeBtn.onclick = () => closeSheets();
+  if (scrim) scrim.onclick = () => closeSheets();
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') setDrawer(false);
+    if (e.key === 'Escape') closeSheets();
   });
   // 存檔／開啟按完就把抽屜收起來，不然結果訊息被面板蓋住看不到
   ['saveBtn', 'openFileBtn', 'saveAsNewBtn', 'openLocalBtn'].forEach((id) => {
@@ -447,7 +462,9 @@ let workspaceMatchesEsp32 = false;
 let suppressDirtyTracking = false;
 
 // 載入 XML；失敗時還原成載入前的積木（不會因為壞檔案把畫面清空）
-function loadXmlIntoWorkspace(xmlText) {
+// dirty：載入後要不要算成「有未存檔的修改」。從 ESP32／本機檔案開的程式在別處有
+// 一份，算乾淨的；範例只存在網頁上，標成未存檔才不會讓人以為板子上已經有這支。
+function loadXmlIntoWorkspace(xmlText, { dirty = false } = {}) {
   const dom = upgradeLegacyXml(Blockly.utils.xml.textToDom(xmlText));   // 不是 XML 會在這裡丟錯
   const backup = Blockly.Xml.workspaceToDom(workspace);
   suppressDirtyTracking = true;
@@ -460,7 +477,7 @@ function loadXmlIntoWorkspace(xmlText) {
     throw e;
   } finally {
     // Blockly 的變更事件是非同步送出的，等它們送完再恢復追蹤
-    setTimeout(() => { suppressDirtyTracking = false; workspaceDirty = false; }, 0);
+    setTimeout(() => { suppressDirtyTracking = false; workspaceDirty = dirty; }, 0);
   }
 }
 
@@ -605,6 +622,76 @@ async function openLocalFile(file) {
     appendSensorOutput(`⬆️ 已從本機開啟「${file.name}」（還沒存到 ESP32，要執行或開機自動跑請按「存到 ESP32」）`);
   } catch (e) {
     appendSensorOutput(`❌ 無法開啟「${file.name}」：${describeLoadError(e)}`);
+  }
+}
+
+// ============================================================================
+// 範例程式 — 唯讀，放在 LittleFS 的 data/examples/（清單 index.json + 每支一個 .xml）
+//
+// 為什麼不放在 NVS：板子上的「存檔」只有一個位置（開機自動執行跑的就是那一支），
+// 範例若去佔用它，載入範例就等於把學生自己的程式蓋掉。
+// 範例的格式就是「下載到本機」匯出的那種 XML，所以走的是同一條載入路徑。
+// ============================================================================
+let exampleListLoaded = false;
+let setDrawerOpen = () => {};       // 由 initMobileShell 接上（開／關範例面板）
+
+// 頂列的 📚 第一次按下才抓清單（開頁時不花這個來回）
+async function loadExampleList() {
+  if (exampleListLoaded) return;
+  const box = document.getElementById('exampleList');
+  if (!box) return;
+  exampleListLoaded = true;
+  box.textContent = '正在讀取範例…';      // 上一次失敗留下的訊息要換掉，不然看起來像沒反應
+  try {
+    const resp = await fetch('examples/index.json', { cache: 'no-store' });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    const list = Array.isArray(data.examples) ? data.examples : [];
+    if (!list.length) throw new Error('清單是空的');
+    box.textContent = '';
+    for (const ex of list) {
+      const btn = document.createElement('button');
+      btn.className = 'example-btn';
+      btn.type = 'button';
+      const title = document.createElement('span');
+      title.className = 'example-name';
+      title.textContent = ex.name || ex.id;
+      const tag = document.createElement('span');
+      tag.className = 'example-tag';
+      tag.textContent = [ex.level, ex.hw].filter(Boolean).join(' · ');
+      const desc = document.createElement('span');
+      desc.className = 'example-desc';
+      desc.textContent = ex.desc || '';
+      btn.append(title, tag, desc);
+      btn.onclick = () => loadExample(ex);
+      box.appendChild(btn);
+    }
+  } catch (e) {
+    // 最常見的原因不是程式壞了，是網頁檔沒重新上傳 —— 直接把解法寫出來
+    exampleListLoaded = false;   // 下次打開抽屜再試一次
+    box.textContent = `讀不到範例清單（${e.message}）。` +
+      '若是剛更新網頁，請在電腦上執行 pio run --target uploadfs 把 data/ 上傳到板子。';
+  }
+}
+
+async function loadExample(ex) {
+  const id = String(ex && ex.id || '');
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) {       // 清單是板子上的檔，但仍不讓它組出任意路徑
+    appendSensorOutput('❌ 範例編號不合法');
+    return;
+  }
+  try {
+    if (!confirmReplaceWorkspace()) return;
+    const resp = await fetch(`examples/${id}.xml`, { cache: 'no-store' });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    // 範例只存在網頁上：標成未存檔，之後要執行或開機自動跑都還是得按「存到 ESP32」
+    loadXmlIntoWorkspace(await resp.text(), { dirty: true });
+    workspaceMatchesEsp32 = false;
+    setDrawerOpen(false);           // 關掉範例面板，才看得到下面的訊息列
+    fitProgramToScreen();                   // 載完就看到整支程式，手機上尤其有感
+    appendSensorOutput(`📚 已載入範例「${ex.name || id}」（還沒存到 ESP32）`);
+  } catch (e) {
+    appendSensorOutput(`❌ 無法載入範例「${ex.name || id}」：${describeLoadError(e)}`);
   }
 }
 
