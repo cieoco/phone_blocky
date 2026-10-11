@@ -61,11 +61,15 @@ PC 端 PyQt6 單馬達調參工具（PID、自動估參、曲線圖），WiFi(WS
 .venv-check/Scripts/python -m unittest discover -s tests -v   # schema / prompt / 對齊測試
 node tests/check_frontend.cjs                                 # 前端（ai.html 等）邏輯
 node tests/check_realtime.cjs                                 # joy.html 即時指令契約
+node tests/check_examples.cjs                                 # data/examples/ 內建範例
+node tests/check_hardware_test.cjs                            # hardware_test.html 啟動/執行/確認流程
 ```
 
 - 改了 `ai-relay/prompts.py` 的 `SYSTEM_PROMPT` → 必須執行 `python tools/sync_ai_prompt.py`，把提示詞同步進 `data/ai.html`。
 - 改了韌體 → 至少 `pio run` 編譯通過。
 - 改了 `data/` 網頁 → 需 `uploadfs` 才會到板子上；更新 `blockly.html` 內 script 的 `?v=` 版本字串以避免手機快取。
+- 改了 `data/examples/` → 必須執行 `node tests/check_examples.cjs`（範例是手寫 XML，這是唯一不用上板子就能驗的關卡）。
+- 改了 `data/hardware_test.html` → 必須執行 `node tests/check_hardware_test.cjs`（它用假 DOM + 假時鐘把整條啟動／執行／確認鏈跑過一遍）。
 
 ---
 
@@ -105,12 +109,15 @@ blockly.html          ← 頁面容器，載入以下四個 JS 模組（blockly.
   app.js        (4) IR 陣列 → PROG JSON → WebSocket 送出
 blockly_test.html     ← Blockly 測試頁
 joy.html + joy.js     ← 即時觸控搖桿 → cmd JSON（含角度模式）
-hardware_test.html    ← 馬達/編碼器/舵機/感測器一鍵測試
+hardware_test.html    ← 12 項硬體檢測（馬達/編碼器/舵機/感測器/數位-PWM 輸出/
+                        編碼器手轉/I2C 從機）。詳細區預設收合、底部執行列可中止；
+                        項目清單由 TEST_ITEMS 表驅動（報告也從它推導）
 ai.html               ← AI 自然語言 → PROG（瀏覽器直接呼叫 Azure；ai-relay/ 為選用獨立服務）
 set.html              ← WiFi 設定、PID 與編碼器/減速比/保持參數
 plotter.html          ← 即時資料繪圖
 wiring.html           ← 接線圖與腳位對照
 hw_config.json        ← 前端硬體元資料
+examples/             ← 內建範例程式（唯讀）：index.json 清單 + 每支一個 .xml
 ```
 
 `app_combined.js` 未被任何頁面載入，屬舊檔；修改請以四個模組為準。
@@ -141,6 +148,25 @@ hw_config.json        ← 前端硬體元資料
 | `motor_zero` | `{ cmd:"zero", motor }` |
 | `servo_set` | `{ cmd:"servo", ch, deg }` |
 
+**感測器積木**（都是 value-producing，可放進任何數值插槽或 `if` 條件）：
+
+| 積木名稱 | 生成 JSON | 預設腳位 |
+|----------|-----------|----------|
+| `arduino_ultrasonic` | `{ command:"arduinoUltrasonic", trigPin, echoPin }` | 2 / 33 |
+| `lego_button` | `{ command:"legoButton", pin }` | 4 |
+| `ir_digital` | `{ command:"digitalRead", pin }` | 15 |
+| `ir_analog` | `{ command:"analogRead", pin }` | 32 |
+| `arduino_digitalRead` | `{ command:"digitalRead", pin }` | 15 |
+| `arduino_analogRead` | `{ command:"analogRead", pin }` | 32 |
+| `encoder_read` | `{ command:"encoderRead", motor, read:"deg"\|"ticks"\|"rpm" }` | M3/M4（A=35/B=34、A=36/B=39）|
+
+`ir_digital` / `ir_analog` 是「具名版」的數位／類比讀取：欄位名同為 `PIN`，直接共用
+`translateDigitalRead` / `translateAnalogRead`，**產生的 JSON 與通用積木完全相同**，韌體不必
+認識新指令。板子上接的就是紅外線模組（硬體檢測頁的 GPIO15 / GPIO32 兩項測的也是它），
+通用的 `arduino_digitalRead` / `arduino_analogRead` 留在分類最後，給其他模組用。
+
+`encoder_read` 的 `read` 值與韌體 `ENCODER_READ_DEG/TICKS/RPM` 對應，角度相對 `zero` 的零點。
+
 **流程控制積木**（容器，可互相包，**最多 8 層**）：
 
 | 積木名稱 | 生成 JSON |
@@ -157,7 +183,7 @@ AI 子集（`prompts.py` / `schema.py` / `ai.html`）目前不產生迴圈。
 
 其餘積木：`arduino_setup/loop`、`arduino_delay`、`logic_*`（含 `logic_operation` 且／或）、
 `math_*`（`math_arithmetic` 含 MODULO、`math_abs`、`math_random_int`→`math_random`、`math_constrain`、`math_map`，整數運算）、
-`arduino_ultrasonic`、`lego_button`、`arduino_digitalRead/Write`、`arduino_analogRead/Write`、`arduino_pinMode`、
+`arduino_pinMode`、`arduino_digitalWrite`、`arduino_analogWrite`、
 `arduino_millis`、`arduino_serial_println`、`message_print`、`plot_print`。
 
 **數值插槽**：上表積木的動力／角度／RPM，以及延遲毫秒，都是可接積木的插槽（預設放數字積木）。
@@ -259,6 +285,7 @@ setup／loop／procedures（stage 與存檔驗證共用），拒絕遞迴，呼�
 | 指令格式（權威） | [docs/prog_json_schema.md](docs/prog_json_schema.md) |
 | 直譯器架構（積木為何免編譯即跑） | [docs/直譯器架構.md](docs/直譯器架構.md) |
 | 角度保持（M3/M4 伺服式 hold）作法 | [docs/角度保持.md](docs/角度保持.md) |
+| 內建範例程式（含新增步驟） | [docs/範例程式.md](docs/範例程式.md) |
 | Blockly 積木定義 | [data/appBlock.js](data/appBlock.js) |
 | AI 提示詞 / 驗證 schema | [ai-relay/prompts.py](ai-relay/prompts.py)、[ai-relay/schema.py](ai-relay/schema.py) |
 | 提示詞同步工具 | [tools/sync_ai_prompt.py](tools/sync_ai_prompt.py) |

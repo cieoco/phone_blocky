@@ -34,6 +34,8 @@
 | 搖桿 M3/M4 PWM | `{cmd:"pwm",motor:3,duty:-60}` 或 joy 封裝的 M3/M4 | ±100 百分比；Action3/4=1 且 Button1/2=1 時使用 joy 的值 |
 | 硬體測試舵機 `handleHardwareTest` | `{mode:"hardwareTest",test:"servoTest",servo:2,angle:90}` | servo/angle 為既有欄位；此路由也接受 ch/deg，回應為 servoAck + servo/angle |
 | 硬體測試馬達 `handleHardwareTest` | `{mode:"hardwareTest",type:"motorControl",motor:"M3",speed:-255}` | speed 為帶方向的原始 PWM ±255，不是 cmd:pwm 的 ±100；motor 是 M1..M4 字串 |
+| 硬體測試輸出 `handleHardwareTest` | `{mode:"hardwareTest",test:"outputTest",pinMode:"digital"\|"pwm",gpio:2,value:1}` | 數位 0/1、PWM 0–255；腳位需在韌體 `isUserOutputPin()` 白名單內，否則回 `pin_not_allowed`。回應 `outputAck` |
+| 硬體測試 I2C `handleHardwareTest` | `{mode:"hardwareTest",test:"i2cStatus"}` | 回應 `i2cStatus`；桌上模式韌體回 `supported:false`，從機韌體附 `stats`（rx/bad_cmd/not_ready/dropped/link_recoveries 等）|
 | 舊直接舵機相容層 | `{command:"servo_control",servo:"2",angle:"90"}` | 由 CommandTranslator 轉成 cmd:servo/ch/deg；PROG 內由 parseCommandArray 接受 |
 
 `data/joy.js` 提供搖桿元件，真正封裝／發送命令在 `data/joy.html`；硬體測試的 `sendCommand()` 會加入 `mode:"hardwareTest"`。`servo` 與 `ch` 不是所有路由都通用的同義欄位。
@@ -160,6 +162,25 @@
 - **value-producing**:只能放在 `if.condition.left` 或 `.right`,不能單獨出現在 setup/loop
 - 韌體回 -1 表示 timeout (沒回波)
 - **使用 Blockly 既有形狀** (`command:` key + 字串腳位),AI 端與 Blockly 端共用同一個 parser
+
+### 感測器讀值 — 其餘輸入
+
+```json
+{ "command": "legoButton",  "pin": "4" }
+{ "command": "digitalRead", "pin": "15" }
+{ "command": "analogRead",  "pin": "32" }
+{ "command": "encoderRead", "motor": 3, "read": "deg" }
+```
+
+| 指令 | 回傳 | 說明 |
+|------|------|------|
+| `legoButton` | 0 / 1 | INPUT_PULLUP 原始值，按下是 0 還是 1 由接線決定 |
+| `digitalRead` | 0 / 1 | INPUT（無上拉） |
+| `analogRead` | 0..4095 | ADC 原始值 |
+| `encoderRead` | int | `read`：`deg` 角度（度，取整；相對 `zero` 的零點）／`ticks` 原始計數／`rpm` 量測轉速。**只有 M3/M4**，其他馬達回 0 |
+
+- 這些都是 **value-producing**：放在 `if.condition` 的左右、迴圈次數，或任何數值插槽裡
+- `encoderRead` 是 Blockly 專用（AI 子集不產生它），韌體端由 `readSensorValue()` 處理
 
 ### `if` — 條件分支 (沿用 Blockly 形狀)
 
