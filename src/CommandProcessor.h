@@ -137,6 +137,7 @@ private:
   ServoController &servoCtrl;
   EncoderHandler *encoder;
   PWMManager &pwmMgr;
+  void (*i2cStatsProvider)(JsonObject &out) = nullptr;
 
   int x1Value, y1Value, x2Value, y2Value;
   int S1_value, S2_value;
@@ -1321,6 +1322,15 @@ public:
     sendJsonResponseCallback = callback;
   }
 
+  // I2C 從機橋接的統計由 main.cpp 注入（CommandProcessor 不能 include
+  // I2CSlaveBridge —— 後者建構時就吃 CommandProcessor&，互相 include 會循環）。
+  // 沒注入（桌上模式韌體）時 hardwareTest 的 i2cStatus 會回 supported:false，
+  // 網頁據此顯示「這支韌體沒有 I2C 從機功能」而不是假裝沒連上。
+  void setI2cStatsProvider(void (*provider)(JsonObject &out))
+  {
+    i2cStatsProvider = provider;
+  }
+
   // ── I2C 從機橋接介面（docs/i2c_slave_sdd.md §8.1）─────────────────────
   // 這組方法一律由 jsonTask（主迴圈）呼叫，**不得**在 I2C callback 內執行——
   // 底層的 startMotorPositionMove / zeroMotorPosition 會 Serial.printf，而
@@ -1813,6 +1823,71 @@ public:
         responseDoc["timestamp"] = millis();
         sendJsonResponseCallback(responseDoc, replyChannel);
       }
+    } else if (strcmp(test, "outputTest") == 0 || strcmp(type, "outputTest") == 0) {
+      // 數位輸出 / PWM 輸出。Blockly 的「數位寫入」(預設 GPIO2) 與「類比寫入」
+      // (預設 GPIO26) 走的就是這條路徑，在此之前硬體檢測完全沒有驗證過輸出方向。
+      int gpio = doc["gpio"] | USER_ULTRASONIC_TRIG_PIN;
+      int value = doc["value"] | 0;
+      const char *mode = doc["pinMode"] | "digital";
+      const bool pwm = strcmp(mode, "pwm") == 0;
+
+      if (!isUserOutputPin(gpio)) {
+        // 板子自己佔用的腳位（AFMotor 595、馬達 PWM、舵機、編碼器）絕不能被
+        // 這裡改寫：硬體檢測頁誤填一個腳位就讓馬達失控，是最糟的失敗模式。
+        sendError("pin_not_allowed");
+        return;
+      }
+      if (pwm) {
+        pwmMgr.dynamicAnalogWrite(gpio, constrain(value, 0, 255));
+      } else {
+        pinMode(gpio, OUTPUT);
+        digitalWrite(gpio, value ? HIGH : LOW);
+      }
+      if (sendJsonResponseCallback) {
+        DynamicJsonDocument responseDoc(256);
+        responseDoc["type"] = "outputAck";
+        responseDoc["gpio"] = gpio;
+        responseDoc["pinMode"] = pwm ? "pwm" : "digital";
+        responseDoc["value"] = pwm ? constrain(value, 0, 255) : (value ? 1 : 0);
+        responseDoc["timestamp"] = millis();
+        sendJsonResponseCallback(responseDoc, replyChannel);
+      }
+    } else if (strcmp(test, "i2cStatus") == 0 || strcmp(type, "i2cStatus") == 0) {
+      if (!sendJsonResponseCallback) return;
+      DynamicJsonDocument responseDoc(384);
+      responseDoc["type"] = "i2cStatus";
+      responseDoc["timestamp"] = millis();
+      if (i2cStatsProvider) {
+        responseDoc["supported"] = true;
+        JsonObject out = responseDoc.createNestedObject("stats");
+        i2cStatsProvider(out);
+      } else {
+        responseDoc["supported"] = false;   // 桌上模式韌體沒有從機功能
+      }
+      sendJsonResponseCallback(responseDoc, replyChannel);
+    }
+  }
+
+  // 可以讓硬體檢測頁輸出的腳位白名單。
+  // 來源：docs/腳位.md「目前不可作為一般外接腳位」的補集，再扣掉 strapping 用的
+  // GPIO0；34/35/36/39 是輸入專用腳，本來就不能輸出。
+  static bool isUserOutputPin(int pin)
+  {
+    switch (pin) {
+      case 2:   // 數位寫入預設（也是超音波 Trig）
+      case 4:   // LEGO 按鈕腳，拔掉按鈕後可當輸出
+      case 15:
+      case 18:
+      case 26:  // 類比寫入 / PWM 預設
+      case 32:
+      case 33:
+#if !I2C_SLAVE_MODE
+      case 21:  // 從機模式時這兩支是 I2C，絕不可當一般輸出
+      case 22:
+#endif
+        return true;
+      default:
+        return false;
     }
   }
 

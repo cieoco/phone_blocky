@@ -367,6 +367,24 @@ void setup() {
   // CommandProcessor 直接 include I2CSlaveBridge：後者建構時就吃
   // CommandProcessor&，反向 include 會造成循環相依。
   cmdProcessor.setExternalFunctions(&i2cBridge.functions());
+
+  // 硬體檢測頁的「I2C 從機連線」項目要讀得到橋接統計。用無捕獲 lambda 轉成函式
+  // 指標注入，CommandProcessor 就不必認識 I2CSlaveBridge（避免循環 include）。
+  cmdProcessor.setI2cStatsProvider([](JsonObject &out) {
+    I2CSlaveBridge::Stats st = i2cBridge.getStats();
+    out["address"] = I2C_SLAVE_ADDRESS;
+    out["sda"] = I2C_SLAVE_SDA_PIN;
+    out["scl"] = I2C_SLAVE_SCL_PIN;
+    out["initialized"] = i2cBridge.isInitialized();
+    out["rx"] = st.rxCount;
+    out["bad_cmd"] = st.badCmdCount;
+    out["not_ready"] = st.notReadyCount;
+    out["dropped"] = st.droppedCount;
+    out["last_command"] = st.lastCommand;
+    out["last_comm_ms"] = st.lastCommMs;
+    out["since_last_ms"] = st.lastCommMs ? (millis() - st.lastCommMs) : 0;
+    out["link_recoveries"] = st.linkRecoveries;
+  });
   // 把已存檔程式宣告的功能表載回來（不受 autorun 開關影響，理由見該函式註解）。
   cmdProcessor.loadStoredFunctionTable();
 
