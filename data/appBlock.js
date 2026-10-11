@@ -113,6 +113,62 @@ Blockly.Blocks['lego_button'] = {
   }
 };
 
+// 具名的感測器積木：紅外線（數位 / 類比）。
+//
+// 為什麼不要學生直接用「數位讀取腳位 15」：那是通用的 GPIO 積木，名字裡沒有任何
+// 關於「這在量什麼」的資訊，放進感測器分類也還是看起來像 Arduino 的東西。接在板子上
+// 的就是紅外線模組（硬體檢測頁的 GPIO15 / GPIO32 兩項測的也是它），所以直接給它
+// 一個講得出名字的積木。產生的 JSON 與 digitalRead / analogRead 完全相同，韌體不必改。
+Blockly.Blocks['ir_digital'] = {
+  init: function () {
+    this.appendDummyInput()
+      .appendField("紅外線感測器(數位) 腳位")
+      .appendField(new Blockly.FieldTextInput("15"), "PIN");
+    this.setOutput(true, null);
+    this.setColour(65);
+    this.setTooltip("回 0 或 1（有沒有偵測到）。哪一個代表「偵測到」依模組而定，" +
+                    "可先用硬體檢測頁的『數位讀值』看一次。");
+    this.setHelpUrl("");
+  }
+};
+
+Blockly.Blocks['ir_analog'] = {
+  init: function () {
+    this.appendDummyInput()
+      .appendField("紅外線感測器(類比) 腳位")
+      .appendField(new Blockly.FieldTextInput("32"), "PIN");
+    this.setOutput(true, "Number");
+    this.setColour(65);
+    this.setTooltip("回 0–4095 的 ADC 值，可判斷遠近。越近是越大還是越小依模組而定，" +
+                    "可先用硬體檢測頁的『類比讀值』看一次。");
+    this.setHelpUrl("");
+  }
+};
+
+// 編碼器讀值：M3/M4 才有（A=35/B=34、A=36/B=39）。
+// 在此之前，學生可以用 move_to 把馬達轉到某個角度，卻沒有任何積木能「讀回」
+// 目前角度來做判斷 —— 撞到東西停住、或被外力推走都看不出來。
+Blockly.Blocks['encoder_read'] = {
+  init: function () {
+    this.appendDummyInput()
+      .appendField("馬達")
+      .appendField(new Blockly.FieldDropdown([
+        ["3", "3"], ["4", "4"]
+      ]), "MOTOR")
+      .appendField("編碼器")
+      .appendField(new Blockly.FieldDropdown([
+        ["角度 (°)", "deg"],
+        ["計數 (ticks)", "ticks"],
+        ["轉速 (RPM)", "rpm"]
+      ]), "READ");
+    this.setOutput(true, "Number");
+    this.setColour(180);
+    this.setTooltip("讀取 M3/M4 編碼器：角度（度，整數）、原始計數、或量測轉速。" +
+                    "角度是相對「設目前位置為 0°」的那個零點。");
+    this.setHelpUrl("");
+  }
+};
+
 Blockly.Blocks['arduino_ultrasonic'] = {
   init: function () {
     this.appendDummyInput()

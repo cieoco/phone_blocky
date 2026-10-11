@@ -33,6 +33,13 @@ assert.deepEqual(value('new MotorPwmNode("1", "BACKWARD", 60).toJson()'), {cmd:'
 // Old 「馬達」/「舵機」 blocks were removed (2026-10-09); they are now unknown blocks.
 assert.throws(() => value(`getTranslator('馬達')({type:'馬達'})`), /不支援的積木/);
 assert.throws(() => value(`getTranslator('舵機')({type:'舵機'})`), /不支援的積木/);
+// 編碼器讀值（M3/M4）：三種讀取項目都要對得上韌體的 ENCODER_READ_*
+assert.deepEqual(value('new EncoderReadNode("3", "deg").toJson()'), {command:'encoderRead',motor:3,read:'deg'});
+assert.deepEqual(value('new EncoderReadNode("4", "ticks").toJson()'), {command:'encoderRead',motor:4,read:'ticks'});
+assert.deepEqual(value('new EncoderReadNode("4", "rpm").toJson()'), {command:'encoderRead',motor:4,read:'rpm'});
+assert.deepEqual(value('new EncoderReadNode("3", "oops").toJson()').read, 'deg');   // 未知項目退回角度
+assert.throws(() => value('new EncoderReadNode("1", "deg").toJson()'), /編碼器/);   // M1/M2 沒有編碼器
+
 assert.deepEqual(value('new DelayNode("1000").toJson()'), {cmd:'delay',ms:1000});
 assert.throws(() => value('new DelayNode("oops").toJson()'));
 // Loops: repeat / while translate to firmware shapes; nesting is capped at MAX_BLOCK_DEPTH (8).
@@ -45,6 +52,13 @@ assert.deepEqual(value('new RepeatNode(new MathNumberNode(3), [new DelayNode("10
     {command:'repeat', times:{command:'math_number', number:3}, do:[{cmd:'delay', ms:100}]});
 assert.deepEqual(value('new WhileNode(new LogicBooleanNode("TRUE"), [], "UNTIL").toJson()'),
     {command:'while', mode:'UNTIL', condition:{command:'logic_boolean', value:true}, do:[]});
+assert.deepEqual(value(`translateEncoderRead(fakeBlock('encoder_read', {MOTOR:'4', READ:'rpm'}, {})).toJson()`),
+    {command:'encoderRead', motor:4, read:'rpm'});
+// 紅外線積木是具名版的數位／類比讀取，產生的 JSON 必須與通用積木完全相同
+assert.deepEqual(value(`getTranslator('ir_digital')(fakeBlock('ir_digital', {PIN:'15'}, {})).toJson()`),
+    {command:'digitalRead', pin:'15'});
+assert.deepEqual(value(`getTranslator('ir_analog')(fakeBlock('ir_analog', {PIN:'32'}, {})).toJson()`),
+    {command:'analogRead', pin:'32'});
 assert.deepEqual(value(`translateRepeat(fakeBlock('controls_repeat_ext', {}, {
         TIMES: fakeBlock('math_number', {NUM: 5}, {}),
         DO: fakeBlock('motor_stop', {MOTOR: '1'}, {})})).toJson()`),

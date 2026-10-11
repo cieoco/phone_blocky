@@ -124,6 +124,25 @@ class AnalogReadNode extends BaseNode {
     }
 }
 
+// 編碼器讀值（M3/M4）。read: deg | ticks | rpm —— 與韌體 ENCODER_READ_* 對應。
+class EncoderReadNode extends BaseNode {
+    constructor(motor, read) {
+        super();
+        this.motor = motor;
+        this.read = read;
+    }
+    toJson() {
+        const motor = parseInt(this.motor, 10);
+        if (motor !== 3 && motor !== 4) throw new Error("只有 M3／M4 有編碼器");
+        const read = ["deg", "ticks", "rpm"].includes(this.read) ? this.read : "deg";
+        return {
+            command: "encoderRead",
+            motor: motor,
+            read: read
+        };
+    }
+}
+
 class ArduinoUltrasonicNode extends BaseNode {
     constructor(trig, echo) {
         super();
@@ -677,6 +696,10 @@ function translateAnalogRead(block) {
     return new AnalogReadNode(pin);
 }
 
+function translateEncoderRead(block) {
+    return new EncoderReadNode(block.getFieldValue("MOTOR"), block.getFieldValue("READ"));
+}
+
 function translateArduinoUltrasonic(block) {
     const trig = block.getFieldValue("TRIG");
     const echo = block.getFieldValue("ECHO");
@@ -1028,10 +1051,18 @@ function getTranslator(blockType) {
             return translateDigitalRead;
         case "arduino_analogRead":
             return translateAnalogRead;
+        // 紅外線積木只是「具名版」的數位／類比讀取：欄位名相同（PIN），
+        // 直接共用同一個翻譯器，產生的 JSON 也完全一樣，韌體不必認識新指令。
+        case "ir_digital":
+            return translateDigitalRead;
+        case "ir_analog":
+            return translateAnalogRead;
         case "lego_button":
             return translateLegoButton;
         case "arduino_ultrasonic":
             return translateArduinoUltrasonic;
+        case "encoder_read":
+            return translateEncoderRead;
         case "arduino_delay":
             return translateDelay;
         case "arduino_serial_println":

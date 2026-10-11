@@ -46,6 +46,12 @@ enum CommandType {
 // 每層執行時是一層遞迴（約數百 bytes 堆疊），jsonTask 堆疊見 main.cpp。
 static const int PROG_MAX_BLOCK_DEPTH = 8;
 
+// 編碼器讀值積木的「讀取項目」。與 data/appIr.js 的 EncoderReadNode 對應：
+// deg = 角度（度，整數）、ticks = 原始計數、rpm = 量測轉速。
+static const int ENCODER_READ_DEG = 0;
+static const int ENCODER_READ_TICKS = 1;
+static const int ENCODER_READ_RPM = 2;
+
 // Blockly value 積木的執行期表示；可遞迴組成算術與邏輯運算式。
 struct BlocklyValueExpression {
   String kind;
@@ -2292,6 +2298,15 @@ public:
       expr->kind = "ultrasonic";
       expr->pin = parseIntOrString(obj["trigPin"], USER_ULTRASONIC_TRIG_PIN);
       expr->auxPin = parseIntOrString(obj["echoPin"], USER_ULTRASONIC_ECHO_PIN);
+    } else if (strcmp(kind, "encoderRead") == 0) {
+      // 編碼器讀值：M3/M4 才有。pin 借來放馬達編號、auxPin 放讀取項目，
+      // 沿用 readSensorValue(BlocklyCommand) 既有的兩個欄位，不另開路徑。
+      expr->kind = "encoderRead";
+      expr->pin = parseIntOrString(obj["motor"], 3);
+      const char *what = obj["read"] | "deg";
+      expr->auxPin = (strcmp(what, "ticks") == 0) ? ENCODER_READ_TICKS
+                   : (strcmp(what, "rpm") == 0)   ? ENCODER_READ_RPM
+                                                  : ENCODER_READ_DEG;
     } else if (strcmp(kind, "legoButton") == 0 || strcmp(kind, "digitalRead") == 0 ||
                strcmp(kind, "analogRead") == 0 || strcmp(kind, "arduino_millis") == 0) {
       expr->kind = kind;
@@ -2753,6 +2768,15 @@ public:
       return digitalRead(cmd.pin);
     } else if (cmd.message == "analogRead") {
       return analogRead(cmd.pin);
+    } else if (cmd.message == "encoderRead") {
+      // 只有 M3/M4 有編碼器；其他馬達回 0（積木的下拉也只給 3/4）。
+      const int motor = cmd.pin;
+      if (motor != 3 && motor != 4) return 0;
+      if (cmd.value == ENCODER_READ_TICKS) return (int)getMotorTicks(motor);
+      if (cmd.value == ENCODER_READ_RPM) return (int)lroundf(motorState[motor].rpmMeas);
+      // 預設：角度（度）。直譯器是整數運算，所以這裡就取整到度。
+      const float tpr = ticksPerDegree();
+      return tpr > 0.0f ? (int)lroundf(getMotorTicks(motor) / tpr) : 0;
     }
     return 0;
   }

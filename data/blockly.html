@@ -8,10 +8,10 @@
   <!-- 載入 Blockly -->
   <script src="blockly.min.js"></script>
   <!-- 載入客戶端邏輯 -->
-  <script src="appBlock.js?v=20261010-mobile"></script>
-  <script src="appIr.js?v=20261010-mobile"></script>
-  <script src="appJson.js?v=20261010-mobile"></script>
-  <script src="app.js?v=20261010-mobile"></script>
+  <script src="appBlock.js?v=20261011-sensors2"></script>
+  <script src="appIr.js?v=20261011-sensors2"></script>
+  <script src="appJson.js?v=20261011-sensors2"></script>
+  <script src="app.js?v=20261011-sensors2"></script>
   <style>
     /* ========================================================================
        版面：固定高度的 app shell，整頁不捲動。
@@ -459,9 +459,7 @@
       <block type="arduino_setup"></block>
       <block type="arduino_loop"></block>
       <block type="arduino_digitalWrite"></block>
-      <block type="arduino_digitalRead"></block>
       <block type="arduino_analogWrite"></block>
-      <block type="arduino_analogRead"></block>
       <block type="arduino_delay">
         <value name="DELAY_TIME"><shadow type="math_number"><field name="NUM">1000</field></shadow></value>
       </block>
@@ -513,9 +511,19 @@
       <block type="logic_negate"></block>
     </category>
     <category name="變數" colour="330" custom="VARIABLE"></category>
+    <!-- 感測器＝板子上所有「讀進來」的東西。數位／類比讀取原本放在 Arduino 分類，
+         學生要找感測器時不會想到去那裡翻；編碼器讀值以前根本沒有積木。
+         預設腳位與 docs/腳位.md、data/hw_config.json 一致。 -->
     <category name="感測器" colour="390">
       <block type="arduino_ultrasonic"></block>
       <block type="lego_button"></block>
+      <block type="ir_digital"></block>
+      <block type="ir_analog"></block>
+      <block type="encoder_read"></block>
+      <!-- 下面兩個是通用的 GPIO 讀取，給上面沒列到的其他模組用。
+           接紅外線就用上面具名的那兩顆，名字講得出在量什麼。 -->
+      <block type="arduino_digitalRead"></block>
+      <block type="arduino_analogRead"></block>
     </category>
     <category name="對外功能" colour="60">
       <block type="blockly_func_declare"></block>
