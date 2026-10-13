@@ -52,6 +52,11 @@ static const int ENCODER_READ_DEG = 0;
 static const int ENCODER_READ_TICKS = 1;
 static const int ENCODER_READ_RPM = 2;
 
+// 積木的超音波量不到回波（前方太遠、斜面、沒接）時回傳的距離（cm）。
+// 舊版回 -1，結果「距離 < 20 就停」在前方空曠時反而成立；改回一個比量程（約 4 m）
+// 大的值，語意變成「很遠」。硬體檢測頁走另一條路徑，仍回 -1 表示沒有回波。
+static const int ULTRASONIC_NO_ECHO_CM = 999;
+
 // Blockly value 積木的執行期表示；可遞迴組成算術與邏輯運算式。
 struct BlocklyValueExpression {
   String kind;
@@ -284,6 +289,12 @@ private:
   SemaphoreHandle_t progMutex = nullptr;
   MotorRuntimeState motorState[NUM_MOTORS + 1];
   int servoDeg[NUM_SERVOS + 1] = {0, 90, 90};
+  // 程式用「設定腳位」選了 INPUT_PULLUP 的腳位；digitalRead 讀之前照這張表設定輸入模式。
+  // 每套用一支新程式就清空，舊程式的設定不會帶到下一支。
+  static const int kUserPinCount = 40;
+  bool pullupPins[kUserPinCount] = {};
+  bool isPullupPin(int pin) const { return pin >= 0 && pin < kUserPinCount && pullupPins[pin]; }
+
   struct RuntimeVariable { String name; int value; };
   std::vector<RuntimeVariable> runtimeVariables;
 
@@ -1416,7 +1427,31 @@ public:
     stopMotorRuntime(motor);
   }
 
-  void i2cStopAll() { stopAllRuntime(); }
+  // 主機的緊急停止：停致動器，並且連積木程式一起停掉（舊版只停馬達，
+  // 程式的下一個動作指令會讓馬達再動起來）。
+  void i2cStopAll() {
+    stopAllRuntime();
+    requestProgramStop();
+  }
+
+  // 要求停止積木程式：排入一支「空程式」，等同網頁按「停止」。各層 delay／迴圈看到
+  // pendingProgram 立即跳出，jsonTask 安全點套用時走 resetActuators()（停致動器、舵機回 90°、
+  // 清空程式）。不在此直接清向量——呼叫端可能正在程式執行中（programServiceHook）。
+  // 沒有程式在跑、也沒有待套用的程式時不做事，避免舵機無故回 90°。
+  // 對外功能表（pendingDeclarations）不動：停止程式不該讓主機看到功能表改版。
+  void requestProgramStop() {
+    if (progMutex) xSemaphoreTake(progMutex, portMAX_DELAY);
+    const bool running = !setupCommands.empty() || !loopCommands.empty();
+    if (running || pendingProgram) {
+      pendingSetupCommands.clear();
+      pendingLoopCommands.clear();
+      pendingProcedures.clear();
+      pendingDeclarations.clear();
+      pendingDeclarationsValid = false;
+      pendingProgram = true;
+    }
+    if (progMutex) xSemaphoreGive(progMutex);
+  }
 
   void i2cZero(int motor)
   {
@@ -1516,6 +1551,7 @@ public:
     loopCommands.swap(incomingLoop);
     procedures.swap(incomingProcedures);
     runtimeVariables.clear();
+    memset(pullupPins, 0, sizeof(pullupPins));
     clearManualControlState();
     if (setupCommands.empty() && loopCommands.empty()) {
       resetActuators();                         // 空程式 = 停止程式：停所有致動器
@@ -2773,12 +2809,14 @@ public:
       delayMicroseconds(10);
       digitalWrite(cmd.pin, LOW);
       long duration = pulseIn(cmd.value, HIGH, 30000);
-      return duration == 0 ? -1 : (int)((duration * 0.034f) / 2.0f);
+      return duration == 0 ? ULTRASONIC_NO_ECHO_CM : (int)((duration * 0.034f) / 2.0f);
     } else if (cmd.message == "legoButton") {
       pinMode(cmd.pin, INPUT_PULLUP);
       return digitalRead(cmd.pin);
     } else if (cmd.message == "digitalRead") {
-      pinMode(cmd.pin, INPUT);
+      // 每次讀前重設輸入模式（腳位可能剛被當輸出用過），但尊重程式用「設定腳位」選的上拉；
+      // 舊版一律 INPUT，前面的 pinMode 等於沒作用，開關沒接外部電阻時讀值會飄。
+      pinMode(cmd.pin, isPullupPin(cmd.pin) ? INPUT_PULLUP : INPUT);
       return digitalRead(cmd.pin);
     } else if (cmd.message == "analogRead") {
       return analogRead(cmd.pin);
@@ -2893,6 +2931,7 @@ public:
     switch (cmd.type) {
       case CMD_PIN_MODE:
         pinMode(cmd.pin, cmd.value);
+        if (cmd.pin >= 0 && cmd.pin < kUserPinCount) pullupPins[cmd.pin] = (cmd.value == INPUT_PULLUP);
         break;
       case CMD_DIGITAL_WRITE:
         pinMode(cmd.pin, OUTPUT);

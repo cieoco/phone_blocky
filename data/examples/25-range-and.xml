@@ -9,7 +9,7 @@
    <block type="arduino_loop">
      <statement name="LOOP_BODY">
      <block type="controls_if">
-       <comment pinned="false" h="120" w="290">「而且」兩邊都成立才算成立。換成「或者」則任一邊成立就算。超音波沒回波會讀到 -1，也會停。</comment>
+       <comment pinned="false" h="120" w="290">「而且」兩邊都成立才算成立。換成「或者」則任一邊成立就算。超音波沒回波會讀到 999（當成很遠），也會停。</comment>
        <value name="IF0">
        <block type="logic_operation">
          <field name="OP">AND</field>

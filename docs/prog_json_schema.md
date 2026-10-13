@@ -385,7 +385,7 @@ if (ProgramStore::isAutorun() && ProgramStore::exists()) {
 2. 動作用 `cmd`，條件／讀值用 `command`；同一物件不得同時帶兩者。
 3. 動作支援 `pwm`、`stop`、`servo`、`delay`、`speed`、`move_to`、`move_by`、`zero`。範圍如前表；定位 deg 限 signed 32-bit 整數。
 4. `if.condition` 必須是 `logic_compare`；左右為整數、`arduinoUltrasonic` 或 `legoButton`。`then` 必填，`else` 可省略。
-5. `{ "command":"legoButton", "pin":"4" }` 讀取 INPUT_PULLUP 的原始 0/1，按下的值由接線決定。超音波無回波為 -1。
+5. `{ "command":"legoButton", "pin":"4" }` 讀取 INPUT_PULLUP 的原始 0/1，按下的值由接線決定。超音波無回波為 999（當成很遠；2026-10-13 前為 -1）。
 6. 腳位接受 0..39 整數或只含 ASCII 數字的字串；這是格式範圍，不代表每個 GPIO 都可接外設，接線依 [腳位.md](腳位.md)。拒絕 `2junk`、空字串與布林值。
 7. 指令總數含 then/else，前端最多 64；relay 預設 64（環境變數 MAX_COMMANDS 可調整，配合前端時應維持 64）。
 8. 其餘多餘鍵忽略。布林與數字字串不可冒充動作的整數欄位。

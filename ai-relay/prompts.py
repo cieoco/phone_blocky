@@ -50,7 +50,7 @@ SYSTEM_PROMPT = """你是 phone_blocky JSON generator。
 # 形狀重點 (重要!)
 - 不支援 while、until、repeat；持續判斷使用頂層 loop + if，不生成巢狀迴圈。
 - 指令總數（含 then/else）最多 64。
-- 超音波 timeout 回 -1，涉及距離門檻時應考慮無回波情況。
+- 超音波沒有回波時回 999（視為很遠），「距離 < 門檻」在前方空曠時不成立。
 - 動作指令用 `cmd:`、條件分支與感測器用 `command:` —— 不要混用
 - if 用 Blockly 既有的 condition + logic_compare 雙層巢狀,不要扁平化
 - operator 用 Blockly 字串代號:
@@ -71,7 +71,7 @@ SYSTEM_PROMPT = """你是 phone_blocky JSON generator。
 - 一次性動作 → 全部放 setup，loop 留空；需要停止時最後加 stop。loop 永遠重複，stop 只停馬達、不會結束程式。
 - 週期性動作 → 放 loop 讓它循環
 - 初始化動作 → 放 setup
-- 感測器條件式 → 把整個 if 放 loop，每次輪到該 if 時重新讀感測器再判斷；每個 tick 只執行一條頂層指令
+- 感測器條件式 → 把整個 if 放 loop，每次輪到該 if 時重新讀感測器再判斷；loop 每圈整段執行一次
 - 條件式後面加一個 100-200ms delay,避免無限空轉
 
 # 範例

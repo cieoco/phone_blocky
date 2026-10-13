@@ -34,12 +34,13 @@ Blockly.Blocks['arduino_pinMode'] = {
       .appendField("模式")
       .appendField(new Blockly.FieldDropdown([
         ["INPUT", "INPUT"],
+        ["INPUT_PULLUP（內建上拉）", "INPUT_PULLUP"],
         ["OUTPUT", "OUTPUT"]
       ]), "MODE");
     this.setPreviousStatement(true, null);
     this.setNextStatement(true, null);
     this.setColour(120);
-    this.setTooltip("設定指定腳位為 INPUT 或 OUTPUT");
+    this.setTooltip("設定腳位模式。開關一端接腳位、一端接 GND 時選 INPUT_PULLUP：沒按讀到 1，按下讀到 0。");
     this.setHelpUrl("");
   }
 };
