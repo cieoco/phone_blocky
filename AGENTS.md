@@ -79,7 +79,7 @@ node tests/check_hardware_test.cjs                            # hardware_test.ht
 
 ```
 main.cpp
-  ├── jsonTask   ← 套用新 PROG、執行 loop 指令、角度控制（每 10 ms）
+  ├── jsonTask   ← 套用新 PROG、每 10 ms 整圈執行 loop、角度控制
   └── serialTask ← USB 序列：`{...}` JSON 行與 WebSocket 共用同一個 router；
                    另支援舊 M/S 純文字指令（僅 serial mode）
 
@@ -180,7 +180,7 @@ examples/             ← 內建範例程式（唯讀）：index.json 清單 + �
 
 層數上限三處需一致：韌體 `PROG_MAX_BLOCK_DEPTH`（CommandProcessor.h）、前端 `MAX_BLOCK_DEPTH`（app.js）、
 `platformio.ini` 的 `ARDUINOJSON_DEFAULT_NESTING_LIMIT=32`（每層積木佔 2 層 JSON，拿掉會退回只剩 3 層）。
-容器同步執行；`delay` 與每圈迴圈經 `programYield()` 讓出 CPU 並維持 10ms 控制節拍，新程式到達時全部跳出。
+頂層 loop 每 10 ms 整圈執行，容器同步執行；`delay` 與每圈迴圈經 `programYield()` 讓出 CPU 並維持 10ms 控制節拍（含 I2C 從機的主機命令落地與看門狗，見 `setProgramServiceHook`），新程式到達時全部跳出。
 **不要在 `programYield()` 裡呼叫 WebSocket 逾時檢查**：Blockly 頁沒有心跳，會提早停掉正常的延遲動作。
 AI 子集（`prompts.py` / `schema.py` / `ai.html`）目前不產生迴圈。
 

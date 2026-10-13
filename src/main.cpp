@@ -368,6 +368,13 @@ void setup() {
   // CommandProcessor&，反向 include 會造成循環相依。
   cmdProcessor.setExternalFunctions(&i2cBridge.functions());
 
+  // 程式在 delay / 迴圈裡時 jsonTask 回不到頂層；靠這個掛鉤（jsonTask 情境、約每 10ms）
+  // 照常落地主機命令與跑看門狗，主機的 STOP_ALL、0x65 設定值不必等 delay 結束。
+  cmdProcessor.setProgramServiceHook([]() {
+    i2cBridge.service();
+    i2cBridge.checkLink();
+  });
+
   // 硬體檢測頁的「I2C 從機連線」項目要讀得到橋接統計。用無捕獲 lambda 轉成函式
   // 指標注入，CommandProcessor 就不必認識 I2CSlaveBridge（避免循環 include）。
   cmdProcessor.setI2cStatsProvider([](JsonObject &out) {

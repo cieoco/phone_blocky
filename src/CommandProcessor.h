@@ -260,10 +260,13 @@ private:
   std::vector<BlocklyCommand> setupCommands;
   std::vector<BlocklyCommand> loopCommands;
   std::vector<BlocklyProcedure> procedures;
-  size_t loopIndex = 0;
-
-  // programYield() 的控制節拍時間戳（約每 10ms 跑一次角度/速度控制）
+  // controlTickDuringProgram() 的控制節拍時間戳（約每 10ms 跑一次角度/速度控制）
   unsigned long lastProgramYieldControlMs = 0;
+
+  // 程式執行中的週期性外部服務（例：I2C 從機的佇列落地與看門狗），由 main.cpp 注入。
+  // 長 delay / 迴圈期間 jsonTask 回不到頂層，沒有這個掛鉤主機的 STOP_ALL 會被延後到 delay 結束。
+  // 必須在 jsonTask 情境執行，且不得動到 setupCommands / loopCommands / procedures。
+  void (*programServiceHook)() = nullptr;
 
   // PROG 程式跨任務交接：WS / 序列任務把解析結果放進 staging，jsonTask 在迴圈安全點
   // swap 套用。如此「執行中（含長 delay）的 active 向量」永遠只被 jsonTask 單一任務動到，
@@ -1469,7 +1472,7 @@ public:
     return servoDeg[ch];
   }
 
-  // jsonTask 專用：在迴圈安全點套用 staging 程式。只有此任務會動 active 向量與 loopIndex，
+  // jsonTask 專用：在迴圈安全點套用 staging 程式。只有此任務會動 active 向量，
   // 因此 swap 後的執行（含長時間 delay）完全無跨任務競爭。
   void applyPendingProgramIfAny()
   {
@@ -1512,7 +1515,6 @@ public:
     setupCommands.swap(incomingSetup);          // 舊程式落到 incoming*，離開作用域即釋放
     loopCommands.swap(incomingLoop);
     procedures.swap(incomingProcedures);
-    loopIndex = 0;
     runtimeVariables.clear();
     clearManualControlState();
     if (setupCommands.empty() && loopCommands.empty()) {
@@ -1576,6 +1578,9 @@ public:
     Serial.printf("[FUNC] 由已存檔程式還原：count=%u gen=%u\n",
                   externalFunctions_->count(), externalFunctions_->generation());
   }
+
+  // 由 main.cpp 注入：程式執行中（delay、迴圈、頂層 loop 的指令之間）約每 10ms 呼叫一次。
+  void setProgramServiceHook(void (*hook)()) { programServiceHook = hook; }
 
   // 由 main.cpp 注入 I2CSlaveBridge 的功能註冊表。
   // 用注入而非直接 include I2CSlaveBridge：後者建構時就吃 CommandProcessor&，
@@ -2006,7 +2011,6 @@ public:
     setupCommands.clear();
     loopCommands.clear();
     procedures.clear();
-    loopIndex = 0;
     Serial.println("Actuators reset and command queues cleared.");
   }
 
@@ -2724,28 +2728,38 @@ public:
     return def;
   }
 
-  // 給 CMD_IF / CMD_REPEAT / CMD_WHILE 用:把一串巢狀指令依序執行
+  // 頂層 loop 與 CMD_IF / CMD_REPEAT / CMD_WHILE / CMD_CALL 共用:把一串指令依序執行。
+  // 每條之後補一次控制節拍,一長串不讓出的指令(例如多次超音波量測)也不會餓死角度控制。
   void executeCommandList(const std::vector<BlocklyCommand> &cmds) {
     for (const auto &c : cmds) {
       if (pendingProgram) break;
       executeSingleCommand(c);
+      controlTickDuringProgram();
+    }
+  }
+
+  // 程式執行中的控制節拍(節流約 10ms,避免 dt 過小):
+  //  1. 角度/速度控制,迴圈與 delay 內 M3/M4 保持照常運作;
+  //  2. 外部服務掛鉤(I2C 從機:主機命令落地、看門狗),主機的 STOP_ALL 不必等 delay 結束。
+  void controlTickDuringProgram() {
+    unsigned long now = millis();
+    if (now - lastProgramYieldControlMs >= 9) {
+      lastProgramYieldControlMs = now;
+      updateAngleControl();
+      if (programServiceHook) programServiceHook();
     }
   }
 
   // 程式執行中的讓出點(delay 每步、迴圈每圈):
   //  1. 讓出 CPU(至少 1 tick),空迴圈也不會霸佔核心或觸發看門狗;
-  //  2. 約每 10ms 跑一次角度/速度控制,迴圈內 M3/M4 保持照常運作(節流避免 dt 過小)。
+  //  2. 控制節拍,見 controlTickDuringProgram()。
   // 刻意不在此做 WebSocket 逾時檢查:Blockly 頁沒有心跳,逾時會在送出程式約 3 秒後觸發,
   // 若在 delay 中檢查會提早停掉「前進 5 秒」這類正常程式。真正斷線由 WS_EVT_DISCONNECT 處理。
   // 新程式到達時 pendingProgram 由呼叫端檢查並跳出。
   void programYield(int waitMs) {
     TickType_t ticks = pdMS_TO_TICKS(waitMs);
     vTaskDelay(ticks > 0 ? ticks : 1);
-    unsigned long now = millis();
-    if (now - lastProgramYieldControlMs >= 9) {
-      lastProgramYieldControlMs = now;
-      updateAngleControl();
-    }
+    controlTickDuringProgram();
   }
 
   // 讀感測器,回傳整數 (距離 cm / 數位值 / 類比值 ...)。供 CMD_IF 評估條件
@@ -3062,14 +3076,12 @@ public:
     Serial.println("[PROG] Setup complete.");
   }
 
+  // jsonTask 每拍（10ms）呼叫一次：整段 loop 跑完一圈，與 repeat / while 本體的執行方式一致。
+  // （舊版每拍只跑一條，loop 有 N 個積木就額外多出 N×10ms，放進 repeat 前後時序不同。）
+  // 指令之間由 executeCommandList 維持控制節拍，不會因一圈很長而餓死角度控制。
   void executeLoopCommands() {
     if (pendingProgram || loopCommands.empty()) return;
-
-    if (loopIndex >= loopCommands.size()) {
-      loopIndex = 0;
-    }
-    executeSingleCommand(loopCommands[loopIndex]);
-    loopIndex++;
+    executeCommandList(loopCommands);
   }
 };
 
