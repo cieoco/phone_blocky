@@ -174,4 +174,15 @@ assert.equal(value(`sanitizeFileName('a/b:c*?.XML')`), 'a_b_c__.xml');
 assert.equal(value(`sanitizeFileName('   ')`), 'phone_blocky.xml');
 assert.match(value(`describeLoadError(new Error('textToDom was unable to parse: x'))`), /不是積木程式檔/);
 assert.match(value(`describeLoadError(new Error('Invalid block definition for type: 馬達'))`), /不支援的積木/);
+// 範例抽屜分組：A..E 依序、組內依 id、無 series 的歸「其他」、舊格式（無對照表）不壞
+{
+    const g = value(`groupExamplesBySeries([
+        {id:'z', series:'B'}, {id:'b', series:'A'}, {id:'a', series:'A'}, {id:'x'}, {id:'y', series:'Q'}
+    ], {A:'甲', B:'乙'})`);
+    assert.deepEqual(g.map(x => x.label), ['A 甲', 'B 乙', '其他']);
+    assert.deepEqual(g[0].items.map(e => e.id), ['a', 'b']);
+    assert.deepEqual(g[2].items.map(e => e.id), ['x', 'y']);
+    const old = value(`groupExamplesBySeries([{id:'1', series:'A'}], undefined)`);
+    assert.deepEqual(old.map(x => x.label), ['其他']);
+}
 console.log('Frontend syntax, IR units, flat payload, loops, nesting limit, value slots, AND/OR, math functions, subroutines, local files, unknown/stray blocks: PASS');

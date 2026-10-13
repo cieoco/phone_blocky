@@ -1,0 +1,70 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="motor_stop">
+     <field name="MOTOR">0</field>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="plot_print">
+       <comment pinned="false" h="100" w="260">先開 Plotter 看反射值：有東西和沒東西各是多少，門檻取兩者中間。</comment>
+       <field name="SERIES">反射值</field>
+       <field name="UNIT">ADC</field>
+       <value name="VALUE">
+       <block type="ir_analog">
+         <field name="PIN">32</field>
+       </block>
+       </value>
+       <next>
+       <block type="controls_if">
+         <comment pinned="false" h="120" w="280">2000 是舉例，請依你的曲線改。越近是越大還是越小依模組而定，如果相反就把 &gt; 改成 &lt;。</comment>
+         <value name="IF0">
+         <block type="logic_compare">
+           <field name="OP">GT</field>
+           <value name="A">
+           <block type="ir_analog">
+             <field name="PIN">32</field>
+           </block>
+           </value>
+           <value name="B">
+           <block type="math_number">
+             <field name="NUM">2000</field>
+           </block>
+           </value>
+         </block>
+         </value>
+         <statement name="DO0">
+         <block type="motor_stop">
+           <field name="MOTOR">1</field>
+         </block>
+         </statement>
+         <statement name="ELSE">
+         <block type="motor_pwm">
+           <field name="MOTOR">1</field>
+           <field name="DIRECTION">FORWARD</field>
+           <value name="PWM">
+           <shadow type="math_number">
+             <field name="NUM">40</field>
+           </shadow>
+           </value>
+         </block>
+         </statement>
+         <next>
+         <block type="arduino_delay">
+           <value name="DELAY_TIME">
+           <shadow type="math_number">
+             <field name="NUM">100</field>
+           </shadow>
+           </value>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

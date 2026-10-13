@@ -1,49 +1,49 @@
 <xml xmlns="https://developers.google.com/blockly/xml">
-  <block type="arduino_setup" x="20" y="20">
-    <statement name="SETUP_BODY">
-      <block type="motor_stop">
-        <comment pinned="false" h="80" w="240">開機先確保馬達是停的，避免上一支程式還留著動力。</comment>
-        <field name="MOTOR">0</field>
-      </block>
-    </statement>
-    <next>
-      <block type="arduino_loop">
-        <statement name="LOOP_BODY">
-          <block type="motor_pwm">
-            <comment pinned="false" h="100" w="260">動力是 0–100%。方向改成 Backward 就反轉；loop 會一直重複這四個動作。</comment>
-            <field name="MOTOR">1</field>
-            <field name="DIRECTION">FORWARD</field>
-            <value name="PWM">
-              <shadow type="math_number">
-                <field name="NUM">50</field>
-              </shadow>
-            </value>
-            <next>
-              <block type="arduino_delay">
-                <value name="DELAY_TIME">
-                  <shadow type="math_number">
-                    <field name="NUM">1000</field>
-                  </shadow>
-                </value>
-                <next>
-                  <block type="motor_stop">
-                    <field name="MOTOR">1</field>
-                    <next>
-                      <block type="arduino_delay">
-                        <value name="DELAY_TIME">
-                          <shadow type="math_number">
-                            <field name="NUM">1000</field>
-                          </shadow>
-                        </value>
-                      </block>
-                    </next>
-                  </block>
-                </next>
-              </block>
-            </next>
-          </block>
-        </statement>
-      </block>
-    </next>
-  </block>
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="motor_stop">
+     <comment pinned="false" h="80" w="240">開機先確保馬達是停的，避免上一支程式還留著動力。</comment>
+     <field name="MOTOR">0</field>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="motor_pwm">
+       <comment pinned="false" h="100" w="260">動力是 0–100%。方向改成 Backward 就反轉；loop 會一直重複這四個動作。</comment>
+       <field name="MOTOR">1</field>
+       <field name="DIRECTION">FORWARD</field>
+       <value name="PWM">
+       <shadow type="math_number">
+         <field name="NUM">50</field>
+       </shadow>
+       </value>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <shadow type="math_number">
+           <field name="NUM">1000</field>
+         </shadow>
+         </value>
+         <next>
+         <block type="motor_stop">
+           <field name="MOTOR">1</field>
+           <next>
+           <block type="arduino_delay">
+             <value name="DELAY_TIME">
+             <shadow type="math_number">
+               <field name="NUM">1000</field>
+             </shadow>
+             </value>
+           </block>
+           </next>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
 </xml>

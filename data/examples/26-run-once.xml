@@ -1,0 +1,82 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="motor_stop">
+     <field name="MOTOR">0</field>
+     <next>
+     <block type="variables_set">
+       <comment pinned="false" h="70" w="260">旗標 done：false 代表還沒做。</comment>
+       <field name="VAR">done</field>
+       <value name="VALUE">
+       <block type="logic_boolean">
+         <field name="BOOL">FALSE</field>
+       </block>
+       </value>
+     </block>
+     </next>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="controls_if">
+       <comment pinned="false" h="110" w="280">「不是」done 才進來；做完把 done 設 true，下一圈就跳過。要再做一次就重新按執行。</comment>
+       <value name="IF0">
+       <block type="logic_negate">
+         <value name="BOOL">
+         <block type="variables_get">
+           <field name="VAR">done</field>
+         </block>
+         </value>
+       </block>
+       </value>
+       <statement name="DO0">
+       <block type="motor_pwm">
+         <field name="MOTOR">1</field>
+         <field name="DIRECTION">FORWARD</field>
+         <value name="PWM">
+         <shadow type="math_number">
+           <field name="NUM">50</field>
+         </shadow>
+         </value>
+         <next>
+         <block type="arduino_delay">
+           <value name="DELAY_TIME">
+           <shadow type="math_number">
+             <field name="NUM">1500</field>
+           </shadow>
+           </value>
+           <next>
+           <block type="motor_stop">
+             <field name="MOTOR">1</field>
+             <next>
+             <block type="variables_set">
+               <field name="VAR">done</field>
+               <value name="VALUE">
+               <block type="logic_boolean">
+                 <field name="BOOL">TRUE</field>
+               </block>
+               </value>
+             </block>
+             </next>
+           </block>
+           </next>
+         </block>
+         </next>
+       </block>
+       </statement>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <shadow type="math_number">
+           <field name="NUM">50</field>
+         </shadow>
+         </value>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

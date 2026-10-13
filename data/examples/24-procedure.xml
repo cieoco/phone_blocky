@@ -1,0 +1,99 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="servo_set">
+     <field name="CH">1</field>
+     <value name="DEG">
+     <shadow type="math_number">
+       <field name="NUM">90</field>
+     </shadow>
+     </value>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="procedures_callnoreturn">
+       <comment pinned="false" h="80" w="260">呼叫副程式 = 把它的動作整段執行一遍。呼叫兩次就抖兩下。</comment>
+       <mutation name="抖一下"></mutation>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <shadow type="math_number">
+           <field name="NUM">1000</field>
+         </shadow>
+         </value>
+         <next>
+         <block type="procedures_callnoreturn">
+           <mutation name="抖一下"></mutation>
+           <next>
+           <block type="arduino_delay">
+             <value name="DELAY_TIME">
+             <shadow type="math_number">
+               <field name="NUM">2000</field>
+             </shadow>
+             </value>
+           </block>
+           </next>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+ <block type="procedures_defnoreturn" x="20" y="300">
+   <comment pinned="false" h="110" w="280">副程式定義放在 setup／loop 外面。改這裡，所有呼叫的地方都跟著變。副程式不能呼叫自己。</comment>
+   <field name="NAME">抖一下</field>
+   <statement name="STACK">
+   <block type="servo_set">
+     <field name="CH">1</field>
+     <value name="DEG">
+     <shadow type="math_number">
+       <field name="NUM">60</field>
+     </shadow>
+     </value>
+     <next>
+     <block type="arduino_delay">
+       <value name="DELAY_TIME">
+       <shadow type="math_number">
+         <field name="NUM">200</field>
+       </shadow>
+       </value>
+       <next>
+       <block type="servo_set">
+         <field name="CH">1</field>
+         <value name="DEG">
+         <shadow type="math_number">
+           <field name="NUM">120</field>
+         </shadow>
+         </value>
+         <next>
+         <block type="arduino_delay">
+           <value name="DELAY_TIME">
+           <shadow type="math_number">
+             <field name="NUM">200</field>
+           </shadow>
+           </value>
+           <next>
+           <block type="servo_set">
+             <field name="CH">1</field>
+             <value name="DEG">
+             <shadow type="math_number">
+               <field name="NUM">90</field>
+             </shadow>
+             </value>
+           </block>
+           </next>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </next>
+   </block>
+   </statement>
+ </block>
+</xml>

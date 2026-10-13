@@ -635,6 +635,24 @@ async function openLocalFile(file) {
 let exampleListLoaded = false;
 let setDrawerOpen = () => {};       // 由 initMobileShell 接上（開／關範例面板）
 
+// 把範例依系列分組：回傳 [{key, label, items}]。依 A..Z 排序、組內依 id 排序；
+// 沒有 series（或不在對照表內）的歸到最後的「其他」。舊格式（沒有 series 對照表）整份就是一組「其他」。
+function groupExamplesBySeries(list, seriesMap) {
+  const map = seriesMap && typeof seriesMap === 'object' ? seriesMap : {};
+  const byKey = new Map();
+  for (const ex of list) {
+    const key = ex && Object.prototype.hasOwnProperty.call(map, ex.series) ? ex.series : '';
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(ex);
+  }
+  const byId = (a, b) => String(a.id).localeCompare(String(b.id));
+  const groups = [...byKey.keys()].filter(Boolean).sort().map(key => ({
+    key, label: `${key} ${map[key]}`, items: byKey.get(key).sort(byId)
+  }));
+  if (byKey.has('')) groups.push({ key: '', label: '其他', items: byKey.get('').sort(byId) });
+  return groups;
+}
+
 // 頂列的 📚 第一次按下才抓清單（開頁時不花這個來回）
 async function loadExampleList() {
   if (exampleListLoaded) return;
@@ -649,7 +667,16 @@ async function loadExampleList() {
     const list = Array.isArray(data.examples) ? data.examples : [];
     if (!list.length) throw new Error('清單是空的');
     box.textContent = '';
-    for (const ex of list) {
+    const groups = groupExamplesBySeries(list, data.series);
+    const showHeadings = groups.length > 1 || (groups.length === 1 && groups[0].key);
+    for (const group of groups) {
+     if (showHeadings) {
+      const h = document.createElement('div');
+      h.className = 'example-series';
+      h.textContent = group.label;
+      box.appendChild(h);
+     }
+     for (const ex of group.items) {
       const btn = document.createElement('button');
       btn.className = 'example-btn';
       btn.type = 'button';
@@ -665,6 +692,7 @@ async function loadExampleList() {
       btn.append(title, tag, desc);
       btn.onclick = () => loadExample(ex);
       box.appendChild(btn);
+     }
     }
   } catch (e) {
     // 最常見的原因不是程式壞了，是網頁檔沒重新上傳 —— 直接把解法寫出來

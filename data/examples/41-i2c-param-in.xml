@@ -1,0 +1,60 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="blockly_func_declare">
+     <comment pinned="false" h="110" w="280">向主機宣告對外功能 0：類比（數值）、不可回讀（只有主機單向下令）。主機儀表板會依宣告長出元件。</comment>
+     <field name="IDX">0</field>
+     <field name="KIND">ANALOG</field>
+     <field name="READABLE">FALSE</field>
+     <next>
+     <block type="servo_set">
+       <field name="CH">1</field>
+       <value name="DEG">
+       <shadow type="math_number">
+         <field name="NUM">90</field>
+       </shadow>
+       </value>
+     </block>
+     </next>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="servo_set">
+       <comment pinned="false" h="110" w="280">讀主機下的值（主機還沒送過時是 0）。限制在 0–180 再給舵機，主機亂送也不會出事。</comment>
+       <field name="CH">1</field>
+       <value name="DEG">
+       <block type="math_constrain">
+         <value name="VALUE">
+         <block type="blockly_func_get">
+           <field name="IDX">0</field>
+         </block>
+         </value>
+         <value name="LOW">
+         <shadow type="math_number">
+           <field name="NUM">0</field>
+         </shadow>
+         </value>
+         <value name="HIGH">
+         <shadow type="math_number">
+           <field name="NUM">180</field>
+         </shadow>
+         </value>
+       </block>
+       </value>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <shadow type="math_number">
+           <field name="NUM">50</field>
+         </shadow>
+         </value>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

@@ -1,0 +1,63 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="servo_set">
+     <field name="CH">1</field>
+     <value name="DEG">
+     <shadow type="math_number">
+       <field name="NUM">90</field>
+     </shadow>
+     </value>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="servo_set">
+       <comment pinned="false" h="140" w="300">類比讀值是 0–4095，舵機只有 0–180°，所以用「對應」積木換算：讀值 0 → 0°、4095 → 180°。換算不會自動夾限，接線要讓讀值落在這個範圍。</comment>
+       <field name="CH">1</field>
+       <value name="DEG">
+       <block type="math_map">
+         <value name="VALUE">
+         <block type="arduino_analogRead">
+           <field name="PIN">32</field>
+         </block>
+         </value>
+         <value name="FROM_LOW">
+         <shadow type="math_number">
+           <field name="NUM">0</field>
+         </shadow>
+         </value>
+         <value name="FROM_HIGH">
+         <shadow type="math_number">
+           <field name="NUM">4095</field>
+         </shadow>
+         </value>
+         <value name="TO_LOW">
+         <shadow type="math_number">
+           <field name="NUM">0</field>
+         </shadow>
+         </value>
+         <value name="TO_HIGH">
+         <shadow type="math_number">
+           <field name="NUM">180</field>
+         </shadow>
+         </value>
+       </block>
+       </value>
+       <next>
+       <block type="arduino_delay">
+         <comment pinned="false" h="80" w="240">延遲 50 毫秒是更新節拍，不要設 0。</comment>
+         <value name="DELAY_TIME">
+         <shadow type="math_number">
+           <field name="NUM">50</field>
+         </shadow>
+         </value>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

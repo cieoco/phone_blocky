@@ -1,0 +1,47 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="motor_stop">
+     <field name="MOTOR">0</field>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="motor_speed">
+       <comment pinned="false" h="150" w="290">轉速單位是 RPM，Blockly 只能填 60–250 的正數。和動力 pwm 不同：pwm 固定給多少力，負載一重就變慢；speed 會看編碼器自動補力，轉速維持不變。只有 M3、M4 有編碼器。</comment>
+       <field name="MOTOR">3</field>
+       <value name="RPM">
+       <shadow type="math_number">
+         <field name="NUM">120</field>
+       </shadow>
+       </value>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <shadow type="math_number">
+           <field name="NUM">4000</field>
+         </shadow>
+         </value>
+         <next>
+         <block type="motor_stop">
+           <field name="MOTOR">3</field>
+           <next>
+           <block type="arduino_delay">
+             <value name="DELAY_TIME">
+             <shadow type="math_number">
+               <field name="NUM">2000</field>
+             </shadow>
+             </value>
+           </block>
+           </next>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

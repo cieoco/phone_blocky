@@ -1,0 +1,38 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="motor_stop">
+     <field name="MOTOR">3</field>
+     <next>
+     <block type="motor_zero">
+       <field name="MOTOR">3</field>
+     </block>
+     </next>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="motor_move_by">
+       <comment pinned="false" h="140" w="290">move_by 是「從現在的位置再轉多少度」，不是從上一個目標算。所以要先等上一步到位（延遲 1500 毫秒），否則會少轉。轉得慢就把延遲加長，不要設太短。</comment>
+       <field name="MOTOR">3</field>
+       <value name="DEG">
+       <shadow type="math_number">
+         <field name="NUM">45</field>
+       </shadow>
+       </value>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <shadow type="math_number">
+           <field name="NUM">1500</field>
+         </shadow>
+         </value>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

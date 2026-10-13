@@ -1,0 +1,80 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="motor_stop">
+     <field name="MOTOR">0</field>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="controls_if">
+       <comment pinned="false" h="120" w="290">「而且」兩邊都成立才算成立。換成「或者」則任一邊成立就算。超音波沒回波會讀到 -1，也會停。</comment>
+       <value name="IF0">
+       <block type="logic_operation">
+         <field name="OP">AND</field>
+         <value name="A">
+         <block type="logic_compare">
+           <field name="OP">GT</field>
+           <value name="A">
+           <block type="arduino_ultrasonic">
+             <field name="TRIG">2</field>
+             <field name="ECHO">33</field>
+           </block>
+           </value>
+           <value name="B">
+           <block type="math_number">
+             <field name="NUM">20</field>
+           </block>
+           </value>
+         </block>
+         </value>
+         <value name="B">
+         <block type="logic_compare">
+           <field name="OP">LT</field>
+           <value name="A">
+           <block type="arduino_ultrasonic">
+             <field name="TRIG">2</field>
+             <field name="ECHO">33</field>
+           </block>
+           </value>
+           <value name="B">
+           <block type="math_number">
+             <field name="NUM">60</field>
+           </block>
+           </value>
+         </block>
+         </value>
+       </block>
+       </value>
+       <statement name="DO0">
+       <block type="motor_pwm">
+         <field name="MOTOR">1</field>
+         <field name="DIRECTION">FORWARD</field>
+         <value name="PWM">
+         <shadow type="math_number">
+           <field name="NUM">40</field>
+         </shadow>
+         </value>
+       </block>
+       </statement>
+       <statement name="ELSE">
+       <block type="motor_stop">
+         <field name="MOTOR">1</field>
+       </block>
+       </statement>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <shadow type="math_number">
+           <field name="NUM">100</field>
+         </shadow>
+         </value>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

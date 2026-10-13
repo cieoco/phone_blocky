@@ -1,0 +1,75 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="arduino_analogWrite">
+     <field name="PIN">26</field>
+     <field name="VALUE">0</field>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="arduino_analogWrite">
+       <comment pinned="false" h="120" w="290">類比寫入是 0–255 的亮度，不是只有亮／暗。外接 LED 要串電阻。可用的腳位有限制：0、2、4、15、18、21、22、26、32、33。</comment>
+       <field name="PIN">26</field>
+       <field name="VALUE">20</field>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <shadow type="math_number">
+           <field name="NUM">600</field>
+         </shadow>
+         </value>
+         <next>
+         <block type="arduino_analogWrite">
+           <field name="PIN">26</field>
+           <field name="VALUE">80</field>
+           <next>
+           <block type="arduino_delay">
+             <value name="DELAY_TIME">
+             <shadow type="math_number">
+               <field name="NUM">600</field>
+             </shadow>
+             </value>
+             <next>
+             <block type="arduino_analogWrite">
+               <field name="PIN">26</field>
+               <field name="VALUE">255</field>
+               <next>
+               <block type="arduino_delay">
+                 <value name="DELAY_TIME">
+                 <shadow type="math_number">
+                   <field name="NUM">600</field>
+                 </shadow>
+                 </value>
+                 <next>
+                 <block type="arduino_analogWrite">
+                   <field name="PIN">26</field>
+                   <field name="VALUE">0</field>
+                   <next>
+                   <block type="arduino_delay">
+                     <value name="DELAY_TIME">
+                     <shadow type="math_number">
+                       <field name="NUM">600</field>
+                     </shadow>
+                     </value>
+                   </block>
+                   </next>
+                 </block>
+                 </next>
+               </block>
+               </next>
+             </block>
+             </next>
+           </block>
+           </next>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

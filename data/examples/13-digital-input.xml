@@ -1,0 +1,67 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="servo_set">
+     <field name="CH">1</field>
+     <value name="DEG">
+     <shadow type="math_number">
+       <field name="NUM">0</field>
+     </shadow>
+     </value>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="controls_if">
+       <comment pinned="false" h="160" w="300">數位讀取回 0 或 1。這個腳沒有內建上拉，不接東西會亂跳：開關要一端接 3.3V、另一端接 GPIO 15，並用電阻下拉到 GND。GPIO 15 開機時不要被外部拉成錯的電位。</comment>
+       <value name="IF0">
+       <block type="logic_compare">
+         <field name="OP">EQ</field>
+         <value name="A">
+         <block type="arduino_digitalRead">
+           <field name="PIN">15</field>
+         </block>
+         </value>
+         <value name="B">
+         <block type="math_number">
+           <field name="NUM">1</field>
+         </block>
+         </value>
+       </block>
+       </value>
+       <statement name="DO0">
+       <block type="servo_set">
+         <field name="CH">1</field>
+         <value name="DEG">
+         <shadow type="math_number">
+           <field name="NUM">90</field>
+         </shadow>
+         </value>
+       </block>
+       </statement>
+       <statement name="ELSE">
+       <block type="servo_set">
+         <field name="CH">1</field>
+         <value name="DEG">
+         <shadow type="math_number">
+           <field name="NUM">0</field>
+         </shadow>
+         </value>
+       </block>
+       </statement>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <shadow type="math_number">
+           <field name="NUM">50</field>
+         </shadow>
+         </value>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

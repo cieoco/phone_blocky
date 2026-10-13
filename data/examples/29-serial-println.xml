@@ -1,0 +1,57 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="variables_set">
+     <field name="VAR">n</field>
+     <value name="VALUE">
+     <block type="math_number">
+       <field name="NUM">0</field>
+     </block>
+     </value>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="math_change">
+       <field name="VAR">n</field>
+       <value name="DELTA">
+       <block type="math_number">
+         <field name="NUM">1</field>
+       </block>
+       </value>
+       <next>
+       <block type="message_print">
+         <comment pinned="false" h="80" w="260">顯示訊息：出現在網頁的訊息列，手機上看得到。</comment>
+         <value name="TEXT">
+         <block type="variables_get">
+           <field name="VAR">n</field>
+         </block>
+         </value>
+         <next>
+         <block type="arduino_serial_println">
+           <comment pinned="false" h="110" w="280">序列輸出：只從 USB 送出，在電腦的序列監視器（115200）看到「[PROG] serial_print=數字」，網頁上看不到。</comment>
+           <value name="CONTENT">
+           <block type="variables_get">
+             <field name="VAR">n</field>
+           </block>
+           </value>
+           <next>
+           <block type="arduino_delay">
+             <value name="DELAY_TIME">
+             <shadow type="math_number">
+               <field name="NUM">500</field>
+             </shadow>
+             </value>
+           </block>
+           </next>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

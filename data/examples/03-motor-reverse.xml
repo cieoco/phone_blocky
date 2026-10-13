@@ -1,0 +1,69 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="motor_stop">
+     <field name="MOTOR">0</field>
+     <next>
+     <block type="controls_repeat_ext">
+       <comment pinned="false" h="110" w="280">「重複」裡面的動作會做指定次數，做完才往下走。放在 setup 所以只跑一遍；把 3 改成別的數字試試。</comment>
+       <value name="TIMES">
+       <shadow type="math_number">
+         <field name="NUM">3</field>
+       </shadow>
+       </value>
+       <statement name="DO">
+       <block type="motor_pwm">
+         <field name="MOTOR">1</field>
+         <field name="DIRECTION">FORWARD</field>
+         <value name="PWM">
+         <shadow type="math_number">
+           <field name="NUM">50</field>
+         </shadow>
+         </value>
+         <next>
+         <block type="arduino_delay">
+           <value name="DELAY_TIME">
+           <shadow type="math_number">
+             <field name="NUM">1000</field>
+           </shadow>
+           </value>
+           <next>
+           <block type="motor_pwm">
+             <field name="MOTOR">1</field>
+             <field name="DIRECTION">BACKWARD</field>
+             <value name="PWM">
+             <shadow type="math_number">
+               <field name="NUM">50</field>
+             </shadow>
+             </value>
+             <next>
+             <block type="arduino_delay">
+               <value name="DELAY_TIME">
+               <shadow type="math_number">
+                 <field name="NUM">1000</field>
+               </shadow>
+               </value>
+             </block>
+             </next>
+           </block>
+           </next>
+         </block>
+         </next>
+       </block>
+       </statement>
+       <next>
+       <block type="motor_stop">
+         <comment pinned="false" h="80" w="240">做完一定要停；延遲不要設 0，否則正反轉來不及反應。</comment>
+         <field name="MOTOR">1</field>
+       </block>
+       </next>
+     </block>
+     </next>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+   </block>
+   </next>
+ </block>
+</xml>

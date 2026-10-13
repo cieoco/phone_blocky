@@ -1,26 +1,32 @@
-{
-  "version": 1,
-  "examples": [
-    {
-      "id": "01-motor-pwm",
-      "name": "轉一下、停一下",
-      "desc": "最小可跑程式：給馬達動力、等一秒、停下來。改動力與方向就能看出 duty 的正負。",
-      "hw": "M1",
-      "level": "入門"
-    },
-    {
-      "id": "02-servo-angle",
-      "name": "舵機轉到 90°",
-      "desc": "舵機在 0° 與 90° 之間來回。角度只能 0–180°，舵機會自己保持住位置。",
-      "hw": "S1（GPIO 5）",
-      "level": "入門"
-    },
-    {
-      "id": "03-ultrasonic-stop",
-      "name": "超音波避障",
-      "desc": "前方小於 20 cm 就停車，否則以 40% 動力前進，同時把距離畫到 Plotter。",
-      "hw": "M1 + 超音波 TRIG 2 / ECHO 33",
-      "level": "進階"
-    }
-  ]
-}
+{"version": 1,
+"series": {"A":"動起來","B":"角度","C":"感測與腳位","D":"邏輯資料","E":"整合","F":"對外 I2C"},
+"examples": [
+{"id":"01-motor-pwm","name":"轉一下、停一下","desc":"最小可跑程式：給馬達動力、等一秒、停下來。改動力與方向就能看出 duty 的正負。","hw":"M1","level":"入門","series":"A","blocks":["arduino_delay","arduino_loop","arduino_setup","math_number","motor_pwm","motor_stop"]},
+{"id":"02-servo-angle","name":"舵機轉到 90°","desc":"舵機在 0° 與 90° 之間來回。角度只能 0–180°，舵機會自己保持住位置。","hw":"S1（GPIO 5）","level":"入門","series":"A","blocks":["arduino_delay","arduino_loop","arduino_setup","math_number","servo_set"]},
+{"id":"03-motor-reverse","name":"正轉反轉三次","desc":"用「重複」積木讓馬達正轉 1 秒、反轉 1 秒，連做 3 次後停下來，只執行一遍。","hw":"M1","level":"入門","series":"A","blocks":["arduino_delay","arduino_loop","arduino_setup","controls_repeat_ext","math_number","motor_pwm","motor_stop"]},
+{"id":"04-motor-speed","name":"M3 固定轉速","desc":"用編碼器閉迴路讓 M3 維持 120 RPM。負載變重時動力會自動加大，轉速不會掉。","hw":"M3（含編碼器）","level":"基礎","series":"A","blocks":["arduino_delay","arduino_loop","arduino_setup","math_number","motor_speed","motor_stop"]},
+{"id":"05-angle-hold","name":"轉到 90° 並保持","desc":"M3 歸零後轉到 90°，到位後閉迴路持續保持；用手扳軸會被推回來，下停止才放開。","hw":"M3（含編碼器）","level":"基礎","series":"B","blocks":["arduino_loop","arduino_setup","math_number","motor_position","motor_stop","motor_zero"]},
+{"id":"06-indexer-45","name":"分度盤 45°","desc":"M3 每 1.5 秒再轉 45°，8 次剛好一圈。學會相對角度 move_by 與等到位再下一步。","hw":"M3（含編碼器）","level":"基礎","series":"B","blocks":["arduino_delay","arduino_loop","arduino_setup","math_number","motor_move_by","motor_stop","motor_zero"]},
+{"id":"07-encoder-plot","name":"讀編碼器角度","desc":"用手轉 M3 的軸，把編碼器讀到的角度即時畫到 Plotter。學會 encoder_read 積木。","hw":"M3（含編碼器）","level":"基礎","series":"B","blocks":["arduino_delay","arduino_loop","arduino_setup","encoder_read","math_number","motor_stop","motor_zero","plot_print"]},
+{"id":"08-button-start","name":"按鈕才開始","desc":"程式先停在原地等你按 LEGO 按鈕，按下後馬達轉 2 秒再停。學會「直到…為止」等待迴圈。","hw":"M1 + LEGO 按鈕（GPIO 4）","level":"基礎","series":"C","blocks":["arduino_delay","arduino_loop","arduino_setup","controls_whileUntil","lego_button","logic_compare","math_number","motor_pwm","motor_stop"]},
+{"id":"09-ir-line","name":"紅外線偵測停車","desc":"紅外線感測器偵測到東西（例如黑線）就停車，沒有就以 40% 動力前進。","hw":"M1 + 紅外線感測器（數位，GPIO 15）","level":"基礎","series":"C","blocks":["arduino_delay","arduino_loop","arduino_setup","controls_if","ir_digital","logic_compare","math_number","motor_pwm","motor_stop"]},
+{"id":"10-knob-servo","name":"旋鈕控制舵機","desc":"轉可變電阻旋鈕，舵機跟著轉。把類比讀值 0–4095 用 map 換算成角度 0–180。","hw":"S1（GPIO 5）+ 旋鈕接類比輸入 GPIO 32","level":"基礎","series":"C","blocks":["arduino_analogRead","arduino_delay","arduino_loop","arduino_setup","math_map","math_number","servo_set"]},
+{"id":"11-ultrasonic-stop","name":"超音波避障","desc":"前方小於 20 cm 就停車，否則以 40% 動力前進，同時把距離畫到 Plotter。","hw":"M1 + 超音波 TRIG 2 / ECHO 33","level":"基礎","series":"C","blocks":["arduino_delay","arduino_loop","arduino_setup","arduino_ultrasonic","controls_if","logic_compare","math_number","motor_pwm","motor_stop","plot_print"]},
+{"id":"12-ir-analog","name":"紅外線類比門檻","desc":"讀紅外線的類比值（0–4095），超過門檻就停車。先看 Plotter 曲線再決定門檻。","hw":"M1 + 紅外線感測器（類比，GPIO 32）","level":"基礎","series":"C","blocks":["arduino_delay","arduino_loop","arduino_setup","controls_if","ir_analog","logic_compare","math_number","motor_pwm","motor_stop","plot_print"]},
+{"id":"13-digital-input","name":"數位輸入控制舵機","desc":"讀數位輸入腳 GPIO 15：接高電位舵機轉 90°，否則回 0°。學會通用的數位讀取。","hw":"S1（GPIO 5）+ 開關接 GPIO 15","level":"基礎","series":"C","blocks":["arduino_delay","arduino_digitalRead","arduino_loop","arduino_setup","controls_if","logic_compare","math_number","servo_set"]},
+{"id":"14-led-blink","name":"LED 閃爍","desc":"把 GPIO 2 設成輸出，每 0.5 秒亮暗一次。學會設定腳位模式與數位寫入。","hw":"LED（GPIO 2，Wemos D1 R32 板載 LED）","level":"入門","series":"C","blocks":["arduino_delay","arduino_digitalWrite","arduino_loop","arduino_pinMode","arduino_setup","math_number"]},
+{"id":"15-led-fade","name":"LED 亮度","desc":"用類比寫入（PWM）讓 GPIO 26 的 LED 一階一階變亮，值 0–255。","hw":"LED + 電阻（GPIO 26）","level":"基礎","series":"C","blocks":["arduino_analogWrite","arduino_delay","arduino_loop","arduino_setup","math_number"]},
+{"id":"20-plot-compare","name":"目標與實際轉速","desc":"M3 跑 120 RPM，Plotter 同時畫「目標」與「實際」兩條線，看它追得準不準。","hw":"M3（含編碼器）","level":"進階","series":"D","blocks":["arduino_delay","arduino_loop","arduino_setup","encoder_read","math_number","motor_speed","plot_print"]},
+{"id":"21-counter","name":"計數器","desc":"用變數記住「第幾圈」：每圈加 1，並把數字顯示在訊息列。學會設定、讀取、增加變數。","hw":"不用接任何東西","level":"基礎","series":"D","blocks":["arduino_delay","arduino_loop","arduino_setup","math_change","math_number","message_print","variables_get","variables_set"]},
+{"id":"22-millis-timer","name":"不卡住的計時","desc":"舵機每秒換一次角度，同時還能即時偵測按鈕。用開機毫秒數相減，取代會卡住程式的延遲。","hw":"S1 + M1 + LEGO 按鈕（GPIO 4）","level":"進階","series":"D","blocks":["arduino_delay","arduino_loop","arduino_millis","arduino_setup","controls_if","lego_button","logic_compare","math_arithmetic","math_number","motor_pwm","motor_stop","servo_set","variables_get","variables_set"]},
+{"id":"23-random-swing","name":"隨機擺頭","desc":"舵機每 0.8 秒轉到 30–150° 之間隨機的角度，看起來像在東張西望。","hw":"S1（GPIO 5）","level":"基礎","series":"D","blocks":["arduino_delay","arduino_loop","arduino_setup","math_number","math_random_int","servo_set"]},
+{"id":"24-procedure","name":"副程式：抖一下","desc":"把「舵機左右抖一下」包成副程式，主程式呼叫兩次。同一段動作只要寫一遍。","hw":"S1（GPIO 5）","level":"進階","series":"D","blocks":["arduino_delay","arduino_loop","arduino_setup","math_number","procedures_callnoreturn","procedures_defnoreturn","servo_set"]},
+{"id":"25-range-and","name":"距離在範圍內才走","desc":"前方 20–60 cm 之間才前進，太近或太遠都停。用「而且」把兩個條件合在一起。","hw":"M1 + 超音波 TRIG 2 / ECHO 33","level":"進階","series":"D","blocks":["arduino_delay","arduino_loop","arduino_setup","arduino_ultrasonic","controls_if","logic_compare","logic_operation","math_number","motor_pwm","motor_stop"]},
+{"id":"26-run-once","name":"只做一次的旗標","desc":"用 true／false 當旗標：馬達在 loop 裡只轉一次，做完把旗標改成 true，之後不再執行。","hw":"M1","level":"進階","series":"D","blocks":["arduino_delay","arduino_loop","arduino_setup","controls_if","logic_boolean","logic_negate","math_number","motor_pwm","motor_stop","variables_get","variables_set"]},
+{"id":"27-servo-limit","name":"限制舵機範圍","desc":"旋鈕轉到底，舵機也只會在 30–150° 之間動，不會撞到機構。用「限制」積木夾住數值。","hw":"S1 + 旋鈕接類比輸入 GPIO 32","level":"基礎","series":"D","blocks":["arduino_analogRead","arduino_delay","arduino_loop","arduino_setup","math_constrain","math_map","math_number","servo_set"]},
+{"id":"28-abs-error","name":"離目標多遠","desc":"畫出「超音波距離離 30 cm 差多少」。用絕對值，太近太遠都是正數。","hw":"超音波 TRIG 2 / ECHO 33","level":"基礎","series":"D","blocks":["arduino_delay","arduino_loop","arduino_setup","arduino_ultrasonic","math_abs","math_arithmetic","math_number","plot_print"]},
+{"id":"29-serial-println","name":"序列輸出","desc":"同一個數字送兩個地方：顯示訊息到網頁，序列輸出到 USB 序列監視器。","hw":"不用接；序列輸出需用 USB 線接電腦","level":"基礎","series":"D","blocks":["arduino_delay","arduino_loop","arduino_serial_println","arduino_setup","math_change","math_number","message_print","variables_get","variables_set"]},
+{"id":"31-patrol","name":"巡邏車","desc":"按按鈕出發，前進；前方 20 cm 內有障礙就停下來、舵機掃一遍，沒擋了再繼續走。","hw":"M1 + S1 + 超音波 TRIG 2 / ECHO 33 + LEGO 按鈕（GPIO 4）","level":"進階","series":"E","blocks":["arduino_delay","arduino_loop","arduino_setup","arduino_ultrasonic","controls_if","controls_whileUntil","lego_button","logic_compare","math_number","motor_pwm","motor_stop","servo_set"]},
+{"id":"41-i2c-param-in","name":"主機設定舵機角度","desc":"主機透過 I2C 送一個數字，舵機就轉到那個角度。需燒 esp32dev_i2c 並接上 i2cESP32 主機。","hw":"S1 + i2cESP32 主機（SDA 21 / SCL 22，位址 0x36）","level":"進階","series":"F","blocks":["arduino_delay","arduino_loop","arduino_setup","blockly_func_declare","blockly_func_get","math_constrain","math_number","servo_set"]},
+{"id":"42-i2c-report","name":"回報距離給主機","desc":"本板把超音波距離寫進對外功能，主機讀得到。需燒 esp32dev_i2c 並接上 i2cESP32 主機。","hw":"超音波 TRIG 2 / ECHO 33 + i2cESP32 主機（SDA 21 / SCL 22，0x36）","level":"進階","series":"F","blocks":["arduino_delay","arduino_loop","arduino_setup","arduino_ultrasonic","blockly_func_declare","blockly_func_set","math_number"]}
+]}

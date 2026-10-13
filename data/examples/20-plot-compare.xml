@@ -1,0 +1,61 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="motor_speed">
+     <comment pinned="false" h="80" w="260">轉速閉迴路會一直維持，按底列「停止」才會停。</comment>
+     <field name="MOTOR">3</field>
+     <value name="RPM">
+     <shadow type="math_number">
+       <field name="NUM">120</field>
+     </shadow>
+     </value>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="plot_print">
+       <comment pinned="false" h="150" w="300">名稱不同就是不同的線，全部畫在同一張圖、共用縱軸。板子每 50 毫秒最多送一筆繪圖資料，所以兩個繪圖之間要隔至少 60 毫秒，否則第二筆會被丟掉。Plotter 不畫負數。</comment>
+       <field name="SERIES">目標</field>
+       <field name="UNIT">rpm</field>
+       <value name="VALUE">
+       <block type="math_number">
+         <field name="NUM">120</field>
+       </block>
+       </value>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <shadow type="math_number">
+           <field name="NUM">60</field>
+         </shadow>
+         </value>
+         <next>
+         <block type="plot_print">
+           <field name="SERIES">實際</field>
+           <field name="UNIT">rpm</field>
+           <value name="VALUE">
+           <block type="encoder_read">
+             <field name="MOTOR">3</field>
+             <field name="READ">rpm</field>
+           </block>
+           </value>
+           <next>
+           <block type="arduino_delay">
+             <value name="DELAY_TIME">
+             <shadow type="math_number">
+               <field name="NUM">60</field>
+             </shadow>
+             </value>
+           </block>
+           </next>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

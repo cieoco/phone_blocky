@@ -17,6 +17,10 @@ const root = path.resolve(__dirname, '..');
 const read = p => fs.readFileSync(path.join(root, p), 'utf8');
 const EX_DIR = 'data/examples';
 
+// The example XML/index.json are generated from tools/examples_src/; hand edits must fail here.
+require('node:child_process').execFileSync(process.execPath,
+    [path.join(root, 'tools', 'gen_examples.cjs'), '--check'], {stdio: 'inherit'});
+
 // ---------------------------------------------------------------------------
 // 1. What fields and inputs does each block really have?
 //    Run every block's init() against a recorder instead of a browser Blockly.
@@ -68,7 +72,7 @@ function collectBlockSpecs() {
 // field/input names can't be recorded here, so they're listed explicitly.
 const CORE_BLOCKS = {
     procedures_defnoreturn: {fields: {NAME: null}, valueInputs: new Set(), statementInputs: new Set(['STACK'])},
-    procedures_callnoreturn: {fields: {NAME: null}, valueInputs: new Set(), statementInputs: new Set()},
+    procedures_callnoreturn: {fields: {}, valueInputs: new Set(), statementInputs: new Set()},
     variables_get: {fields: {VAR: null}, valueInputs: new Set(), statementInputs: new Set()},
     variables_set: {fields: {VAR: null}, valueInputs: new Set(['VALUE']), statementInputs: new Set()},
     math_change: {fields: {VAR: null}, valueInputs: new Set(['DELTA']), statementInputs: new Set()}
@@ -155,8 +159,17 @@ function fakeBlock(node, parent) {
         const child = slot && slot.children.find(c => c.tag === 'block' || c.tag === 'shadow');
         return child || null;
     };
+    const mutation = node.children.find(c => c.tag === 'mutation');
     const self = {
         type: node.attrs.type,
+        // The slice of Blockly's procedure/variable API the translators call.
+        getProcedureCall: () => (mutation ? mutation.attrs.name : ''),
+        getVars: () => [],
+        getVarModels: () => [],
+        getField(name) {
+            const f = node.children.find(c => c.tag === 'field' && c.attrs.name === name);
+            return f ? {getText: () => f.text.trim()} : null;
+        },
         getFieldValue(name) {
             const f = node.children.find(c => c.tag === 'field' && c.attrs.name === name);
             return f ? f.text.trim() : undefined;
@@ -173,6 +186,17 @@ function fakeBlock(node, parent) {
         getParent: () => parent || null
     };
     return self;
+}
+
+// Every block in the tree, like workspace.getAllBlocks() (collectFunctionDeclarations scans it).
+function allFakeBlocks(nodes) {
+    const out = [];
+    const walk = n => {
+        if (n.tag === 'block' || n.tag === 'shadow') out.push(fakeBlock(n, null));
+        n.children.forEach(walk);
+    };
+    nodes.forEach(walk);
+    return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -197,10 +221,27 @@ for (const ex of manifest.examples) {
     assert.ok(ex.desc.length <= 120, `範例 ${ex.id} 的 desc 太長（抽屜裡顯示不完）`);
 }
 
+assert.ok(manifest.series && typeof manifest.series === 'object', 'index.json 少了 series 對照表');
+
+// Coverage: which block types does no example use?
+// Enforced: every block type must be used by at least one example, or have an EXEMPT entry
+// with a reason. A new block therefore needs a tools/examples_src/<id>.cjs example (or an EXEMPT line).
+const REQUIRE_FULL_COVERAGE = true;
+const EXEMPT = {
+    // block type -> why it needs no example of its own
+    // (arduino_setup / arduino_loop are in every example, so they never show up as uncovered.)
+};
+const usedTypes = new Set();
+
 let totalBytes = 0;
 for (const ex of manifest.examples) {
     const file = `${EX_DIR}/${ex.id}.xml`;
     const text = read(file);
+    assert.ok(Object.prototype.hasOwnProperty.call(manifest.series, ex.series),
+        `範例 ${ex.id} 的 series「${ex.series}」不在 index.json 的 series 對照表裡`);
+    const foundTypes = [...new Set(text.match(/type="[^"]+"/g).map(s => s.slice(6, -1)))].sort();
+    assert.deepEqual(ex.blocks, foundTypes, `範例 ${ex.id} 的 blocks 與 XML 實際用到的積木不一致`);
+    foundTypes.forEach(t => usedTypes.add(t));
     totalBytes += Buffer.byteLength(text);
     assert.ok(Buffer.byteLength(text) <= 8192, `${file}: 單支範例超過 8 KB，拆小一點`);
 
@@ -217,11 +258,12 @@ for (const ex of manifest.examples) {
 
     // Finally: does it really become a valid PROG program?
     context.exampleTops = tops.map(n => fakeBlock(n, null));
+    context.exampleAll = allFakeBlocks(tops);
     const prog = JSON.parse(JSON.stringify(vm.runInContext(`
         (function () {
             var chain = [];
-            for (var b = exampleTops[0]; b; b = b.getNextBlock()) chain.push(b);
-            var ws = {getTopBlocks: () => chain, getAllBlocks: () => chain};
+            for (var i = 0; i < exampleTops.length; i++) for (var b = exampleTops[i]; b; b = b.getNextBlock()) chain.push(b);
+            var ws = {getTopBlocks: () => chain, getAllBlocks: () => exampleAll};
             return buildProgJson(parseWorkspaceToIR(ws), ws);
         })()
     `, context)));
@@ -236,7 +278,7 @@ for (const ex of manifest.examples) {
         assert.ok(c && (c.cmd || c.command), `${file}: 產出了沒有 cmd/command 的指令 ${JSON.stringify(c)}`);
     }
 }
-assert.ok(totalBytes <= 65536, '範例總量超過 64 KB，LittleFS 空間要重新評估');
+assert.ok(totalBytes <= 131072, '範例總量超過 128 KB，LittleFS 空間要重新評估');
 
 // Known-good output for the examples shipped today; catches silent protocol drift
 // (deg is fixed-point ×100, duty is signed ±100).
@@ -253,7 +295,26 @@ const EXPECTED = {
         assert.deepEqual(prog.loop[0], {cmd: 'servo', ch: 1, deg: 90});
         assert.deepEqual(prog.loop[2], {cmd: 'servo', ch: 1, deg: 0});
     },
-    '03-ultrasonic-stop': prog => {
+    '24-procedure': prog => {
+        assert.deepEqual(prog.loop[0], {command: 'call', name: '抖一下', args: []});
+        assert.equal(prog.procedures.length, 1);
+        assert.equal(prog.procedures[0].name, '抖一下');
+    },
+    '26-run-once': prog => {
+        assert.deepEqual(prog.setup[1], {command: 'variable_set', variableName: 'done',
+            value: {command: 'logic_boolean', value: false}});
+        assert.equal(prog.loop[0].condition.command, 'logic_negate');
+    },
+    '41-i2c-param-in': prog => {
+        assert.deepEqual(prog.functions, [{idx: 0, analog: true, readable: false}]);
+        assert.equal(prog.loop[0].cmd, 'servo');
+        assert.equal(prog.loop[0].deg.command, 'math_constrain');
+    },
+    '42-i2c-report': prog => {
+        assert.deepEqual(prog.functions, [{idx: 0, analog: true, readable: true}]);
+        assert.equal(prog.loop[0].command, 'blockly_func_set');
+    },
+    '11-ultrasonic-stop': prog => {
         assert.equal(prog.loop[1].command, 'if');
         assert.deepEqual(prog.loop[1].then, [{cmd: 'stop', motor: 1}]);
         assert.deepEqual(prog.loop[1].else, [{cmd: 'pwm', motor: 1, duty: 40}]);
@@ -263,12 +324,14 @@ for (const ex of manifest.examples) {
     const check = EXPECTED[ex.id];
     if (!check) continue;
     const xml = parseXml(read(`${EX_DIR}/${ex.id}.xml`), ex.id);
-    context.exampleTops = xml.children.filter(c => c.tag === 'block').map(n => fakeBlock(n, null));
+    const expectTops = xml.children.filter(c => c.tag === 'block');
+    context.exampleTops = expectTops.map(n => fakeBlock(n, null));
+    context.exampleAll = allFakeBlocks(expectTops);
     check(JSON.parse(JSON.stringify(vm.runInContext(`
         (function () {
             var chain = [];
-            for (var b = exampleTops[0]; b; b = b.getNextBlock()) chain.push(b);
-            var ws = {getTopBlocks: () => chain, getAllBlocks: () => chain};
+            for (var i = 0; i < exampleTops.length; i++) for (var b = exampleTops[i]; b; b = b.getNextBlock()) chain.push(b);
+            var ws = {getTopBlocks: () => chain, getAllBlocks: () => exampleAll};
             return buildProgJson(parseWorkspaceToIR(ws), ws);
         })()
     `, context))));
@@ -283,5 +346,13 @@ assert.match(page, /id="examplesBtn"/, 'blockly.html 的頂列少了 📚 範例
 assert.match(page, /id="examplesSheet"/, 'blockly.html 少了範例面板');
 assert.match(app, /\$\('examplesBtn'\)/, 'app.js 沒有接上頂列的範例按鈕');
 assert.match(page, /appBlock\.js\?v=([\w-]+)"/, 'blockly.html 的 script 少了 ?v= 版本字串');
+
+const allTypes = [...Object.keys(specs), ...Object.keys(CORE_BLOCKS)];
+const uncovered = allTypes.filter(t => !usedTypes.has(t) && !(t in EXEMPT));
+if (uncovered.length) {
+    console.warn(`WARNING: ${uncovered.length}/${allTypes.length} 種積木沒有任何範例用到:`);
+    console.warn('  ' + uncovered.join(', '));
+    assert.ok(!REQUIRE_FULL_COVERAGE, '積木涵蓋率未達 100%（REQUIRE_FULL_COVERAGE）');
+}
 
 console.log(`examples ok: ${manifest.examples.length} 支，共 ${(totalBytes / 1024).toFixed(1)} KB`);

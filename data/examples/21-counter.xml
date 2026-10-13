@@ -1,0 +1,49 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="variables_set">
+     <comment pinned="false" h="90" w="260">變數像一個有名字的盒子。先把 count 設成 0，每次執行都從 0 開始。</comment>
+     <field name="VAR">count</field>
+     <value name="VALUE">
+     <block type="math_number">
+       <field name="NUM">0</field>
+     </block>
+     </value>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="math_change">
+       <comment pinned="false" h="70" w="260">每圈把 count 加 1（改 1 看看）。</comment>
+       <field name="VAR">count</field>
+       <value name="DELTA">
+       <block type="math_number">
+         <field name="NUM">1</field>
+       </block>
+       </value>
+       <next>
+       <block type="message_print">
+         <comment pinned="false" h="90" w="260">數字會出現在畫面下方的訊息列。延遲不要設 0，否則訊息刷太快。</comment>
+         <value name="TEXT">
+         <block type="variables_get">
+           <field name="VAR">count</field>
+         </block>
+         </value>
+         <next>
+         <block type="arduino_delay">
+           <value name="DELAY_TIME">
+           <shadow type="math_number">
+             <field name="NUM">500</field>
+           </shadow>
+           </value>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

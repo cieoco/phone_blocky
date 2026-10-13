@@ -1,0 +1,41 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="motor_stop">
+     <field name="MOTOR">3</field>
+     <next>
+     <block type="motor_zero">
+       <comment pinned="false" h="80" w="240">在這個位置設零點，之後正轉為正、反轉為負。</comment>
+       <field name="MOTOR">3</field>
+     </block>
+     </next>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="plot_print">
+       <comment pinned="false" h="130" w="290">編碼器積木可選角度（°）、計數、轉速。到 ☰ → 開啟獨立 Plotter 看曲線，用手轉軸就會動。延遲 100 毫秒是取樣節拍，不要設 0。</comment>
+       <field name="SERIES">角度</field>
+       <field name="UNIT">°</field>
+       <value name="VALUE">
+       <block type="encoder_read">
+         <field name="MOTOR">3</field>
+         <field name="READ">deg</field>
+       </block>
+       </value>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <shadow type="math_number">
+           <field name="NUM">100</field>
+         </shadow>
+         </value>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

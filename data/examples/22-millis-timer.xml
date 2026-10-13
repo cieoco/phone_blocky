@@ -1,0 +1,185 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="servo_set">
+     <field name="CH">1</field>
+     <value name="DEG">
+     <shadow type="math_number">
+       <field name="NUM">0</field>
+     </shadow>
+     </value>
+     <next>
+     <block type="motor_stop">
+       <field name="MOTOR">0</field>
+       <next>
+       <block type="variables_set">
+         <field name="VAR">last</field>
+         <value name="VALUE">
+         <block type="math_number">
+           <field name="NUM">0</field>
+         </block>
+         </value>
+         <next>
+         <block type="variables_set">
+           <field name="VAR">up</field>
+           <value name="VALUE">
+           <block type="math_number">
+             <field name="NUM">0</field>
+           </block>
+           </value>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </next>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="controls_if">
+       <comment pinned="false" h="110" w="280">現在時間 − 上次換角度的時間 ≥ 1000，才換一次。中間程式沒有睡著，下面的按鈕馬上有反應。</comment>
+       <value name="IF0">
+       <block type="logic_compare">
+         <field name="OP">GTE</field>
+         <value name="A">
+         <block type="math_arithmetic">
+           <field name="OP">MINUS</field>
+           <value name="A">
+           <block type="arduino_millis">
+           </block>
+           </value>
+           <value name="B">
+           <block type="variables_get">
+             <field name="VAR">last</field>
+           </block>
+           </value>
+         </block>
+         </value>
+         <value name="B">
+         <block type="math_number">
+           <field name="NUM">1000</field>
+         </block>
+         </value>
+       </block>
+       </value>
+       <statement name="DO0">
+       <block type="controls_if">
+         <value name="IF0">
+         <block type="logic_compare">
+           <field name="OP">EQ</field>
+           <value name="A">
+           <block type="variables_get">
+             <field name="VAR">up</field>
+           </block>
+           </value>
+           <value name="B">
+           <block type="math_number">
+             <field name="NUM">0</field>
+           </block>
+           </value>
+         </block>
+         </value>
+         <statement name="DO0">
+         <block type="servo_set">
+           <field name="CH">1</field>
+           <value name="DEG">
+           <shadow type="math_number">
+             <field name="NUM">90</field>
+           </shadow>
+           </value>
+           <next>
+           <block type="variables_set">
+             <field name="VAR">up</field>
+             <value name="VALUE">
+             <block type="math_number">
+               <field name="NUM">1</field>
+             </block>
+             </value>
+           </block>
+           </next>
+         </block>
+         </statement>
+         <statement name="ELSE">
+         <block type="servo_set">
+           <field name="CH">1</field>
+           <value name="DEG">
+           <shadow type="math_number">
+             <field name="NUM">0</field>
+           </shadow>
+           </value>
+           <next>
+           <block type="variables_set">
+             <field name="VAR">up</field>
+             <value name="VALUE">
+             <block type="math_number">
+               <field name="NUM">0</field>
+             </block>
+             </value>
+           </block>
+           </next>
+         </block>
+         </statement>
+         <next>
+         <block type="variables_set">
+           <field name="VAR">last</field>
+           <value name="VALUE">
+           <block type="arduino_millis">
+           </block>
+           </value>
+         </block>
+         </next>
+       </block>
+       </statement>
+       <next>
+       <block type="controls_if">
+         <comment pinned="false" h="90" w="260">按住按鈕（讀到 0；接法相反就改 1）馬達轉，放開就停。</comment>
+         <value name="IF0">
+         <block type="logic_compare">
+           <field name="OP">EQ</field>
+           <value name="A">
+           <block type="lego_button">
+             <field name="PIN">4</field>
+           </block>
+           </value>
+           <value name="B">
+           <block type="math_number">
+             <field name="NUM">0</field>
+           </block>
+           </value>
+         </block>
+         </value>
+         <statement name="DO0">
+         <block type="motor_pwm">
+           <field name="MOTOR">1</field>
+           <field name="DIRECTION">FORWARD</field>
+           <value name="PWM">
+           <shadow type="math_number">
+             <field name="NUM">40</field>
+           </shadow>
+           </value>
+         </block>
+         </statement>
+         <statement name="ELSE">
+         <block type="motor_stop">
+           <field name="MOTOR">1</field>
+         </block>
+         </statement>
+         <next>
+         <block type="arduino_delay">
+           <value name="DELAY_TIME">
+           <shadow type="math_number">
+             <field name="NUM">20</field>
+           </shadow>
+           </value>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

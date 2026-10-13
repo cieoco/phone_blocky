@@ -1,0 +1,156 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="motor_stop">
+     <field name="MOTOR">0</field>
+     <next>
+     <block type="servo_set">
+       <field name="CH">1</field>
+       <value name="DEG">
+       <shadow type="math_number">
+         <field name="NUM">90</field>
+       </shadow>
+       </value>
+       <next>
+       <block type="controls_whileUntil">
+         <comment pinned="false" h="90" w="260">先等按鈕（按下讀到 0；接法相反就改 1），按了才進入 loop。</comment>
+         <field name="MODE">UNTIL</field>
+         <value name="BOOL">
+         <block type="logic_compare">
+           <field name="OP">EQ</field>
+           <value name="A">
+           <block type="lego_button">
+             <field name="PIN">4</field>
+           </block>
+           </value>
+           <value name="B">
+           <block type="math_number">
+             <field name="NUM">0</field>
+           </block>
+           </value>
+         </block>
+         </value>
+         <statement name="DO">
+         <block type="arduino_delay">
+           <value name="DELAY_TIME">
+           <shadow type="math_number">
+             <field name="NUM">20</field>
+           </shadow>
+           </value>
+         </block>
+         </statement>
+       </block>
+       </next>
+     </block>
+     </next>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="controls_if">
+       <comment pinned="false" h="110" w="280">有障礙：停車、舵機左右掃一遍，下一圈再量。沒障礙：前進。</comment>
+       <value name="IF0">
+       <block type="logic_compare">
+         <field name="OP">LT</field>
+         <value name="A">
+         <block type="arduino_ultrasonic">
+           <field name="TRIG">2</field>
+           <field name="ECHO">33</field>
+         </block>
+         </value>
+         <value name="B">
+         <block type="math_number">
+           <field name="NUM">20</field>
+         </block>
+         </value>
+       </block>
+       </value>
+       <statement name="DO0">
+       <block type="motor_stop">
+         <field name="MOTOR">1</field>
+         <next>
+         <block type="servo_set">
+           <field name="CH">1</field>
+           <value name="DEG">
+           <shadow type="math_number">
+             <field name="NUM">30</field>
+           </shadow>
+           </value>
+           <next>
+           <block type="arduino_delay">
+             <value name="DELAY_TIME">
+             <shadow type="math_number">
+               <field name="NUM">500</field>
+             </shadow>
+             </value>
+             <next>
+             <block type="servo_set">
+               <field name="CH">1</field>
+               <value name="DEG">
+               <shadow type="math_number">
+                 <field name="NUM">150</field>
+               </shadow>
+               </value>
+               <next>
+               <block type="arduino_delay">
+                 <value name="DELAY_TIME">
+                 <shadow type="math_number">
+                   <field name="NUM">500</field>
+                 </shadow>
+                 </value>
+                 <next>
+                 <block type="servo_set">
+                   <field name="CH">1</field>
+                   <value name="DEG">
+                   <shadow type="math_number">
+                     <field name="NUM">90</field>
+                   </shadow>
+                   </value>
+                   <next>
+                   <block type="arduino_delay">
+                     <value name="DELAY_TIME">
+                     <shadow type="math_number">
+                       <field name="NUM">300</field>
+                     </shadow>
+                     </value>
+                   </block>
+                   </next>
+                 </block>
+                 </next>
+               </block>
+               </next>
+             </block>
+             </next>
+           </block>
+           </next>
+         </block>
+         </next>
+       </block>
+       </statement>
+       <statement name="ELSE">
+       <block type="motor_pwm">
+         <field name="MOTOR">1</field>
+         <field name="DIRECTION">FORWARD</field>
+         <value name="PWM">
+         <shadow type="math_number">
+           <field name="NUM">40</field>
+         </shadow>
+         </value>
+       </block>
+       </statement>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <shadow type="math_number">
+           <field name="NUM">100</field>
+         </shadow>
+         </value>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

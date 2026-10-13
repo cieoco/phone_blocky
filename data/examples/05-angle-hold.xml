@@ -1,0 +1,30 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="motor_stop">
+     <field name="MOTOR">3</field>
+     <next>
+     <block type="motor_zero">
+       <comment pinned="false" h="90" w="260">先放開保持，再把「現在的位置」設成 0°（設零點）。之後的角度都以這裡為準。</comment>
+       <field name="MOTOR">3</field>
+       <next>
+       <block type="motor_position">
+         <comment pinned="false" h="130" w="280">轉到 90° 後不會停：韌體會持續修正，用手扳軸會被推回 90°。要放開就對 M3 下「停止」。角度單位是度；放在 setup 只送一次。</comment>
+         <field name="MOTOR">3</field>
+         <value name="DEG">
+         <shadow type="math_number">
+           <field name="NUM">90</field>
+         </shadow>
+         </value>
+       </block>
+       </next>
+     </block>
+     </next>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+   </block>
+   </next>
+ </block>
+</xml>

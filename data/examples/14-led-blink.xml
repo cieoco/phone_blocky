@@ -1,0 +1,46 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="arduino_pinMode">
+     <comment pinned="false" h="100" w="270">先設成輸出（OUTPUT）才能控制電壓。GPIO 2 也是超音波 TRIG 的預設腳，兩個不要同時接。</comment>
+     <field name="PIN">2</field>
+     <field name="MODE">OUTPUT</field>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="arduino_digitalWrite">
+       <comment pinned="false" h="90" w="260">HIGH = 3.3V 亮、LOW = 0V 暗。外接 LED 一定要串電阻（約 220 Ω）。</comment>
+       <field name="PIN">2</field>
+       <field name="VALUE">HIGH</field>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <shadow type="math_number">
+           <field name="NUM">500</field>
+         </shadow>
+         </value>
+         <next>
+         <block type="arduino_digitalWrite">
+           <field name="PIN">2</field>
+           <field name="VALUE">LOW</field>
+           <next>
+           <block type="arduino_delay">
+             <value name="DELAY_TIME">
+             <shadow type="math_number">
+               <field name="NUM">500</field>
+             </shadow>
+             </value>
+           </block>
+           </next>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>
