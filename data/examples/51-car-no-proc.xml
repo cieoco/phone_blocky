@@ -1,0 +1,108 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="motor_stop">
+     <field name="MOTOR">0</field>
+     <next>
+     <block type="motor_pwm">
+       <comment pinned="false" h="100" w="280">左輪 M1、右輪 M2，兩輪都給 50% 就是前進。路線只跑一遍（放在 setup）。</comment>
+       <field name="MOTOR">1</field>
+       <field name="DIRECTION">FORWARD</field>
+       <value name="PWM">
+       <shadow type="math_number">
+         <field name="NUM">50</field>
+       </shadow>
+       </value>
+       <next>
+       <block type="motor_pwm">
+         <field name="MOTOR">2</field>
+         <field name="DIRECTION">FORWARD</field>
+         <value name="PWM">
+         <shadow type="math_number">
+           <field name="NUM">50</field>
+         </shadow>
+         </value>
+         <next>
+         <block type="arduino_delay">
+           <value name="DELAY_TIME">
+           <shadow type="math_number">
+             <field name="NUM">1000</field>
+           </shadow>
+           </value>
+           <next>
+           <block type="motor_stop">
+             <comment pinned="false" h="100" w="270">左轉 = 左輪停、右輪轉。注意：「前進」那兩塊後面又要再寫一次。</comment>
+             <field name="MOTOR">1</field>
+             <next>
+             <block type="motor_pwm">
+               <field name="MOTOR">2</field>
+               <field name="DIRECTION">FORWARD</field>
+               <value name="PWM">
+               <shadow type="math_number">
+                 <field name="NUM">50</field>
+               </shadow>
+               </value>
+               <next>
+               <block type="arduino_delay">
+                 <value name="DELAY_TIME">
+                 <shadow type="math_number">
+                   <field name="NUM">400</field>
+                 </shadow>
+                 </value>
+                 <next>
+                 <block type="motor_pwm">
+                   <field name="MOTOR">1</field>
+                   <field name="DIRECTION">FORWARD</field>
+                   <value name="PWM">
+                   <shadow type="math_number">
+                     <field name="NUM">50</field>
+                   </shadow>
+                   </value>
+                   <next>
+                   <block type="motor_pwm">
+                     <field name="MOTOR">2</field>
+                     <field name="DIRECTION">FORWARD</field>
+                     <value name="PWM">
+                     <shadow type="math_number">
+                       <field name="NUM">50</field>
+                     </shadow>
+                     </value>
+                     <next>
+                     <block type="arduino_delay">
+                       <value name="DELAY_TIME">
+                       <shadow type="math_number">
+                         <field name="NUM">1000</field>
+                       </shadow>
+                       </value>
+                       <next>
+                       <block type="motor_stop">
+                         <comment pinned="false" h="110" w="280">只有 4 個動作就用了 12 塊積木，而且很難一眼看出在做什麼。下一支用副程式來解決。</comment>
+                         <field name="MOTOR">0</field>
+                       </block>
+                       </next>
+                     </block>
+                     </next>
+                   </block>
+                   </next>
+                 </block>
+                 </next>
+               </block>
+               </next>
+             </block>
+             </next>
+           </block>
+           </next>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </next>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+   </block>
+   </next>
+ </block>
+</xml>

@@ -1,0 +1,119 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="motor_stop">
+     <field name="MOTOR">0</field>
+     <next>
+     <block type="procedures_callnoreturn">
+       <comment pinned="false" h="110" w="290">新的：參數。括號裡的數字就是「呼叫時才填的空格」。前進(1000) = 走 1 秒，前進(500) = 走半秒。</comment>
+       <mutation name="前進"><arg name="毫秒"></arg></mutation>
+       <value name="ARG0">
+       <block type="math_number">
+         <field name="NUM">1000</field>
+       </block>
+       </value>
+       <next>
+       <block type="procedures_callnoreturn">
+         <mutation name="左轉"><arg name="毫秒"></arg></mutation>
+         <value name="ARG0">
+         <block type="math_number">
+           <field name="NUM">400</field>
+         </block>
+         </value>
+         <next>
+         <block type="procedures_callnoreturn">
+           <mutation name="前進"><arg name="毫秒"></arg></mutation>
+           <value name="ARG0">
+           <block type="math_number">
+             <field name="NUM">1000</field>
+           </block>
+           </value>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </next>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+   </block>
+   </next>
+ </block>
+ <block type="procedures_defnoreturn" x="20" y="300">
+   <comment pinned="false" h="130" w="300">等待與停車都包進副程式了，主程式不用再寫。參數是全域變數，名字別和主程式的變數重複。</comment>
+   <mutation><arg name="毫秒"></arg></mutation>
+   <field name="NAME">前進</field>
+   <statement name="STACK">
+   <block type="motor_pwm">
+     <field name="MOTOR">1</field>
+     <field name="DIRECTION">FORWARD</field>
+     <value name="PWM">
+     <shadow type="math_number">
+       <field name="NUM">50</field>
+     </shadow>
+     </value>
+     <next>
+     <block type="motor_pwm">
+       <field name="MOTOR">2</field>
+       <field name="DIRECTION">FORWARD</field>
+       <value name="PWM">
+       <shadow type="math_number">
+         <field name="NUM">50</field>
+       </shadow>
+       </value>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <block type="variables_get">
+           <field name="VAR">毫秒</field>
+         </block>
+         </value>
+         <next>
+         <block type="motor_stop">
+           <field name="MOTOR">0</field>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </next>
+   </block>
+   </statement>
+ </block>
+ <block type="procedures_defnoreturn" x="20" y="500">
+   <mutation><arg name="毫秒"></arg></mutation>
+   <field name="NAME">左轉</field>
+   <statement name="STACK">
+   <block type="motor_stop">
+     <field name="MOTOR">1</field>
+     <next>
+     <block type="motor_pwm">
+       <field name="MOTOR">2</field>
+       <field name="DIRECTION">FORWARD</field>
+       <value name="PWM">
+       <shadow type="math_number">
+         <field name="NUM">50</field>
+       </shadow>
+       </value>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <block type="variables_get">
+           <field name="VAR">毫秒</field>
+         </block>
+         </value>
+         <next>
+         <block type="motor_stop">
+           <field name="MOTOR">0</field>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </next>
+   </block>
+   </statement>
+ </block>
+</xml>

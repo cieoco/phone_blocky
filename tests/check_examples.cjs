@@ -72,7 +72,7 @@ function collectBlockSpecs() {
 // field/input names can't be recorded here, so they're listed explicitly.
 const CORE_BLOCKS = {
     procedures_defnoreturn: {fields: {NAME: null}, valueInputs: new Set(), statementInputs: new Set(['STACK'])},
-    procedures_callnoreturn: {fields: {}, valueInputs: new Set(), statementInputs: new Set()},
+    procedures_callnoreturn: {fields: {}, valueInputs: new Set(), valueInputPattern: /^ARG[0-9]+$/, statementInputs: new Set()},
     variables_get: {fields: {VAR: null}, valueInputs: new Set(), statementInputs: new Set()},
     variables_set: {fields: {VAR: null}, valueInputs: new Set(['VALUE']), statementInputs: new Set()},
     math_change: {fields: {VAR: null}, valueInputs: new Set(['DELTA']), statementInputs: new Set()}
@@ -133,7 +133,8 @@ function checkBlockNames(node, specs, file) {
                     `${file}: ${type}.${name} = "${child.text.trim()}" 不在下拉選單 [${legal}] 裡`);
             }
         } else if (child.tag === 'value') {
-            assert.ok(spec.valueInputs.has(name), `${file}: ${type} 沒有數值插槽「${name}」`);
+            assert.ok(spec.valueInputs.has(name) || (spec.valueInputPattern && spec.valueInputPattern.test(name)),
+                `${file}: ${type} 沒有數值插槽「${name}」`);
         } else if (child.tag === 'statement') {
             assert.ok(spec.statementInputs.has(name), `${file}: ${type} 沒有積木插槽「${name}」`);
         }
@@ -160,12 +161,14 @@ function fakeBlock(node, parent) {
         return child || null;
     };
     const mutation = node.children.find(c => c.tag === 'mutation');
+    const paramNames = mutation ? mutation.children.filter(c => c.tag === 'arg').map(c => c.attrs.name) : [];
     const self = {
         type: node.attrs.type,
         // The slice of Blockly's procedure/variable API the translators call.
         getProcedureCall: () => (mutation ? mutation.attrs.name : ''),
-        getVars: () => [],
-        getVarModels: () => [],
+        getVars: () => paramNames,
+        // Real Blockly's variable IDs are random and differ from the names, so the fake does the same.
+        getVarModels: () => paramNames.map(n => ({getId: () => 'id:' + n, getName: () => n})),
         getField(name) {
             const f = node.children.find(c => c.tag === 'field' && c.attrs.name === name);
             return f ? {getText: () => f.text.trim()} : null;
@@ -313,6 +316,17 @@ const EXPECTED = {
     '42-i2c-report': prog => {
         assert.deepEqual(prog.functions, [{idx: 0, analog: true, readable: true}]);
         assert.equal(prog.loop[0].command, 'blockly_func_set');
+    },
+    // Parameter keys must equal the names the body's variable_get blocks use, or every parameter reads 0.
+    '53-car-time-param': prog => {
+        assert.deepEqual(prog.procedures[0].params, ['毫秒']);
+        assert.deepEqual(prog.procedures[0].body[2], {cmd: 'delay', ms: {command: 'variable_get', variableName: '毫秒'}});
+    },
+    // A signed duty from a variable keeps its sign (FORWARD passes it through unchanged).
+    '54-car-drive-lr': prog => {
+        assert.deepEqual(prog.procedures[0].params, ['左輪', '右輪']);
+        assert.deepEqual(prog.procedures[0].body[1], {cmd: 'pwm', motor: 2, duty: {command: 'variable_get', variableName: '右輪'}});
+        assert.equal(prog.setup[7].args[1].number, '-50');
     },
     '11-ultrasonic-stop': prog => {
         assert.equal(prog.loop[1].command, 'if');

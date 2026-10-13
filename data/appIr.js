@@ -350,7 +350,7 @@ class MathArithmeticNode extends BaseNode {
     }
 }
 
-// 副程式定義 → PROG 頂層 procedures 陣列的一項：{"name","params":[變數ID…],"body":[…]}
+// 副程式定義 → PROG 頂層 procedures 陣列的一項：{"name","params":[變數名稱…],"body":[…]}
 class ProcedureDefNode extends BaseNode {
     constructor(name, params, body) {
         super();
@@ -793,8 +793,11 @@ function translateMathArithmetic(block) {
 
 function translateProcedureDef(block) {
     const name = block.getFieldValue("NAME");
-    // 參數在 Blockly 裡是變數；用變數 ID，與副程式內「取得變數」積木輸出的名稱一致
-    const params = block.getVarModels().map(v => v.getId());
+    // 參數在 Blockly 裡是變數
+    // 參數用變數「名稱」：副程式內的「取得變數」積木（readVariableName）輸出的是名稱，
+    // 用 ID 的話呼叫時寫入的鍵與本體讀取的鍵對不上，參數永遠是 0。
+    const params = block.getVarModels().map(v =>
+        (typeof v.getName === "function" && v.getName()) || v.name || v.getId());
     const stack = block.getInputTargetBlock("STACK");
     return new ProcedureDefNode(name, params, stack ? parseBlockChain(stack) : []);
 }

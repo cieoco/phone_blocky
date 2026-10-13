@@ -10,7 +10,7 @@ const SRC = path.join(__dirname, 'examples_src');
 const OUT = path.join(root, 'data', 'examples');
 const {SHADOW_INPUTS} = require('./examples_src/_dsl.cjs');
 
-const SERIES = {A: '動起來', B: '角度', C: '感測與腳位', D: '邏輯資料', E: '整合', F: '對外 I2C'};
+const SERIES = {A: '動起來', B: '角度', C: '感測與腳位', D: '邏輯資料', E: '整合', F: '對外 I2C', G: '小車副程式'};
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -34,8 +34,9 @@ function renderChain(chain, lv, used) {
     out += `${p}  <comment pinned="false" h="${b.comment.h}" w="${b.comment.w}">${esc(b.comment.text)}</comment>\n`;
   }
   if (b.mutation) {
-    const attrs = Object.entries(b.mutation).map(([k, v]) => ` ${k}="${esc(v)}"`).join('');
-    out += `${p}  <mutation${attrs}></mutation>
+    const {args = [], ...rest} = b.mutation;
+    const attrs = Object.entries(rest).map(([k, v]) => ` ${k}="${esc(v)}"`).join('');
+    out += `${p}  <mutation${attrs}>${args.map(a => `<arg name="${esc(a)}"></arg>`).join('')}</mutation>
 `;
   }
   for (const [k, v] of Object.entries(b.fields)) out += `${p}  <field name="${k}">${esc(v)}</field>\n`;

@@ -96,9 +96,14 @@ const map = (v, fl, fh, tl, th) =>
 const getVar = name => block('variables_get', {VAR: name});
 const setVar = (name, value) => block('variables_set', {VAR: name}, {VALUE: value});
 const changeVar = (name, delta) => block('math_change', {VAR: name}, {DELTA: delta});
-const defProc = (name, body) => block('procedures_defnoreturn', {NAME: name}, {}, {STACK: body});
+// params: parameter names; they become <mutation><arg name=.../></mutation> (variables are created by name on load).
+const defProc = (name, body, params = []) => ({...block('procedures_defnoreturn', {NAME: name}, {}, {STACK: body}),
+  ...(params.length ? {mutation: {args: params}} : {})});
 // A call block carries its target in <mutation name=...>, not in a field (real Blockly ignores a NAME field).
-const callProc = name => ({...block('procedures_callnoreturn'), mutation: {name}});
+// A call lists the callee's parameter names in the mutation and passes values through ARG0, ARG1 ...
+const callProc = (name, paramNames = [], argValues = []) => ({
+  ...block('procedures_callnoreturn', {}, Object.fromEntries(argValues.map((v, i) => ['ARG' + i, v]))),
+  mutation: {name, args: paramNames}});
 
 module.exports = {
   block, num, shadow, note, SHADOW_INPUTS,

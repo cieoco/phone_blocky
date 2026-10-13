@@ -1,0 +1,156 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="motor_stop">
+     <field name="MOTOR">0</field>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="controls_if">
+       <comment pinned="false" h="130" w="290">新的：副程式配感測器。loop 一直重複，每圈先量距離再決定。超音波沒回波會讀到 −1，也會當成「有障礙」。</comment>
+       <value name="IF0">
+       <block type="logic_compare">
+         <field name="OP">LT</field>
+         <value name="A">
+         <block type="arduino_ultrasonic">
+           <field name="TRIG">2</field>
+           <field name="ECHO">33</field>
+         </block>
+         </value>
+         <value name="B">
+         <block type="math_number">
+           <field name="NUM">20</field>
+         </block>
+         </value>
+       </block>
+       </value>
+       <statement name="DO0">
+       <block type="procedures_callnoreturn">
+         <mutation name="閃避"></mutation>
+       </block>
+       </statement>
+       <statement name="ELSE">
+       <block type="procedures_callnoreturn">
+         <mutation name="開車"><arg name="左輪"></arg><arg name="右輪"></arg></mutation>
+         <value name="ARG0">
+         <block type="math_number">
+           <field name="NUM">50</field>
+         </block>
+         </value>
+         <value name="ARG1">
+         <block type="math_number">
+           <field name="NUM">50</field>
+         </block>
+         </value>
+       </block>
+       </statement>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <shadow type="math_number">
+           <field name="NUM">50</field>
+         </shadow>
+         </value>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+ <block type="procedures_defnoreturn" x="20" y="300">
+   <comment pinned="false" h="100" w="270">閃避的內容整包放這，要改後退多久、轉多大角度只改這裡。</comment>
+   <field name="NAME">閃避</field>
+   <statement name="STACK">
+   <block type="procedures_callnoreturn">
+     <mutation name="開車"><arg name="左輪"></arg><arg name="右輪"></arg></mutation>
+     <value name="ARG0">
+     <block type="math_number">
+       <field name="NUM">-40</field>
+     </block>
+     </value>
+     <value name="ARG1">
+     <block type="math_number">
+       <field name="NUM">-40</field>
+     </block>
+     </value>
+     <next>
+     <block type="arduino_delay">
+       <value name="DELAY_TIME">
+       <shadow type="math_number">
+         <field name="NUM">500</field>
+       </shadow>
+       </value>
+       <next>
+       <block type="procedures_callnoreturn">
+         <mutation name="開車"><arg name="左輪"></arg><arg name="右輪"></arg></mutation>
+         <value name="ARG0">
+         <block type="math_number">
+           <field name="NUM">50</field>
+         </block>
+         </value>
+         <value name="ARG1">
+         <block type="math_number">
+           <field name="NUM">-50</field>
+         </block>
+         </value>
+         <next>
+         <block type="arduino_delay">
+           <value name="DELAY_TIME">
+           <shadow type="math_number">
+             <field name="NUM">400</field>
+           </shadow>
+           </value>
+           <next>
+           <block type="procedures_callnoreturn">
+             <mutation name="開車"><arg name="左輪"></arg><arg name="右輪"></arg></mutation>
+             <value name="ARG0">
+             <block type="math_number">
+               <field name="NUM">0</field>
+             </block>
+             </value>
+             <value name="ARG1">
+             <block type="math_number">
+               <field name="NUM">0</field>
+             </block>
+             </value>
+           </block>
+           </next>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </next>
+   </block>
+   </statement>
+ </block>
+ <block type="procedures_defnoreturn" x="20" y="500">
+   <mutation><arg name="左輪"></arg><arg name="右輪"></arg></mutation>
+   <field name="NAME">開車</field>
+   <statement name="STACK">
+   <block type="motor_pwm">
+     <field name="MOTOR">1</field>
+     <field name="DIRECTION">FORWARD</field>
+     <value name="PWM">
+     <block type="variables_get">
+       <field name="VAR">左輪</field>
+     </block>
+     </value>
+     <next>
+     <block type="motor_pwm">
+       <field name="MOTOR">2</field>
+       <field name="DIRECTION">FORWARD</field>
+       <value name="PWM">
+       <block type="variables_get">
+         <field name="VAR">右輪</field>
+       </block>
+       </value>
+     </block>
+     </next>
+   </block>
+   </statement>
+ </block>
+</xml>

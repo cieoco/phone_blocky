@@ -242,7 +242,7 @@
 | 欄位 | 說明 |
 |------|------|
 | procedures[].name | 副程式名稱，不可重複（`duplicate_procedure`） |
-| procedures[].params | 參數 = 全域變數名（Blockly 送變數 ID）；可省略 = 無參數 |
+| procedures[].params | 參數 = 全域變數名（Blockly 送變數**名稱**，與本體內「取得變數」一致）；可省略 = 無參數 |
 | procedures[].body | 指令陣列，可含 if／迴圈／呼叫其他副程式 |
 | call.name | 要呼叫的副程式；不存在回 `unknown_procedure` |
 | call.args | 數值表達式陣列，個數必須等於 params 個數 |
