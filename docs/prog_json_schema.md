@@ -89,7 +89,7 @@
 | motor  | int  | 3..4   | **僅 M3/M4 有編碼器**,直接指令回 `no_encoder`，PROG 於解析時拒絕    |
 | deg    | int  | —      | 角度 × 100（固定小數點整數）,韌體除以 100 還原 |
 
-- `move_to` 為絕對角度（相對零點）、`move_by` 為相對目前位置
+- `move_to` 為絕對角度（相對零點）；`move_by` 為相對位移：馬達正在定位或保持時以**上一次的目標**為基準（連續分度不累積誤差），否則以目前位置為基準
 - **到位後會主動保持角度**：閉迴路持續修正,被外力推動也會夾回目標（與 joy.html 角度模式同一機制 `POSITION_PHASE_HOLD`）
 - 保持力道/死區由 `holdSettleDeg` / `holdKi` / `holdMaxDuty` 決定（可在 set.html 調整）
 - **解除保持**：對該馬達下 `stop`（或 `pwm` / `speed` 切換模式）

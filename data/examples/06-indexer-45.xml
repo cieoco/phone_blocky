@@ -14,7 +14,7 @@
    <block type="arduino_loop">
      <statement name="LOOP_BODY">
      <block type="motor_move_by">
-       <comment pinned="false" h="140" w="290">move_by 是「從現在的位置再轉多少度」，不是從上一個目標算。所以要先等上一步到位（延遲 1500 毫秒），否則會少轉。轉得慢就把延遲加長，不要設太短。</comment>
+       <comment pinned="false" h="120" w="290">move_by 是「從上一個目標再轉多少度」，所以每步的小誤差不會累積，8 次剛好一圈。延遲 1500 毫秒只是讓你看清楚每一步停在哪。</comment>
        <field name="MOTOR">3</field>
        <value name="DEG">
        <shadow type="math_number">

@@ -161,7 +161,12 @@ private:
 
   bool waitingForResponse = false;
   unsigned long lastMsgPrintTime = 0;
-  unsigned long lastPlotPrintTime = 0;
+  // 繪圖節流「每條曲線各自」50ms。舊版所有曲線共用一個冷卻，兩個繪圖積木相鄰時第二條會被默默丟掉。
+  // 最多記 kPlotSeriesSlots 條，超過的曲線共用最後一格（仍節流，不會洪水）。每套用新程式清空。
+  static const int kPlotSeriesSlots = 8;
+  struct PlotSeriesClock { String series; unsigned long lastMs = 0; };
+  PlotSeriesClock plotClocks[kPlotSeriesSlots];
+  int plotClockCount = 0;
   unsigned long lastPIDTime = 0;
   unsigned long lastTelemetryTime = 0;
   unsigned long lastPositionLogMs[NUM_MOTORS + 1] = {0};
@@ -463,6 +468,15 @@ private:
     resetMotorControlState(motor);
     Serial.printf("[CTRL] M%d zeroed current position as 0 deg\n", motor);
     return true;
+  }
+
+  // move_by 的基準點：馬達正在定位或保持（POSITION 模式）時用「上一次的目標」，
+  // 否則用目前實際位置。舊版一律用實際位置，每步停下的殘差會一路累積
+  // （分度盤轉 8 次不會剛好一圈），上一步還沒走完就下一道也會少走。
+  long moveByBaseTicks(int motor)
+  {
+    if (motorState[motor].mode == MOTOR_MODE_POSITION) return motorState[motor].targetTicks;
+    return getMotorTicks(motor);
   }
 
   void startMotorPositionMove(int motor, long targetTicks, const char *source,
@@ -1197,9 +1211,8 @@ private:
       int motor = doc["motor"] | 0;
       if (!ensureEncoderMotor(motor)) return;
       long centiDeg = doc["deg"] | 0;
-      long currentCentiDeg = ticksToCentiDeg(getMotorTicks(motor));
       long targetCentiDeg = strcmp(cmd, "move_by") == 0
-                                ? currentCentiDeg + centiDeg
+                                ? ticksToCentiDeg(moveByBaseTicks(motor)) + centiDeg
                                 : centiDeg;
       startMotorPositionMove(motor, centiDegToTicks(targetCentiDeg), "CMD", true);
       updateAngleControl();
@@ -1552,6 +1565,7 @@ public:
     procedures.swap(incomingProcedures);
     runtimeVariables.clear();
     memset(pullupPins, 0, sizeof(pullupPins));
+    plotClockCount = 0;
     clearManualControlState();
     if (setupCommands.empty() && loopCommands.empty()) {
       resetActuators();                         // 空程式 = 停止程式：停所有致動器
@@ -2915,6 +2929,18 @@ public:
     return readSensorValue(sensorCmd);
   }
 
+  PlotSeriesClock &plotClockFor(const String &series) {
+    for (int i = 0; i < plotClockCount; i++) {
+      if (plotClocks[i].series == series) return plotClocks[i];
+    }
+    if (plotClockCount < kPlotSeriesSlots) {
+      plotClocks[plotClockCount].series = series;
+      plotClocks[plotClockCount].lastMs = 0;
+      return plotClocks[plotClockCount++];
+    }
+    return plotClocks[kPlotSeriesSlots - 1];
+  }
+
   bool evaluateCondition(int left, char op, int right) {
     switch (op) {
       case '<': return left <  right;
@@ -2977,7 +3003,7 @@ public:
             MOTOR_CAPS[cmd.motor_id - 1].has_encoder && encoder) {
           const long argCentiDeg = (long)numericArg(cmd, cmd.angle);
           long targetCentiDeg = cmd.direction == 'R'
-              ? ticksToCentiDeg(getMotorTicks(cmd.motor_id)) + argCentiDeg
+              ? ticksToCentiDeg(moveByBaseTicks(cmd.motor_id)) + argCentiDeg
               : argCentiDeg;
           startMotorPositionMove(cmd.motor_id, centiDegToTicks(targetCentiDeg), "PROG", true);
           updateAngleControl();
@@ -3072,9 +3098,12 @@ public:
         break;
       }
       case CMD_PLOT: {
+        // 先看節流再讀值：要丟掉的那筆不必去量（超音波一次最多卡 30ms）
+        PlotSeriesClock &clock = plotClockFor(cmd.plotSeries);
+        const unsigned long now = millis();
+        if (clock.lastMs != 0 && now - clock.lastMs < 50) break;
+        clock.lastMs = now;
         int result = readBlocklyValue(cmd);
-        if (millis() - lastPlotPrintTime < 50) break;
-        lastPlotPrintTime = millis();
         if (sendJsonResponseCallback) {
           DynamicJsonDocument respDoc(256);
           respDoc["type"] = "plot";
