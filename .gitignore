@@ -32,3 +32,7 @@ venv/
 # Local secrets (Azure key for inst.py) — never commit
 config.py
 .env
+
+# Match recordings are supplied locally after checking usage permission.
+# Do not redistribute them through this repository.
+/referee_data/audio/*.wav

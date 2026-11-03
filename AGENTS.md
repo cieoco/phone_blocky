@@ -64,7 +64,7 @@ node tests/check_realtime.cjs                                 # joy.html 即時�
 node tests/check_examples.cjs                                 # data/examples/ 內建範例
 node tests/check_hardware_test.cjs                            # hardware_test.html 啟動/執行/確認流程
 node tests/check_oled.cjs                                     # OLED 翻譯／互斥／警告
-node tests/check_competition.cjs                              # 競賽前端、音效去重／原檔雜湊、授權操作
+node tests/check_competition.cjs                              # 競賽前端、音效去重／缺檔處理、授權操作
 ```
 
 - 改了 `ai-relay/prompts.py` 的 `SYSTEM_PROMPT` → 必須執行 `python tools/sync_ai_prompt.py`，把提示詞同步進 `data/ai.html`。
@@ -291,7 +291,7 @@ OLED：SSD1306 I2C 128×32（0.91 吋），SDA21 / SCL22，0x3C 或 0x3D。
 ### ESP-NOW 相撲比賽（獨立建置角色）
 
 - 設計與實作差異：[docs/espnow_competition_sdd.md](docs/espnow_competition_sdd.md)；操作：[docs/competition_setup.md](docs/competition_setup.md)。
-- `esp32dev_referee` 僅編譯 `src/referee_main.cpp`，檔案系統來自 `referee_data/`（含未轉碼 FRC WAV）；`esp32dev_competitor` 使用 `src/competitor_main.cpp` 與既有 `data/`。
+- `esp32dev_referee` 僅編譯 `src/referee_main.cpp`，檔案系統來自 `referee_data/`；repo 不附 WAV，不自動下載。音檔須由操作者確認使用許可後在本機提供，不可提交或隨映像轉散布；`esp32dev_competitor` 使用 `src/competitor_main.cpp` 與既有 `data/`。
 - 競賽角色不得重新開放舊 WS／USB／hardwareTest／I2C 動作入口。`src/competition/Gate.h` 是輸出最後防線；撤權要解除 HOLD、取消舵機脈波、退出長程式且不回中。
 - 配對工具 `tools/competition_pair.py` 只將金鑰寫板上 NVS；不得把配對金鑰或 `--show-credentials` 輸出存入 repo。
 - 修改共用競賽核心後加跑 `bash tools/check_competition_core.sh`（Windows 可從 WSL 執行），它編譯真正的 Core.h／Protocol.h。改韌體需編譯兩個競賽角色並回歸既有兩角色；打包兩角色 `buildfs`。尚未量測的無線同步／停止時限不得宣稱已驗證。

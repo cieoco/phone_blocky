@@ -1,5 +1,6 @@
 {
   "source": "Team254/cheesy-arena",
+  "distribution": "Metadata only. WAV files removed; no redistribution permission obtained. See README.md.",
   "commit": "248d9de497e701223e2cdbc986a19bbfea054c21",
   "modified": false,
   "verification": "Byte-identical repository recordings; event mapping verified against game/match_sounds.go. Venue listening test pending.",

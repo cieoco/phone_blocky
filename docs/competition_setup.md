@@ -28,7 +28,7 @@ pio run -e esp32dev_competitor --target upload --upload-port COM6
 pio run -e esp32dev_competitor --target uploadfs --upload-port COM6
 ```
 
-兩種角色的 `uploadfs` 不可互換。裁判的建置腳本會自動使用 `referee_data/`，包含四個原始 WAV；學生板保留 Blockly。這次未更動分割表。
+兩種角色的 `uploadfs` 不可互換。裁判的建置腳本會自動使用 `referee_data/`；repo 不附 WAV，未提供本機音檔也能建置。音效準備見第 5 節；學生板保留 Blockly。這次未更動分割表。
 
 ## 2. USB 配對與隊伍登記
 
@@ -58,7 +58,7 @@ python tools/competition_pair.py --info COM5 --show-credentials
 
 自動程式：登入後開啟同一控制板的 Blockly，將程式「儲存到 ESP32」。競賽板不接受 Blockly 的直接執行，也不執行 autorun。裁判準備時驗證並鎖定存檔快照；比賽中不能更換程式。混合模式即使先手動，也需先存好自動程式。
 
-自動階段被裁判暫停後，恢復會從 setup 重新執行，保留該階段剩餘時間。請勿假設能從原本 delay、迴圈或副程式的位置接續。
+自動階段被裁判暫停後，恢復會從 setup 重新執行，保留該階段剩餘時間。此規則已於 2026-11-03 由使用者確認定案；賽前需向裁判與參賽者說明。請勿假設能從原本 delay、迴圈或副程式的位置接續。
 
 競賽角色只使用自己的 `/drive` 控制入口；舊 joy.html、USB M/S、USB JSON、hardwareTest、PID 寫入與 I2C 控制入口不啟用。已有的馬達 NVS 調校值會在開機讀入。需要調校時，先用教學角色完成；競賽角色不提供現場邊跑邊調參。
 
@@ -89,11 +89,15 @@ python tools/competition_pair.py --info COM5 --show-credentials
 
 關閉裁判網頁不改變主控板計時，但該頁無法繼續播放音效。裁判板斷電、學生板重啟、換頻、租約逾時或同步失效都會使輸出鎖定，且不會因遲到封包自行恢復。
 
+**無線接收佇列溢位需要重開故障板。** 此旗標會鎖定到重開機，按繼續、清場或建立新比賽均不能解除。先停止本場、確認所有車已安全停止並排查封包過量／主迴圈阻塞，再重新啟動發生溢位的裁判板或學生板；無法辨識是哪塊時，安全停車後重開本場全部板子。之後重新準備一場並等待每車 READY，不延續故障前的比賽；反覆發生時停止使用並排查原因。
+
 時間、模式與勾選名單目前屬本次開機的操作設定，重新開機回預設；隊伍、配對、頻道、密碼與 GPIO 設定存在 NVS。停止未收到回覆時畫面保持未確認，不能假報已停，也不能直接清場。
 
 ## 5. 音效與驗收
 
-四個 WAV 取自 Team 254 Cheesy Arena 的固定 commit `248d9de497e701223e2cdbc986a19bbfea054c21`，未轉碼或合成。來源原始碼的事件映射與每檔 SHA-256 已核對；參考 [音效清單](../referee_data/audio/manifest.json) 與 [來源授權文字](../referee_data/audio/LICENSE.txt)。仍需在場地喇叭試聽，確認是預期版本與音量。
+repo 不再提供 Team 254 的四個 WAV，也不自動下載。上游條款對使用與轉散布有不同限制，本專案未取得另外的轉散布許可；來源與雜湊僅留作歷史紀錄，見 [音效說明](../referee_data/audio/README.md)。移除新版本檔案不會刪除舊公開 Git 歷史。
+
+預設請勾選「靜音」。需要音效時，由操作者自行確認使用許可，在本機 `referee_data/audio/` 提供 `start.wav`、`resume.wav`、`end.wav`、`abort.wav`，再執行裁判角色的 `buildfs` 與 `uploadfs`。四檔皆載入成功才能啟用音效；不要把含音檔的映像發布出去。可選用有適當授權的替代錄音，但不能稱其為 FRC 原版。上板後需試聽版本與音量；本機 WAV 已列入 `.gitignore`。
 
 目前驗證包括原有 Python／Node 回歸、新增前端假環境測試、實際 C++ 核心的假時鐘／故障注入，以及四角色編譯與兩個檔案系統建置。以下是上板後才能完成的驗收：
 

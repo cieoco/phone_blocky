@@ -1,4 +1,4 @@
-/* Original recordings only; this module never synthesizes substitute cues. */
+/* Operator-supplied recordings; no audio assets are distributed in this repo. */
 (function (root) {
   class MatchAudio {
     constructor() { this.context=null; this.buffers={}; this.active=[]; this.ready=false; this.last=null; this.volume=0.8; }
@@ -11,7 +11,7 @@
       await Promise.all(names.map(async name=>{
         if(this.buffers[name])return;
         const r=await fetch(`audio/${name}.wav`,{cache:'force-cache'});
-        if(!r.ok)throw new Error(`無法載入 ${name}.wav，請上傳裁判檔案系統`);
+        if(!r.ok)throw new Error(`缺少 ${name}.wav：repo 不附音檔。請提供有使用許可的音檔後 uploadfs，或勾選靜音。`);
         this.buffers[name]=await this.context.decodeAudioData(await r.arrayBuffer());
       }));
       this.ready=true;this.play('start');
