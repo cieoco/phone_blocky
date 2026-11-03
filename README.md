@@ -62,7 +62,7 @@ pio device monitor           # 序列監視器（115200 baud）
 
 ### 2. 連線使用
 
-韌體以 **AP + STA 雙模式** 啟動：
+以下為一般教學板／學生車的連線方式，韌體以 **AP + STA 雙模式** 啟動：
 
 1. 手機/電腦連上熱點 **`ESP32-XXXX`**（`XXXX` 為板子 MAC 末四碼），預設密碼 `12345678`
 2. 瀏覽器開 **`http://192.168.4.1`**，即進入主選單
@@ -71,11 +71,15 @@ pio device monitor           # 序列監視器（115200 baud）
 
 操作細節見 [docs/操作說明書.md](docs/操作說明書.md)。
 
+裁判板另見 [比賽連線速查](docs/competition_setup.md#連線速查)：AP 名稱為 `<MAC末四碼>-<STA IP>`，沒有 `Ref-` 前綴；連裁判 AP 開 `http://192.168.4.1/`，或連現場路由器後開 STA IP。裁判 AP 密碼為板上產生的裁判操作密碼，不使用學生板預設密碼。目前車輛登記仍使用 USB，無線搜尋及雙裁判協調尚未實作。
+
 ### Wi-Fi 設定
 
 [`include/config.h`](include/config.h) 中的 `CONFIG_STA_SSID` / `CONFIG_STA_PASSWORD` **預設留空**，
 請勿把真實憑證提交進版控。可於本地填入，或留空後透過 `set.html` 設定（存於 NVS/Preferences）。
 AP 密碼與管理密碼亦定義於 `config.h`，正式部署請自行更換。
+
+以上設定適用於一般教學板／學生車；裁判的路由器帳密使用本機且不進版控的 `include/referee_wifi.local.h`，格式見 `include/referee_wifi.example.h`，不透過學生的 `set.html` 設定。
 
 ### AI 中繼服務（選用）
 
