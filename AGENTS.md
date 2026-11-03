@@ -299,8 +299,9 @@ OLED：SSD1306 I2C 128×32（0.91 吋），SDA21 / SCL22，0x3C 或 0x3D。
 - `src/competition/Gate.h` 是輸出最後防線；撤權解除 HOLD、SysId、GPIO/PWM 與舵機脈波，退出長程式且不回中。管制持久化，重開機仍鎖定；正常由本場終局 RELEASE 清場返回教學。裁判故障可由學生原頁開放接管，成功配對新裁判後返回教學；不得以逾時或重開機自行解除。ESP-NOW v2 裁判與學生須一起更新。
 - 同頻道搜尋／登記走 ESP-NOW：`PairingPolicy.h` 管理 60 秒接管窗口與先到先得，`PairingCrypto.h` 以 ECDH 推導金鑰、HMAC 確認持久化配對。搜尋回報不代表認證／READY。更換裁判必須在 `!lease.committed` 時由學生頁確認；先持久化鎖定再移除舊配對。NVS／peer 失敗保留鎖定；只在直譯器外層安全點完成配對與解除。不得清除學生程式、Wi-Fi 或 PID NVS。前端變更加跑 `node tests/check_student_competition.cjs`、`node tests/check_pairing_ui.cjs`。
 - 配對工具 `tools/competition_pair.py` 只將金鑰寫板上 NVS；不得把配對金鑰或 `--show-credentials` 輸出存入 repo。
-- 中央音效：`tools/central_audio/` 是只綁定 localhost 的 Python 標準庫服務＋瀏覽器 UI；音檔讀本機忽略目錄，裁判密碼不落盤。`AudioRoute.h` 播放權與比賽操作權分離，5 秒到期後等待明確手動接回，不得自動恢復本機播放；中央重連不重播舊事件，A／B 允許同時播放。音效相關修改加跑 `node tests/check_central_audio.cjs`；Python unittest 包含本機 HTTP 測試。
-- 修改共用競賽核心後加跑 `bash tools/check_competition_core.sh`（Windows 可從 WSL 執行），它編譯真正的 Core.h／Protocol.h。改韌體需編譯兩個競賽角色並回歸既有兩角色；打包兩角色 `buildfs`。尚未量測的無線同步／停止時限不得宣稱已驗證。
+- 一塊裁判板管理 A／B 兩場：`referee_data/index.html` 驗證操作密碼後分流至各場裁判頁與中央音效頁。`referee_main.cpp` 每場獨立 engine／operator／名單／清場；無線序號與傳輸共用，成功送出後才輪換場地。`ArenaRoster.h` 限制兩場合計 4 車，收到 Release 確認前不可轉場。搜尋／配對僅兩場皆 IDLE 可用；網路或無線佇列故障停止兩場，單車故障只停止所屬場。一般 stop 只影響指定場；stop_all 是另行確認的全場緊急操作。
+- 中央音效：`referee_data/audio.html`＋`central_audio.js` 直接向同一裁判板取狀態，不需 Python。音檔由本機忽略目錄打包 uploadfs；操作密碼只留 sessionStorage，不放 URL 或 localStorage。中央播放權與各場操作權分離，5 秒到期後等待各場明確手動接回，不得自動恢復本機播放；中央重連不重播舊事件，A／B 允許同時播放。相關修改加跑 `node tests/check_central_audio.cjs`、`node tests/check_referee_portal.cjs`。
+- 修改共用競賽核心後加跑 `bash tools/check_competition_core.sh`（Windows 可從 WSL 執行），它編譯真正的 Core.h／Protocol.h／ArenaRoster.h。改韌體需編譯兩個競賽角色並回歸既有兩角色；打包兩角色 `buildfs`。尚未量測的無線同步／停止時限不得宣稱已驗證。
 
 | 需求 | 位置 |
 |------|------|

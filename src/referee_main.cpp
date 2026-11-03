@@ -4,20 +4,18 @@
 #include "competition/PairingPolicy.h"
 #include "competition/PairingCrypto.h"
 #include "competition/AudioRoute.h"
+#include "competition/ArenaRoster.h"
 using namespace Competition;
 
 namespace {
 Settings settings;
 Radio radio;
-MatchEngine engine;
 RefereeStation station;
-StationTicket matchNetwork;
 AsyncWebServer server(80);
 Snapshot snapshot;
 Jobs jobs;
 uint64_t bootId=0;
 bool initialized=false;
-bool releasing=false;
 struct Player {
   Team team;
   uint64_t boot=0,previousBoot=0;
@@ -27,12 +25,24 @@ struct Player {
   uint32_t uncertainty=1000;
   bool syncPending=false, locked=true, fault=false, sync=false, owned=true;
 };
-Player players[MaxPlayers]; size_t playerCount=0, cursor=0;
-Time lastSnapshot=0, generationAt=0;
-uint32_t observedGen=0;
+struct Arena {
+  MatchEngine engine;
+  StationTicket matchNetwork;
+  Player players[MaxPlayers];
+  size_t playerCount=0,cursor=0;
+  bool releasing=false,localAudio=false;
+  String owner;
+  Time ownerSeen=0;
+};
+Arena arenas[ArenaCount];
+ArenaRoster roster;
+size_t nextArena=0;
+Time lastSnapshot=0;
 uint32_t wireSequence=0;
-String lastRequest, lastResult, owner;
-Time ownerSeen=0;
+String lastRequest,lastResult;
+bool allIdle(){for(const auto& a:arenas)if(a.engine.state!=State::Idle)return false;return true;}
+int arenaIndex(const char* id){return !strcmp(id,"A")?0:!strcmp(id,"B")?1:-1;}
+const char* arenaName(size_t index){return index==0?"A":"B";}
 struct RequestResult {String id,result;};
 RequestResult results[16]; size_t resultIndex=0;
 String serialLine;
@@ -56,19 +66,13 @@ void publish() {
   d["wifi_mode"]="AP_STA";d["wifi_connected"]=station.connected();d["wifi_status"]=station.status();
   d["ap_ssid"]=station.apName();d["ap_ip"]=WiFi.softAPIP().toString();
   d["ssid"]=station.ssid();d["ip"]=WiFi.localIP().toString();
-  d["releasing"]=releasing;
-  d["match_id"]=hexId(engine.match); d["version"]=engine.version; d["generation"]=engine.generation;
-  d["state"]=stateName(engine.state); d["mode"]=modeName(engine.config.mode); d["phase_mode"]=modeName(engine.mode());
-  d["first_mode"]=modeName(engine.config.first); d["phase"]=engine.phase; d["remaining_ms"]=uint32_t(engine.remaining(now));
-  d["manual_ms"]=engine.config.manualMs; d["auto_ms"]=engine.config.autoMs; d["gap_ms"]=engine.config.gapMs;
-  d["event_id"]=engine.event; d["sound"]=engine.sound; d["reason"]=engine.reason;
   d["audio_route"]=audioRoute.name(now);
   d["audio_owner"]=audioRoute.central(now)?hexId(audioRoute.holder):String("");
   d["audio_lease_ms"]=audioRoute.central(now)?uint32_t(audioRoute.until-now):0;
   d["request_id"]=lastRequest; d["request_result"]=lastResult;
   JsonArray history=d.createNestedArray("results");
   for(const auto& result:results)if(result.id.length()){JsonObject item=history.createNestedObject();item["id"]=result.id;item["result"]=result.result;}
-  d["channel"]=station.channel(); d["owner"]=owner;
+  d["channel"]=station.channel();d["registration_available"]=allIdle();d["max_concurrent_players"]=MaxConcurrentPlayers;
   d["scanning"]=now<scanUntil;d["pairing"]=pairing.active;
   d["pair_result"]=pairResult;d["pair_mac"]=pairMac;
   JsonArray found=d.createNestedArray("discovered");
@@ -79,27 +83,39 @@ void publish() {
     t["available"]=bool(car.flags&8) && now-car.seen<DiscoveryFreshMs;
   }
   JsonArray teams=d.createNestedArray("teams");
-  for(size_t i=0;i<settings.count;++i) {JsonObject t=teams.createNestedObject();t["mac"]=macString(settings.teams[i].mac);t["name"]=settings.teams[i].name;}
-  JsonArray ps=d.createNestedArray("players");
-  for(size_t i=0;i<playerCount;++i) {
-    Player& p=players[i]; JsonObject x=ps.createNestedObject(); x["mac"]=macString(p.team.mac); x["name"]=p.team.name;
-    x["online"]=p.lastStatus && now-p.lastStatus<HealthMs;
-    x["prepared"]=p.readyGen==engine.generation; x["committed"]=p.commitGen==engine.generation;
-    x["locked_confirmed"]=p.locked && p.appliedGen==engine.generation && p.lastStatus && now-p.lastStatus<HealthMs;
-    x["fault"]=p.fault; x["synced"]=p.sync; x["sync_error_ms"]=p.uncertainty; x["program_hash"]=p.hash;
+  for(size_t i=0;i<settings.count;++i) {JsonObject t=teams.createNestedObject();t["mac"]=macString(settings.teams[i].mac);t["name"]=settings.teams[i].name;int assigned=roster.owner(settings.teams[i].mac);t["arena"]=assigned<0?"":arenaName(assigned);}
+  JsonArray matches=d.createNestedArray("arenas");
+  for(size_t index=0;index<ArenaCount;++index) {
+    Arena& a=arenas[index];JsonObject item=matches.createNestedObject();
+    item["id"]=arenaName(index);item["owner"]=a.owner;
+    item["audio_route"]=audioRoute.central(now)?"CENTRAL":a.localAudio?"LOCAL":"WAITING";
+    item["releasing"]=a.releasing;
+    item["match_id"]=hexId(a.engine.match); item["version"]=a.engine.version; item["generation"]=a.engine.generation;
+    item["state"]=stateName(a.engine.state); item["mode"]=modeName(a.engine.config.mode); item["phase_mode"]=modeName(a.engine.mode());
+    item["first_mode"]=modeName(a.engine.config.first); item["phase"]=a.engine.phase; item["remaining_ms"]=uint32_t(a.engine.remaining(now));
+    item["manual_ms"]=a.engine.config.manualMs; item["auto_ms"]=a.engine.config.autoMs; item["gap_ms"]=a.engine.config.gapMs;
+    item["event_id"]=a.engine.event; item["sound"]=a.engine.sound; item["reason"]=a.engine.reason;
+    JsonArray ps=item.createNestedArray("players");
+    for(size_t i=0;i<a.playerCount;++i) {
+      Player& p=a.players[i]; JsonObject x=ps.createNestedObject(); x["mac"]=macString(p.team.mac); x["name"]=p.team.name;
+      x["online"]=p.lastStatus && now-p.lastStatus<HealthMs;
+      x["prepared"]=p.readyGen==a.engine.generation; x["committed"]=p.commitGen==a.engine.generation;
+      x["locked_confirmed"]=p.locked && p.appliedGen==a.engine.generation && p.lastStatus && now-p.lastStatus<HealthMs;
+      x["fault"]=p.fault; x["synced"]=p.sync; x["sync_error_ms"]=p.uncertainty; x["program_hash"]=p.hash;
+    }
   }
   String s;serializeJson(d,s);snapshot.set(s);
 }
-bool allHealthy(Time now) {
-  if(!playerCount) return false;
-  for(size_t i=0;i<playerCount;++i) {
-    Player& p=players[i]; if(p.fault || !p.sync || !p.lastStatus || now-p.lastStatus>HealthMs) return false;
+bool allHealthy(Arena& a,Time now) {
+  if(!a.playerCount) return false;
+  for(size_t i=0;i<a.playerCount;++i) {
+    Player& p=a.players[i]; if(p.fault || !p.sync || !p.lastStatus || now-p.lastStatus>HealthMs) return false;
   } return true;
 }
-bool allReady() {if(!playerCount)return false;for(size_t i=0;i<playerCount;++i)if(players[i].readyGen!=engine.generation)return false;return true;}
-bool allCommitted() {if(!playerCount)return false;for(size_t i=0;i<playerCount;++i)if(players[i].commitGen!=engine.generation)return false;return true;}
-bool allLocked() {for(size_t i=0;i<playerCount;++i)if(!players[i].locked || players[i].appliedGen!=engine.generation || nowMs()-players[i].lastStatus>HealthMs)return false;return true;}
-void releasePlayers() {for(size_t i=0;i<playerCount;++i)radio.remove(players[i].team.mac);playerCount=0;}
+bool allReady(Arena& a) {if(!a.playerCount)return false;for(size_t i=0;i<a.playerCount;++i)if(a.players[i].readyGen!=a.engine.generation)return false;return true;}
+bool allCommitted(Arena& a) {if(!a.playerCount)return false;for(size_t i=0;i<a.playerCount;++i)if(a.players[i].commitGen!=a.engine.generation)return false;return true;}
+bool allLocked(Arena& a) {for(size_t i=0;i<a.playerCount;++i)if(!a.players[i].locked || a.players[i].appliedGen!=a.engine.generation || nowMs()-a.players[i].lastStatus>HealthMs)return false;return true;}
+void releasePlayers(Arena& a) {for(size_t i=0;i<a.playerCount;++i)radio.remove(a.players[i].team.mac);a.playerCount=0;roster.release(size_t(&a-arenas));}
 Mode parseMode(const char* s) {return !strcmp(s,"MANUAL")?Mode::Manual:!strcmp(s,"AUTO")?Mode::Auto:!strcmp(s,"MIXED")?Mode::Mixed:Mode(0);}
 const char* action(JsonDocument& d) {
   const char* op=d["action"]|""; Time now=nowMs();
@@ -108,29 +124,36 @@ const char* action(JsonDocument& d) {
   if(!strcmp(op,"audio_heartbeat") || !strcmp(op,"audio_release")) {
     uint64_t id=0;if(!parseId(d["audio_id"]|"",id) || !id)return "invalid_audio_id";
     bool ok=!strcmp(op,"audio_heartbeat")?audioRoute.heartbeat(id,now):audioRoute.release(id);
+    if(ok && !strcmp(op,"audio_heartbeat"))for(auto& a:arenas)a.localAudio=false;
     return ok?"ok":"another_audio_station";
   }
+  int index=arenaIndex(d["arena"]|"");if(index<0)return "invalid_arena";
+  Arena& a=arenas[index];
   if(!strcmp(op,"claim")) {
     String id=d["operator"]|""; if(id.length()<8 || id.length()>48) return "invalid_operator";
-    if(owner.length() && owner!=id && now-ownerSeen<10000) return "another_operator";
-    owner=id;ownerSeen=now;return "ok";
+    if(a.owner.length() && a.owner!=id && now-a.ownerSeen<10000) return "another_operator";
+    a.owner=id;a.ownerSeen=now;return "ok";
   }
-  if(owner.length()==0 || owner!=String(d["operator"]|"")) return "claim_control_first";
-  ownerSeen=now;
+  if(a.owner.length()==0 || a.owner!=String(d["operator"]|"")) return "claim_control_first";
+  a.ownerSeen=now;
   if(!strcmp(op,"heartbeat")) return "ok";
-  if(!strcmp(op,"audio_local"))return audioRoute.takeLocal(now)?"ok":"central_audio_online";
-  if(!strcmp(op,"stop")) {
-    if(String(d["match_id"]|"")!=hexId(engine.match))return "wrong_match";
-    return engine.stop()?"ok":"invalid_state";
+  if(!strcmp(op,"audio_local"))return (audioRoute.central(now)?"central_audio_online":(a.localAudio=true,"ok"));
+  if(!strcmp(op,"stop_all")) {
+    // Explicit all-arena emergency action; an arena operator must hold control.
+    for(auto& field:arenas)field.engine.stop();return "ok";
   }
-  if(!d["expected_version"].is<uint32_t>() || d["expected_version"].as<uint32_t>()!=engine.version) return "state_conflict";
+  if(!strcmp(op,"stop")) {
+    if(String(d["match_id"]|"")!=hexId(a.engine.match))return "wrong_match";
+    return a.engine.stop()?"ok":"invalid_state";
+  }
+  if(!d["expected_version"].is<uint32_t>() || d["expected_version"].as<uint32_t>()!=a.engine.version) return "state_conflict";
   if(!strcmp(op,"scan")) {
-    if(engine.state!=State::Idle || pairing.active)return "invalid_state";
+    if(!allIdle() || pairing.active)return "registration_busy";
     if(!station.ready())return station.status();
     discoveryId=randomId();scanUntil=now+15000;scanSent=0;discoveredCount=0;return "ok";
   }
   if(!strcmp(op,"pair")) {
-    if(engine.state!=State::Idle || pairing.active)return "invalid_state";
+    if(!allIdle() || pairing.active)return "registration_busy";
     if(!station.ready())return station.status();
     uint8_t mac[6];if(!parseMac(d["mac"]|"",mac))return "invalid_mac";
     Discovered* car=nullptr;for(size_t i=0;i<discoveredCount;++i)if(!memcmp(mac,discovered[i].mac,6))car=&discovered[i];
@@ -150,39 +173,42 @@ const char* action(JsonDocument& d) {
     pairMac=macString(mac);pairResult="pending";return "ok";
   }
   if(!strcmp(op,"prepare")) {
-    if(engine.state!=State::Idle || pairing.active)return "invalid_state";
+    if(a.engine.state!=State::Idle || pairing.active)return "invalid_state";
     if(!station.ready())return station.status();
     Config c; c.mode=parseMode(d["mode"]|"");c.first=parseMode(d["first_mode"]|"");
     if(!d["manual_ms"].is<uint32_t>() || !d["auto_ms"].is<uint32_t>() || !d["gap_ms"].is<uint32_t>())return "invalid_time";
     c.manualMs=d["manual_ms"];c.autoMs=d["auto_ms"];c.gapMs=d["gap_ms"];
     JsonArray selected=d["teams"].as<JsonArray>();
     if(!c.valid()||selected.size()<1||selected.size()>MaxPlayers)return "invalid_config";
-    Team chosen[MaxPlayers];size_t count=0;
+    Team chosen[MaxPlayers];uint8_t selectedMacs[MaxPlayers][6]={};size_t count=0;
     for(JsonVariant v:selected) {
       uint8_t mac[6];if(!parseMac(v.as<String>(),mac))return "invalid_mac";
       int idx=settings.index(mac);if(idx<0)return "not_paired";
       for(size_t j=0;j<count;++j)if(!memcmp(mac,chosen[j].mac,6))return "duplicate_team";
-      chosen[count++]=settings.teams[idx];
+      memcpy(selectedMacs[count],mac,6);chosen[count++]=settings.teams[idx];
     }
-    releasePlayers();
+    const char* admission=roster.check(size_t(index),selectedMacs,count);
+    if(strcmp(admission,"ok"))return admission;
+    releasePlayers(a);
     for(size_t i=0;i<count;++i) {
-      players[i]=Player();players[i].team=chosen[i];
-      if(!radio.add(chosen[i],0)){releasePlayers();return "peer_add_failed";} // follow current STA channel
-      ++playerCount;
+      a.players[i]=Player();a.players[i].team=chosen[i];
+      if(!radio.add(chosen[i],0)){releasePlayers(a);return "peer_add_failed";} // follow current STA channel
+      ++a.playerCount;
     }
-    scanUntil=0;matchNetwork=station.ticket();engine.prepare(c,randomId(),now);return "ok";
+    roster.reserve(size_t(index),selectedMacs,count);
+    scanUntil=0;a.matchNetwork=station.ticket();a.engine.prepare(c,randomId(),now);return "ok";
   }
-  if(!strcmp(op,"start"))return engine.begin(now)?"ok":"invalid_state";
-  if(!strcmp(op,"pause"))return engine.pause(now)?"ok":"invalid_state";
-  if(!strcmp(op,"resume"))return engine.resume(now)?"ok":"invalid_state";
+  if(!strcmp(op,"start"))return a.engine.begin(now)?"ok":"invalid_state";
+  if(!strcmp(op,"pause"))return a.engine.pause(now)?"ok":"invalid_state";
+  if(!strcmp(op,"resume"))return a.engine.resume(now)?"ok":"invalid_state";
   if(!strcmp(op,"cancel")) {
-    if(engine.state!=State::Ready && engine.state!=State::Preparing)return "invalid_state";
-    engine.stop();return "ok";
+    if(a.engine.state!=State::Ready && a.engine.state!=State::Preparing)return "invalid_state";
+    a.engine.stop();return "ok";
   }
   if(!strcmp(op,"reset")) {
-    if(!engine.terminal())return "invalid_state";
-    if(!allLocked())return "stop_not_confirmed";
-    releasing=true;return "ok"; // Release is acknowledged before removing peers.
+    if(!a.engine.terminal())return "invalid_state";
+    if(!allLocked(a))return "stop_not_confirmed";
+    a.releasing=true;return "ok"; // Release is acknowledged before removing peers.
   }
   return "unknown_action";
 }
@@ -212,11 +238,13 @@ void receivePackets() {
       }
       continue;
     }
-    Player* pp=nullptr;for(size_t i=0;i<playerCount;++i)if(!memcmp(players[i].team.mac,r.mac,6))pp=&players[i];
+    int index=roster.owner(r.mac);if(index<0)continue;
+    Arena& a=arenas[index];
+    Player* pp=nullptr;for(size_t i=0;i<a.playerCount;++i)if(!memcmp(a.players[i].team.mac,r.mac,6))pp=&a.players[i];
     if(!pp || packet.controllerBoot!=bootId)continue; Player& p=*pp;
     if(p.boot && p.boot!=packet.deviceBoot) {
       if(packet.type!=Message::Pong || get(packet.payload,8)!=p.pingT1 || packet.deviceBoot==p.previousBoot)continue;
-      engine.fault("student_rebooted");p.previousBoot=p.boot;p.boot=packet.deviceBoot;
+      a.engine.fault("student_rebooted");p.previousBoot=p.boot;p.boot=packet.deviceBoot;
       p.rx=p.readyGen=p.commitGen=p.disabledGen=0;p.lastStatus=0;
     }
     if(packet.sequence<=p.rx || !packet.deviceBoot)continue;
@@ -227,11 +255,11 @@ void receivePackets() {
       Time rtt=(t4-t1)-(t3-t2); if(rtt>18)continue;
       p.offset=((int64_t(t1)-int64_t(t2))+(int64_t(t4)-int64_t(t3)))/2;
       p.uncertainty=uint32_t((rtt+1)/2)+1;p.syncPending=true;
-    } else if(packet.type==Message::Status && packet.match==engine.match) {
+    } else if(packet.type==Message::Status && packet.match==a.engine.match) {
       p.lastStatus=r.received;p.appliedGen=packet.generation;p.locked=packet.payload[13];p.fault=packet.payload[3];p.sync=packet.payload[14];
       p.hash=uint32_t(get(packet.payload+8,4));
       p.owned=packet.payload[15];
-      if(packet.generation==engine.generation) {
+      if(packet.generation==a.engine.generation) {
         p.readyGen=packet.payload[0] && p.sync && !p.fault?packet.generation:0;
         p.commitGen=packet.payload[1] && p.sync && !p.fault?packet.generation:0;
       }
@@ -239,7 +267,7 @@ void receivePackets() {
   }
 }
 void discoveryTransmit() {
-  if(engine.state!=State::Idle)return;
+  if(!allIdle())return;
   Time now=nowMs();
   if(pairing.active && (now>=pairing.until || !station.ready() || station.channel()!=pairing.channel)) {
     pairing.active=false;pairResult="pairing_unconfirmed";radio.remove(pairing.team.mac);
@@ -256,43 +284,45 @@ void discoveryTransmit() {
     ++wireSequence;if(p.type==Message::Discover)scanSent=now;else pairing.sent=now;
   }
 }
-void transmit() {
-  if(!playerCount || !station.ready())return;
-  if(engine.active() && !station.matches(matchNetwork))engine.fault("referee_network_changed");
+bool transmit(Arena& a) {
+  if(!a.playerCount || !station.ready())return false;
+  if(a.engine.active() && !station.matches(a.matchNetwork))a.engine.fault("referee_network_changed");
   Time now=nowMs();
-  for(size_t n=0;n<playerCount;++n) {
-    Player& p=players[(cursor+n)%playerCount];
+  for(size_t n=0;n<a.playerCount;++n) {
+    Player& p=a.players[(a.cursor+n)%a.playerCount];
     if(now-p.lastSend<20)continue;
-    Packet q;q.controllerBoot=bootId;q.match=engine.match;q.deviceBoot=p.boot;q.generation=engine.generation;q.sequence=wireSequence+1;q.sent=now;
-    if(!q.sequence){engine.fault("sequence_exhausted");return;}
-    bool disable=engine.terminal() || engine.state==State::Paused;
-    if(releasing && (!p.boot || now-p.lastPing>=700)) {q.type=Message::Ping;q.deviceBoot=0;}
-    else if(releasing && p.disabledGen!=engine.generation) {q.type=Message::Disable;q.payload[0]=1;}
-    else if(releasing) {q.type=Message::Release;}
-    else if(disable && (p.disabledGen!=engine.generation || now-p.lastDisable>=RenewMs)) {q.type=Message::Disable;q.payload[0]=engine.terminal();}
+    Packet q;q.controllerBoot=bootId;q.match=a.engine.match;q.deviceBoot=p.boot;q.generation=a.engine.generation;q.sequence=wireSequence+1;q.sent=now;
+    if(!q.sequence){a.engine.fault("sequence_exhausted");return false;}
+    bool disable=a.engine.terminal() || a.engine.state==State::Paused;
+    if(a.releasing && (!p.boot || now-p.lastPing>=700)) {q.type=Message::Ping;q.deviceBoot=0;}
+    else if(a.releasing && p.disabledGen!=a.engine.generation) {q.type=Message::Disable;q.payload[0]=1;}
+    else if(a.releasing) {q.type=Message::Release;}
+    else if(disable && (p.disabledGen!=a.engine.generation || now-p.lastDisable>=RenewMs)) {q.type=Message::Disable;q.payload[0]=a.engine.terminal();}
     else if(p.syncPending) {q.type=Message::Sync;put(q.payload,uint64_t(p.offset),8);put(q.payload+8,p.uncertainty,4);}
     else if(!p.boot || now-p.lastPing>=700) {q.type=Message::Ping;q.deviceBoot=0;}
-    else if(engine.active() && engine.state!=State::Paused && p.readyGen!=engine.generation) {
-      q.type=Message::Prepare;q.payload[0]=uint8_t(engine.mode());q.payload[1]=engine.config.mode!=Mode::Manual;
-    } else if(engine.scheduling() && p.commitGen!=engine.generation) {
-      q.type=Message::Commit;q.effective=engine.start;put(q.payload,engine.end,8);
-    } else if((engine.running() || (engine.scheduling() && engine.guardPassed)) && now-p.lastRenew>=RenewMs) {
-      q.type=Message::Renew;q.until=std::min(now+LeaseMs,engine.end);
+    else if(a.engine.active() && a.engine.state!=State::Paused && p.readyGen!=a.engine.generation) {
+      q.type=Message::Prepare;q.payload[0]=uint8_t(a.engine.mode());q.payload[1]=a.engine.config.mode!=Mode::Manual;
+    } else if(a.engine.scheduling() && p.commitGen!=a.engine.generation) {
+      q.type=Message::Commit;q.effective=a.engine.start;put(q.payload,a.engine.end,8);
+    } else if((a.engine.running() || (a.engine.scheduling() && a.engine.guardPassed)) && now-p.lastRenew>=RenewMs) {
+      q.type=Message::Renew;q.until=std::min(now+LeaseMs,a.engine.end);
     } else if(now-p.lastView>=100) {
-      q.type=Message::View;q.payload[0]=uint8_t(engine.state);q.payload[1]=uint8_t(engine.mode());put(q.payload+2,engine.remaining(now),4);
+      q.type=Message::View;q.payload[0]=uint8_t(a.engine.state);q.payload[1]=uint8_t(a.engine.mode());put(q.payload+2,a.engine.remaining(now),4);
     } else continue;
     q.length=payloadSize(q.type);
     if(radio.send(p.team.mac,q)) {
       wireSequence=q.sequence;p.tx=q.sequence;p.lastSend=now;
       if(q.type==Message::Ping){p.lastPing=now;p.pingT1=now;}
       if(q.type==Message::Sync)p.syncPending=false;
-      if(q.type==Message::Disable){p.disabledGen=engine.generation;p.lastDisable=now;}
+      if(q.type==Message::Disable){p.disabledGen=a.engine.generation;p.lastDisable=now;}
       if(q.type==Message::Renew)p.lastRenew=now;
       if(q.type==Message::View)p.lastView=now;
-      cursor=(cursor+n+1)%playerCount;
+      a.cursor=(a.cursor+n+1)%a.playerCount;
+      return true;
     }
-    return;
+    return false;
   }
+  return false;
 }
 void serialCommands() {
   while(Serial.available()) {
@@ -307,7 +337,7 @@ void serialCommands() {
       out["ap_ssid"]=station.apName();out["ap_ip"]=WiFi.softAPIP().toString();
       out["ssid"]=station.ssid();out["ip"]=WiFi.localIP().toString();out["key"]=settings.secret;
     }
-    else if(!strcmp(cmd,"competition_pair") && engine.state==State::Idle) {
+    else if(!strcmp(cmd,"competition_pair") && allIdle() && !pairing.active) {
       Team t;String name=d["name"]|"";
       if(parseMac(d["mac"]|"",t.mac)&&parseKey(d["key"]|"",t.key)&&name.length()&&name.length()<sizeof(t.name)) {
         name.toCharArray(t.name,sizeof(t.name));out["ok"]=settings.saveTeam(t);
@@ -330,23 +360,33 @@ void setup() {
     if(!jobs.push(data,n)){errorResponse(r,503,"queue_full");return;}
     r->send(202,"application/json","{\"ok\":true,\"queued\":true}");
   }));
-  staticFiles(server,"/competition.html");publish();server.begin();
+  server.addHandler(new JsonEndpoint("/api/competition/login",16,[](AsyncWebServerRequest* r,const char*,size_t){
+    if(authenticate(r,settings.secret))r->send(200,"application/json","{\"ok\":true}");
+  }));
+  staticFiles(server,"/index.html");publish();server.begin();
 }
 void loop() {
   if(!initialized){delay(100);return;}
   Time now=nowMs();station.tick();receivePackets();
-  if(releasing) {
-    bool released=playerCount>0;
-    for(size_t i=0;i<playerCount;++i)if(players[i].owned || players[i].appliedGen!=engine.generation || now-players[i].lastStatus>HealthMs)released=false;
-    if(released){engine.reset();releasePlayers();releasing=false;}
+  for(auto& a:arenas) {
+    if(a.releasing) {
+      bool released=a.playerCount>0;
+      for(size_t i=0;i<a.playerCount;++i)if(a.players[i].owned || a.players[i].appliedGen!=a.engine.generation || now-a.players[i].lastStatus>HealthMs)released=false;
+      if(released){a.engine.reset();releasePlayers(a);a.releasing=false;}
+    }
+    if(radio.failed())a.engine.fault("radio_queue_or_callback_failure");
+    if(a.engine.active() && !station.matches(a.matchNetwork))a.engine.fault("referee_network_changed");
+    if(a.engine.state==State::Preparing && allReady(a))a.engine.ready();
+    bool healthy=allHealthy(a,now);
+    a.engine.tick(now,healthy,allCommitted(a)); // deadlines take precedence over UI actions
   }
-  if(engine.generation!=observedGen){observedGen=engine.generation;generationAt=now;}
-  if(radio.failed())engine.fault("radio_queue_or_callback_failure");
-  if(engine.active() && !station.matches(matchNetwork))engine.fault("referee_network_changed");
-  if(engine.state==State::Preparing && allReady())engine.ready();
-  bool healthy=allHealthy(now);
-  engine.tick(now,healthy,allCommitted()); // deadlines take precedence over UI actions
-  webJobs();serialCommands();transmit();discoveryTransmit();
+  webJobs();serialCommands();
+  // Advance only on a successful send, independent of callback/loop timing.
+  for(size_t i=0;i<ArenaCount;++i) {
+    size_t index=(nextArena+i)%ArenaCount;
+    if(transmit(arenas[index])){nextArena=(index+1)%ArenaCount;break;}
+  }
+  discoveryTransmit();
   if(now-lastSnapshot>=100){lastSnapshot=now;publish();}
   delay(1);
 }

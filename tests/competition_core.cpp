@@ -4,10 +4,35 @@
 #include "../src/competition/StationPolicy.h"
 #include "../src/competition/PairingPolicy.h"
 #include "../src/competition/AudioRoute.h"
+#include "../src/competition/ArenaRoster.h"
 #include <cassert>
 #include <iostream>
 using namespace Competition;
 int main() {
+  ArenaRoster roster;
+  const uint8_t red[][6]={{1,2,3,4,5,6},{1,2,3,4,5,7}};
+  const uint8_t blue[][6]={{1,2,3,4,5,8},{1,2,3,4,5,9}};
+  const uint8_t tooMany[][6]={{1,2,3,4,5,8},{1,2,3,4,5,9},{1,2,3,4,5,10}};
+  const uint8_t duplicate[][6]={{1,2,3,4,5,6},{1,2,3,4,5,6}};
+  assert(!roster.reserve(2,red,2));assert(!roster.reserve(0,duplicate,2));
+  assert(roster.reserve(0,red,2));
+  assert(!strcmp(roster.check(1,red,2),"team_in_other_arena"));
+  assert(!strcmp(roster.check(1,tooMany,3),"participant_capacity"));
+  assert(roster.reserve(1,blue,2));assert(roster.owner(red[0])==0);assert(roster.owner(blue[0])==1);
+  MatchEngine fieldA,fieldB;Config configA,configB;configB.mode=Mode::Auto;configB.autoMs=10000;
+  assert(fieldA.prepare(configA,101,0));assert(fieldB.prepare(configB,202,0));
+  assert(fieldA.ready());assert(fieldB.ready());assert(fieldA.begin(0));assert(fieldB.begin(100));
+  fieldA.tick(1200,true,true);fieldB.tick(1300,true,true);
+  assert(fieldA.state==State::Manual && fieldB.state==State::Auto);
+  const auto bVersion=fieldB.version,bGeneration=fieldB.generation;const auto bEnd=fieldB.end;
+  assert(fieldA.pause(1400));assert(fieldB.version==bVersion && fieldB.end==bEnd);
+  assert(fieldA.resume(1500));assert(fieldA.stop());assert(fieldB.generation==bGeneration);
+  assert(!roster.reserve(1,red,2)); // terminal A still reserves its cars
+  assert(fieldA.reset());roster.release(0); // firmware calls only after Release ACK
+  assert(roster.owner(red[0])==-1 && roster.owner(blue[0])==1);
+  fieldB.tick(bEnd,true,true);assert(fieldB.state==State::Finished);
+  roster.release(1);assert(roster.reserve(1,red,2)); // transfer after clear
+  assert(fieldA.state==State::Idle);assert(fieldB.match==202);
   AudioRoute audio;
   assert(!strcmp(audio.name(0),"WAITING"));
   assert(audio.takeLocal(0));assert(!strcmp(audio.name(0),"LOCAL"));

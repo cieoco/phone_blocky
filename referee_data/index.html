@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>相撲比賽中心</title><link rel="stylesheet" href="portal.css?v=20261104-arenas"></head>
+<body><main><p class="eyebrow">SUMO · CLASSROOM</p><h1>相撲比賽中心</h1><p>所有裝置開啟同一個網址，登入後選擇工作頁面。</p>
+<section id="loginPanel"><h2>裁判登入</h2><form id="login"><label for="key">裁判操作密碼</label><input id="key" type="password" autocomplete="current-password" required><button id="submit" class="primary">登入</button></form><p class="muted">使用裁判板操作密碼（與裁判 AP 密碼相同）。</p></section>
+<section id="routes" hidden><div class="heading"><h2>選擇工作頁面</h2><button id="logout">登出此頁</button></div><div class="cards">
+<a class="card" href="competition.html?arena=A"><span>A 場</span><h2>A 場裁判</h2><p>選隊、設定模式、開始與停止 A 場。</p></a>
+<a class="card" href="competition.html?arena=B"><span>B 場</span><h2>B 場裁判</h2><p>獨立管理 B 場，可與 A 場同時比賽。</p></a>
+<a class="card" href="audio.html"><span>喇叭 PC</span><h2>中央音效台</h2><p>按一次啟用，播放兩場提示音。兩場音效可同時播放。</p></a>
+</div><p class="muted">兩場合計最多 4 台參賽車。同一台車清場完成後才能轉場。車輛搜尋與登記請在兩場皆空閒時進行。</p></section>
+<p id="notice" role="alert"></p></main><script src="portal.js?v=20261104-arenas"></script></body></html>

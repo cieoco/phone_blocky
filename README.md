@@ -73,7 +73,7 @@ pio device monitor           # 序列監視器（115200 baud）
 
 裁判板另見 [比賽連線速查](docs/competition_setup.md#連線速查)：AP 名稱為 `<MAC末四碼>-<STA IP>`，沒有 `Ref-` 前綴；連裁判 AP 開 `http://192.168.4.1/`，或連現場路由器後開 STA IP。裁判 AP 密碼為板上產生的裁判操作密碼，不使用學生板預設密碼。裁判頁可透過 ESP-NOW 搜尋同頻道車輛並登記；更換裁判時，先在學生原頁按「允許更換裁判」。日常登記不需 USB；跨頻道自動搜尋與實體板驗收尚未完成。
 
-兩場共用一台接喇叭的 PC 時，可使用 [中央音效台](tools/central_audio/README.md)：Python 標準函式庫＋瀏覽器網頁，雙擊 `tools/central_audio/run.bat` 啟動。中央啟用後自動接管聲音，裁判仍各自控制比賽。
+一塊裁判板提供統一登入入口，登入後選 **A 場裁判／B 場裁判／中央音效台**。兩場獨立計時與控制，共用最多 4 台參賽車；同一車不可同時參加兩場。接喇叭的 PC 開中央音效頁並按啟用，即可播放兩場聲音，不需 Python。更新時須燒錄裁判韌體及 `uploadfs`，詳見 [操作與音效說明](docs/competition_setup.md)。
 
 ### Wi-Fi 設定
 
