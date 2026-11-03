@@ -2,6 +2,7 @@
 #define PWM_MANAGER_H
 
 #include <Arduino.h>
+#include "competition/Gate.h"
 
 class PWMManager
 {
@@ -51,6 +52,7 @@ public:
 
   void dynamicAnalogWrite(int pin, int value)
   {
+    if (!CompetitionGate::allowed()) return;
     int ch = getChannelForPin(pin);
     if (ch < 0)
     {
@@ -64,6 +66,17 @@ public:
       channelInitialized[ch] = true;
     }
     ledcWrite(ch, value);
+  }
+
+  void disableOutputs() {
+    for (int ch = 0; ch < MAX_CHANNELS; ++ch) {
+      if (!channelInitialized[ch]) continue;
+      ledcWrite(ch, 0);
+      ledcDetachPin(pinChannel[ch]);
+      pinMode(pinChannel[ch], OUTPUT);
+      digitalWrite(pinChannel[ch], LOW);
+    }
+    initChannels();
   }
 };
 

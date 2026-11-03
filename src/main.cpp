@@ -367,6 +367,9 @@ void setup() {
   // CommandProcessor 直接 include I2CSlaveBridge：後者建構時就吃
   // CommandProcessor&，反向 include 會造成循環相依。
   cmdProcessor.setExternalFunctions(&i2cBridge.functions());
+  cmdProcessor.setI2cOwnershipHook([](bool downstream) {
+    i2cBridge.setSuspended(downstream);
+  });
 
   // 程式在 delay / 迴圈裡時 jsonTask 回不到頂層；靠這個掛鉤（jsonTask 情境、約每 10ms）
   // 照常落地主機命令與跑看門狗，主機的 STOP_ALL、0x65 設定值不必等 delay 結束。

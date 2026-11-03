@@ -1,0 +1,48 @@
+{
+  "source": "Team254/cheesy-arena",
+  "commit": "248d9de497e701223e2cdbc986a19bbfea054c21",
+  "modified": false,
+  "verification": "Byte-identical repository recordings; event mapping verified against game/match_sounds.go. Venue listening test pending.",
+  "files": [
+    {
+      "name": "start",
+      "file": "start.wav",
+      "bytes": 37832,
+      "sha256": "6c1a61c91b68d594d22c2cfdc5d110eaec21b9f5b214e3a4c36e11a095bc8df0",
+      "sample_rate": 11025,
+      "channels": 1,
+      "duration_seconds": 1.7137,
+      "source": "https://github.com/Team254/cheesy-arena/blob/248d9de497e701223e2cdbc986a19bbfea054c21/static/audio/start.wav"
+    },
+    {
+      "name": "resume",
+      "file": "resume.wav",
+      "bytes": 70832,
+      "sha256": "a34bfdc52e8e441eeeaa30b95af28df46d2f6637901a2f75f30aba8ddc88d45d",
+      "sample_rate": 22050,
+      "channels": 1,
+      "duration_seconds": 1.6052,
+      "source": "https://github.com/Team254/cheesy-arena/blob/248d9de497e701223e2cdbc986a19bbfea054c21/static/audio/resume.wav"
+    },
+    {
+      "name": "end",
+      "file": "end.wav",
+      "bytes": 65652,
+      "sha256": "11d81b82b77cee873244f7b4c4774d7a89379da111c98f8d03cecf045af7caf5",
+      "sample_rate": 11025,
+      "channels": 1,
+      "duration_seconds": 2.9754,
+      "source": "https://github.com/Team254/cheesy-arena/blob/248d9de497e701223e2cdbc986a19bbfea054c21/static/audio/end.wav"
+    },
+    {
+      "name": "abort",
+      "file": "abort.wav",
+      "bytes": 690476,
+      "sha256": "61ec6647bd9ab03051f7949512ec77fa870fffc0d90ee7ed0eae1109e0808d2b",
+      "sample_rate": 44100,
+      "channels": 2,
+      "duration_seconds": 3.9128,
+      "source": "https://github.com/Team254/cheesy-arena/blob/248d9de497e701223e2cdbc986a19bbfea054c21/static/audio/abort.wav"
+    }
+  ]
+}

@@ -17,6 +17,7 @@
 #include "CommChannel.h"
 #include "ProgramStore.h"
 #include "config.h"
+#include "OledDisplay.h"
 
 // --- 效能優化：定義指令的枚舉和結構體 ---
 enum CommandType {
@@ -32,6 +33,7 @@ enum CommandType {
   CMD_SERVO,
   CMD_PRINT,
   CMD_PLOT,
+  CMD_OLED,
   CMD_VARIABLE_DECLARE,
   CMD_VARIABLE_SET,
   CMD_MATH_CHANGE,
@@ -144,6 +146,11 @@ private:
     float positionLastError = 0.0f;
   };
 
+  OledDisplay oledDisplay;
+  bool oledMode = false;
+  bool pendingOledMode = false;
+  bool oledErrorReported = false;
+  void (*i2cOwnershipHook)(bool downstream) = nullptr;
   MotorController &motorCtrl;
   ServoController &servoCtrl;
   EncoderHandler *encoder;
@@ -1065,8 +1072,10 @@ private:
 
   void sendCapabilities() {
     if (!sendJsonResponseCallback) return;
-    DynamicJsonDocument resp(512);
+    DynamicJsonDocument resp(1024);
     resp["type"] = "capabilities";
+    resp["oled_ssd1306_128x32"] = true;
+    resp["i2c_role"] = oledMode ? "downstream" : (i2cOwnershipHook ? "upstream" : "idle");
     resp["schema"] = "phone_blocky/v1";
     JsonArray motors = resp.createNestedArray("motors");
     for (int i = 0; i < NUM_MOTORS; i++) {
@@ -1461,6 +1470,7 @@ public:
       pendingProcedures.clear();
       pendingDeclarations.clear();
       pendingDeclarationsValid = false;
+      pendingOledMode = oledMode; // STOP preserves bus ownership; no surprise reconnection
       pendingProgram = true;
     }
     if (progMutex) xSemaphoreGive(progMutex);
@@ -1530,6 +1540,7 @@ public:
     std::vector<BlocklyProcedure> incomingProcedures;
     std::vector<BlocklyFunctions::Declaration> incomingDecls;
     bool haveDecls = false;
+    bool incomingOled = false;
     if (progMutex) xSemaphoreTake(progMutex, portMAX_DELAY);
     if (!pendingProgram) {            // 上鎖後再確認一次（雙重檢查）
       if (progMutex) xSemaphoreGive(progMutex);
@@ -1540,9 +1551,19 @@ public:
     incomingProcedures.swap(pendingProcedures);
     incomingDecls.swap(pendingDeclarations);
     haveDecls = pendingDeclarationsValid;
+    incomingOled = pendingOledMode;
     pendingDeclarationsValid = false;
     pendingProgram = false;
     if (progMutex) xSemaphoreGive(progMutex);
+
+    if (incomingOled != oledMode) {
+      stopAllRuntime();
+      if (oledMode) oledDisplay.end();
+      if (i2cOwnershipHook) i2cOwnershipHook(incomingOled);
+      oledMode = incomingOled;
+      sendCapabilities();
+    }
+    oledErrorReported = false;
 
     // 對外功能表在安全點套用。I2C callback 只會唯讀快照這張表，寫入者只有
     // 這裡（主迴圈），所以不需要額外的鎖（BlocklyFunctions.h 的併發模型）。
@@ -1635,6 +1656,8 @@ public:
   // 由 main.cpp 注入 I2CSlaveBridge 的功能註冊表。
   // 用注入而非直接 include I2CSlaveBridge：後者建構時就吃 CommandProcessor&，
   // 反向 include 會造成循環相依。BlocklyFunctions.h 本身無依賴，可安全引用。
+  void setI2cOwnershipHook(void (*hook)(bool)) { i2cOwnershipHook = hook; }
+
   void setExternalFunctions(BlocklyFunctions *functions) {
     externalFunctions_ = functions;
     if (externalFunctions_) {
@@ -1775,6 +1798,17 @@ public:
 
   void handleHardwareTest(const JsonDocument &doc)
   {
+    if (oledMode) {
+      for (const char *key : {"gpio", "pin", "trig", "echo"}) {
+        if (!doc[key].isNull()) {
+          int pin = parseIntOrString(doc[key], -1);
+          if (pin == I2C_SLAVE_SDA_PIN || pin == I2C_SLAVE_SCL_PIN) {
+            sendError("i2c_role_conflict");
+            return;
+          }
+        }
+      }
+    }
     const char *type = doc["type"] | "";
     const char *test = doc["test"] | "";
 
@@ -2053,10 +2087,15 @@ public:
   void resetActuators()
   {
     stopAllRuntime();
+#if COMPETITION_COMPETITOR
+    servoCtrl.disableOutputs();
+    pwmMgr.disableOutputs();
+#else
     servoDeg[1] = 90;
     servoDeg[2] = 90;
     servoCtrl.controlServo(1, servoDeg[1]);
     servoCtrl.controlServo(2, servoDeg[2]);
+#endif
 
     setupCommands.clear();
     loopCommands.clear();
@@ -2324,6 +2363,11 @@ public:
     pendingProcedures.swap(newProcedures);
     pendingDeclarations.swap(newDecls);
     pendingDeclarationsValid = haveDecls;
+    // The UI STOP payload has no declarations and no commands: keep ownership.
+    // An intentionally run empty workspace includes functions:[] and restores default.
+    const bool stopOnly = !doc.containsKey("functions") &&
+        doc["setup"].size() == 0 && doc["loop"].size() == 0 && doc["procedures"].size() == 0;
+    pendingOledMode = stopOnly ? oledMode : programUsesOled(doc.as<JsonVariantConst>());
     pendingProgram = true;
     if (progMutex) xSemaphoreGive(progMutex);
     Serial.println("[PROG] Parsing complete.");
@@ -2434,10 +2478,45 @@ public:
 
   // 解析整份 PROG（setup / loop / 選用的 procedures），不碰執行中的資料；存檔驗證也用它。
   // procedures: [{"name":"…","params":["變數ID",…],"body":[…]}]
+  static bool programUsesOled(JsonVariantConst v) {
+    if (v.is<JsonObjectConst>()) {
+      const char *c = v["command"] | "";
+      if (strncmp(c, "oled_", 5) == 0) return true;
+      for (JsonPairConst p : v.as<JsonObjectConst>())
+        if (programUsesOled(p.value())) return true;
+    } else if (v.is<JsonArrayConst>()) {
+      for (JsonVariantConst x : v.as<JsonArrayConst>()) if (programUsesOled(x)) return true;
+    }
+    return false;
+  }
+  // Validate nested expressions, procedures and raw JSON, not only top-level blocks.
+  static bool oledResourceConflict(JsonVariantConst v) {
+    if (v.is<JsonObjectConst>()) {
+      const char *c = v["command"] | "";
+      if (strncmp(c, "blockly_func_", 13) == 0) return true;
+      if (v["functions"].is<JsonArrayConst>() && v["functions"].size()) return true;
+      for (const char *key : {"pin", "trigPin", "echoPin"}) {
+        if (!v[key].isNull()) {
+          int pin = v[key].as<int>();
+          if (pin == I2C_SLAVE_SDA_PIN || pin == I2C_SLAVE_SCL_PIN) return true;
+        }
+      }
+      for (JsonPairConst p : v.as<JsonObjectConst>())
+        if (oledResourceConflict(p.value())) return true;
+    } else if (v.is<JsonArrayConst>()) {
+      for (JsonVariantConst x : v.as<JsonArrayConst>()) if (oledResourceConflict(x)) return true;
+    }
+    return false;
+  }
+
   bool parseProgramDoc(const JsonDocument &doc, std::vector<BlocklyCommand> &setupOut,
                        std::vector<BlocklyCommand> &loopOut,
                        std::vector<BlocklyProcedure> &procsOut) {
     lastParseError = nullptr;
+    if (programUsesOled(doc.as<JsonVariantConst>()) && oledResourceConflict(doc.as<JsonVariantConst>())) {
+      lastParseError = "i2c_role_conflict";
+      return false;
+    }
     if (!doc["setup"].is<JsonArrayConst>() || !doc["loop"].is<JsonArrayConst>()) return false;
 
     JsonArrayConst procArr;
@@ -2663,6 +2742,24 @@ public:
                      strcmp(contentCommand, "logic_negate") == 0 ||
                      strcmp(contentCommand, "logic_operation") == 0) cmd.message = "條件結果";
           }
+        } else if (strcmp(commandStr, "oled_text") == 0 ||
+                   strcmp(commandStr, "oled_value") == 0 ||
+                   strcmp(commandStr, "oled_clear") == 0) {
+          cmd.type = CMD_OLED;
+          cmd.pin = parseIntOrString(jsonObj["address"], OLED_DEFAULT_ADDRESS);
+          cmd.angle = parseIntOrString(jsonObj["row"], 0);
+          if ((cmd.pin != 60 && cmd.pin != 61) || cmd.angle < 0 || cmd.angle > 3) return false;
+          cmd.direction = strcmp(commandStr, "oled_clear") == 0 ? 'C' :
+                          (strcmp(commandStr, "oled_value") == 0 ? 'V' : 'T');
+          if (cmd.direction == 'V') {
+            if (!parseValueSource(jsonObj["value"], cmd)) return false;
+          } else if (cmd.direction == 'T') {
+            if (!jsonObj["text"].is<const char *>()) return false;
+            cmd.message = jsonObj["text"].as<String>();
+            if (cmd.message.length() > 21) return false;
+            for (unsigned int i = 0; i < cmd.message.length(); ++i)
+              if (cmd.message[i] < 32 || cmd.message[i] > 126) return false;
+          }
         } else if (strcmp(commandStr, "plot_print") == 0) {
           cmd.type = CMD_PLOT;
           cmd.plotSeries = jsonObj["series"] | "value";
@@ -2782,7 +2879,7 @@ public:
   // 每條之後補一次控制節拍,一長串不讓出的指令(例如多次超音波量測)也不會餓死角度控制。
   void executeCommandList(const std::vector<BlocklyCommand> &cmds) {
     for (const auto &c : cmds) {
-      if (pendingProgram) break;
+      if (pendingProgram || !CompetitionGate::allowed()) break;
       executeSingleCommand(c);
       controlTickDuringProgram();
     }
@@ -2795,8 +2892,14 @@ public:
     unsigned long now = millis();
     if (now - lastProgramYieldControlMs >= 9) {
       lastProgramYieldControlMs = now;
+#if COMPETITION_COMPETITOR
+      if (programServiceHook) programServiceHook();
+      if (!CompetitionGate::allowed()) return;
+      updateAngleControl();
+#else
       updateAngleControl();
       if (programServiceHook) programServiceHook();
+#endif
     }
   }
 
@@ -2954,6 +3057,7 @@ public:
   }
 
   void executeSingleCommand(const BlocklyCommand &cmd) {
+    if (!CompetitionGate::allowed()) return;
     switch (cmd.type) {
       case CMD_PIN_MODE:
         pinMode(cmd.pin, cmd.value);
@@ -2970,7 +3074,7 @@ public:
         {
           int remaining = numericArg(cmd, cmd.delay_ms);   // 負值視為 0
           while (remaining > 0) {
-            if (pendingProgram) break;   // 有新程式待套用 → 中止等待,盡快切換(回應性)
+            if (pendingProgram || !CompetitionGate::allowed()) break;
             int step = remaining > 10 ? 10 : remaining;
             programYield(step);
             remaining -= step;
@@ -3057,7 +3161,7 @@ public:
       case CMD_REPEAT: {
         // 次數只在進入時算一次(與 Blockly 語意相同);每圈讓出,新程式到達即跳出
         int times = readBlocklyValue(cmd);
-        for (int i = 0; i < times && !pendingProgram; i++) {
+        for (int i = 0; i < times && !pendingProgram && CompetitionGate::allowed(); i++) {
           executeCommandList(cmd.nested_commands_then);
           programYield(1);
         }
@@ -3066,7 +3170,7 @@ public:
       case CMD_WHILE: {
         // WHILE: 條件成立就繼續;UNTIL: 條件成立就停止。每圈重新評估條件
         const bool until = cmd.direction == 'U';
-        while (!pendingProgram) {
+        while (!pendingProgram && CompetitionGate::allowed()) {
           const bool cond = readBlocklyValue(cmd) != 0;
           if (cond == until) break;
           executeCommandList(cmd.nested_commands_then);
@@ -3094,6 +3198,15 @@ public:
           }
           sendJsonResponseCallback(respDoc, replyChannel);
           waitingForResponse = true;
+        }
+        break;
+      }
+      case CMD_OLED: {
+        if (!oledMode || oledErrorReported) break;
+        const String text = cmd.direction == 'V' ? String(readBlocklyValue(cmd)) : cmd.message;
+        if (!oledDisplay.write(cmd.pin, cmd.angle, text, cmd.direction == 'C')) {
+          oledErrorReported = true;
+          sendError("oled_not_found");
         }
         break;
       }

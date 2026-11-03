@@ -4,6 +4,33 @@
 
 ## Top-level
 
+### 競賽角色的執行權限
+
+`esp32dev_competitor` 的 PROG JSON 格式與角度／PWM 單位維持本文件定義；程式先經 `/api/program` 儲存，再由裁判授權執行鎖定快照。直接傳送 `mode:"PROG"`、舊即時 WS／USB 動作或 autorun 不會啟動車輛。一般教學／I2C 角色不受此限制。
+
+競賽手動控制另用 `/drive` WebSocket：先 `{"type":"claim","key":"<本車密碼>"}`，取得學生板定期發出的 `context`。當 `allowed:true` 時，送 `{"type":"drive","token":<context token>,"sequence":<遞增整數>,"motors":[0,0,0,0]}`；四個值依序為 M1–M4 的 ±100 duty。選用 `servos:[90,90]` 為 S1／S2 的角度。token 綁定本場階段、操作者與學生板上的 250 ms 到期時間，不能自行展延；`heartbeat` 不會延長馬達動作。
+
+`{"type":"stop"}` 會撤權本車並向裁判回報故障。一般放開方向鍵應送四個零 duty，不使用故障停止。新控制入口、配對與權限說明見 [比賽操作](competition_setup.md)；ESP-NOW wire 契約見 [SDD §12](espnow_competition_sdd.md#12-實作版契約與驗證更新2026-11-03)。
+
+### OLED（Blockly 專用擴充；AI 子集尚不產生）
+
+適用 SSD1306 I2C 128×32（0.91 吋）。固定 SDA=21 / SCL=22，首次使用自動初始化，不需要初始化積木。
+
+```json
+{"command":"oled_text","address":60,"row":0,"text":"Hello!"}
+{"command":"oled_value","address":60,"row":1,"value":{"command":"arduinoUltrasonic","trigPin":"2","echoPin":"33"}}
+{"command":"oled_clear","address":60}
+```
+
+- `address`：60（0x3C，預設）或 61（0x3D）。`row`：0–3（畫面第 1–4 行）。
+- `text`：最多 21 個可列印 ASCII 字元；不支援中文。`value`：整數或既有數值表達式。
+- 文字／數值會覆寫整行並立即更新；clear 清除整個畫面。相同內容不重複傳輸。
+- 程式含 OLED 指令（包括容器與副程式）時，自動選擇對下主機模式；不能同時含對外功能宣告／讀寫，或把 21／22 作其他 GPIO 使用，否則回 `i2c_role_conflict`。存檔驗證與執行驗證相同。
+- 從機版在主迴圈安全點停止對上橋接、清除待執行主控命令並停用其看門狗，才交出匯流排；執行不含 OLED 的新程式會恢復對上模式。停止程式維持目前角色。
+- 角色不是額外的永久設定；重開機依韌體預設啟動，若啟用自動執行則依存檔程式切換。使用 OLED 前須移除上層主控接線，勿把兩個主機連在一起。
+- `capabilities` 新增 `oled_ssd1306_128x32:true` 與 `i2c_role`（upstream/downstream/idle）。舊韌體沒有此能力時，前端阻止傳送／存入 OLED 程式。
+- 未找到螢幕或初始化失敗時回 `oled_not_found`，該次執行不再重試；修正接線／位址後重新執行。
+
 ```json
 {
   "mode": "PROG",

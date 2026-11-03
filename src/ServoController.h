@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <ESP32Servo.h>
+#include "competition/Gate.h"
 
 class ServoController
 {
@@ -21,6 +22,10 @@ public:
     // and general-purpose PWM timer 0. ESP32Servo allocates within this timer.
     ESP32PWM::allocateTimer(3);
 
+#if COMPETITION_COMPETITOR
+    return; // Competition boot must not attach or command a 90-degree movement.
+#endif
+
     servo1.setPeriodHertz(50);
     servo1.attach(servo1Pin, 500, 2500);
     servo1.write(90);
@@ -32,12 +37,26 @@ public:
 
   void controlServo(int servoNumber, int angle)
   {
+    if (!CompetitionGate::allowed()) return;
+#if COMPETITION_COMPETITOR
+    Servo* target = servoNumber == 1 ? &servo1 : servoNumber == 2 ? &servo2 : nullptr;
+    if (!target) return;
+    if (!target->attached()) {
+      target->setPeriodHertz(50);
+      target->attach(servoNumber == 1 ? servo1Pin : servo2Pin, 500, 2500);
+    }
+#endif
     if (servoNumber == 1)
       servo1.write(angle);
     else if (servoNumber == 2)
       servo2.write(angle);
     else
       Serial.println("Invalid servo number");
+  }
+
+  void disableOutputs() {
+    if (servo1.attached()) servo1.detach();
+    if (servo2.attached()) servo2.detach();
   }
 };
 

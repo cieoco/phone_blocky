@@ -632,3 +632,24 @@ Blockly.Blocks['blockly_func_set'] = {
     this.setHelpUrl("");
   }
 };
+
+// SSD1306 0.91 inch, 128x32. First use initializes automatically.
+for (const kind of ['text', 'value', 'clear']) {
+  Blockly.Blocks['oled_' + kind] = {
+    init: function () {
+      const input = this.appendDummyInput().appendField('OLED ' +
+        ({text:'顯示文字', value:'顯示數值', clear:'清除畫面'}[kind]));
+      input.appendField('位址').appendField(new Blockly.FieldDropdown([
+        ['0x3C', '60'], ['0x3D', '61']]), 'ADDRESS');
+      if (kind !== 'clear') input.appendField('第').appendField(new Blockly.FieldDropdown([
+        ['1','0'], ['2','1'], ['3','2'], ['4','3']]), 'ROW').appendField('行');
+      if (kind === 'text') this.appendDummyInput().appendField(
+        new Blockly.FieldTextInput('Hello!'), 'TEXT');
+      if (kind === 'value') this.appendValueInput('VALUE').setCheck('Number').appendField('數值');
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour(190);
+      this.setTooltip('SSD1306 128×32，SDA=21 / SCL=22；自動初始化。每行 21 個英數符號，不支援中文。與對上主控互斥，使用前請移除主控接線。');
+    }
+  };
+}

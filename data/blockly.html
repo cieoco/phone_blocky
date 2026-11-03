@@ -8,10 +8,10 @@
   <!-- 載入 Blockly -->
   <script src="blockly.min.js"></script>
   <!-- 載入客戶端邏輯 -->
-  <script src="appBlock.js?v=20261013-pullup"></script>
-  <script src="appIr.js?v=20261013-procparams"></script>
-  <script src="appJson.js?v=20261011-sensors2"></script>
-  <script src="app.js?v=20261013-series"></script>
+  <script src="appBlock.js?v=20261103-oled-competition"></script>
+  <script src="appIr.js?v=20261103-oled-competition"></script>
+  <script src="appJson.js?v=20261103-oled-competition"></script>
+  <script src="app.js?v=20261103-oled-competition"></script>
   <style>
     /* ========================================================================
        版面：固定高度的 app shell，整頁不捲動。
@@ -536,6 +536,11 @@
            接紅外線就用上面具名的那兩顆，名字講得出在量什麼。 -->
       <block type="arduino_digitalRead"></block>
       <block type="arduino_analogRead"></block>
+    </category>
+    <category name="OLED 顯示" colour="190">
+      <block type="oled_text"></block>
+      <block type="oled_value"><value name="VALUE"><shadow type="math_number"><field name="NUM">0</field></shadow></value></block>
+      <block type="oled_clear"></block>
     </category>
     <category name="對外功能" colour="60">
       <block type="blockly_func_declare"></block>

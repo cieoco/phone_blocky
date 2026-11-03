@@ -1,0 +1,42 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="oled_clear">
+     <comment pinned="false" h="140" w="260">使用前移除上層主控接線。OLED：VCC 接 3.3V、GND 共地、SDA21、SCL22。位址不符時把所有 OLED 積木改成 0x3D。</comment>
+     <field name="ADDRESS">60</field>
+     <next>
+     <block type="oled_text">
+       <field name="ADDRESS">60</field>
+       <field name="ROW">0</field>
+       <field name="TEXT">Distance (cm):</field>
+     </block>
+     </next>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="oled_value">
+       <field name="ADDRESS">60</field>
+       <field name="ROW">1</field>
+       <value name="VALUE">
+       <block type="arduino_ultrasonic">
+         <field name="TRIG">2</field>
+         <field name="ECHO">33</field>
+       </block>
+       </value>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <shadow type="math_number">
+           <field name="NUM">200</field>
+         </shadow>
+         </value>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

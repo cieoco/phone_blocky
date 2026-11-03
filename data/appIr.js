@@ -1038,8 +1038,32 @@ function translateBlocklyFuncSet(block) {
 }
 
 // 用一個小小的 getTranslator() 來集中管理
+class OledNode extends BaseNode {
+    constructor(block) {
+        super();
+        this.kind = block.type;
+        this.address = Number(block.getFieldValue('ADDRESS'));
+        this.row = Number(block.getFieldValue('ROW') || 0);
+        this.text = block.getFieldValue('TEXT');
+        if (this.kind === 'oled_value') this.value = requireValueInput(block, 'VALUE', 'OLED 數值');
+    }
+    toJson() {
+        if (![60,61].includes(this.address) || ![0,1,2,3].includes(this.row)) throw new Error('OLED 位址或行數錯誤');
+        const json = {command:this.kind, address:this.address};
+        if (this.kind !== 'oled_clear') json.row = this.row;
+        if (this.kind === 'oled_text') {
+            if (!/^[\x20-\x7e]{0,21}$/.test(this.text)) throw new Error('OLED 每行最多 21 個英數符號，目前不支援中文');
+            json.text = this.text;
+        }
+        if (this.kind === 'oled_value') json.value = isExprArg(this.value) ? this.value.toJson() : this.value;
+        return json;
+    }
+}
+
 function getTranslator(blockType) {
     switch (blockType) {
+        case 'oled_text': case 'oled_value': case 'oled_clear':
+            return block => new OledNode(block);
         case "arduino_setup":
             return translateArduinoSetup;
         case "arduino_loop":

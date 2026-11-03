@@ -104,6 +104,20 @@ public:
     instanceRef() = this;
   }
 
+  // Only jsonTask may change ownership. end() joins the callback task before
+  // clearing queued commands; the watchdog must stay disabled in OLED mode.
+  void setSuspended(bool value) {
+    if (value == suspended_) return;
+    suspended_ = value;
+    if (value) {
+      initialized_ = false;
+      wire_.end();
+      qHead_ = qTail_ = 0;
+      txReady_ = false;
+      txLength_ = 0;
+    } else begin(address_, sdaPin_, sclPin_);
+  }
+
   static I2CSlaveBridge *instance() { return instanceRef(); }
 
   void begin(uint8_t address, int sdaPin, int sclPin) {
@@ -146,6 +160,7 @@ public:
   //   2. i2c_slave_free_resources() 會 vTaskDelete(i2c_slave_task)——在 callback
   //      內呼叫等於刪掉自己正在跑的 task。
   void checkLink() {
+    if (suspended_) return;
     const uint32_t now = millis();
 
     // 兩種需要進來的狀況，判準完全不同：
@@ -254,6 +269,7 @@ public:
   // 主迴圈（jsonTask）每拍呼叫：把 callback 排進來的命令落地執行。
   // 動作類命令一律延後到這裡，因為底層會 Serial.printf，不能在 callback 跑。
   void service() {
+    if (suspended_) return;
     while (qTail_ != qHead_) {
       const PendingCmd c = queue_[qTail_];
       qTail_ = static_cast<uint8_t>((qTail_ + 1) % kQueueSize);
@@ -294,6 +310,7 @@ private:
   static constexpr uint8_t kQueueSize = 16;
 
   CommandProcessor &proc_;
+  bool suspended_ = false;
   TwoWire &wire_;
   BlocklyFunctions funcs_;
 

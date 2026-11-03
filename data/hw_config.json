@@ -67,5 +67,22 @@
       8,
       9
     ]
+  },
+  "i2c": {
+    "sda": 21,
+    "scl": 22,
+    "exclusive_roles": [
+      "upstream",
+      "oled"
+    ],
+    "oled": {
+      "driver": "SSD1306",
+      "width": 128,
+      "height": 32,
+      "addresses": [
+        60,
+        61
+      ]
+    }
   }
 }

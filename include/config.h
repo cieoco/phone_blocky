@@ -28,6 +28,11 @@ static const int I2C_SLAVE_SCL_PIN = 22;
 static const uint8_t I2C_SLAVE_ADDRESS = 0x36;
 static const uint32_t I2C_SLAVE_FREQ = 100000; // 與主機 I2C_FREQ 一致
 
+// 同一組 21/22 的對下 OLED，與對上從機互斥；同步 data/hw_config.json。
+static const uint8_t OLED_WIDTH = 128;
+static const uint8_t OLED_HEIGHT = 32;
+static const uint8_t OLED_DEFAULT_ADDRESS = 0x3C;
+
 // 編碼器腳位，對齊 motorControl 的 M3/M4 配置
 static const int ENCODER_M3_PIN_A = 35;
 static const int ENCODER_M3_PIN_B = 34;

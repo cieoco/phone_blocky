@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include "AFMotor.h"
+#include "competition/Gate.h"
 
 class MotorController
 {
@@ -47,6 +48,8 @@ public:
 
   void controlMotor(int motorNumber, char direction, int speed)
   {
+    // Final guard also covers stale closed-loop/HOLD targets.
+    if (!CompetitionGate::allowed()) { direction = 'R'; speed = 0; }
     // AFMotor control (motors 1-4)
     if (motorNumber >= 1 && motorNumber <= 4) {
       AF_DCMotor *motor;

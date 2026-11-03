@@ -63,6 +63,8 @@ node tests/check_frontend.cjs                                 # 前端（ai.html
 node tests/check_realtime.cjs                                 # joy.html 即時指令契約
 node tests/check_examples.cjs                                 # data/examples/ 內建範例
 node tests/check_hardware_test.cjs                            # hardware_test.html 啟動/執行/確認流程
+node tests/check_oled.cjs                                     # OLED 翻譯／互斥／警告
+node tests/check_competition.cjs                              # 競賽前端、音效去重／原檔雜湊、授權操作
 ```
 
 - 改了 `ai-relay/prompts.py` 的 `SYSTEM_PROMPT` → 必須執行 `python tools/sync_ai_prompt.py`，把提示詞同步進 `data/ai.html`。
@@ -230,6 +232,12 @@ setup／loop／procedures（stage 與存檔驗證共用），拒絕遞迴，呼�
 
 使用者腳位：LEGO 按鈕 4、超音波 TRIG 2 / ECHO 33、數位輸入 15、類比輸入 32。
 
+OLED：SSD1306 I2C 128×32（0.91 吋），SDA21 / SCL22，0x3C 或 0x3D。
+`oled_text` / `oled_value` / `oled_clear` 自動初始化，僅支援每行 21 個 ASCII 字元、共 4 行。
+與對上 I2C／`blockly_func_*` 互斥，前端警告與韌體 `parseProgramDoc` 皆檢查。
+角色切換只在主迴圈 `applyPendingProgramIfAny`，由 `I2CSlaveBridge::setSuspended` 停用 callbacks／佇列／看門狗；勿從 WS callback 切換 Wire。
+停止程式保留角色；新程式依 OLED 用途選擇角色。AI 子集尚不產生 OLED 指令。
+
 ---
 
 ## 指令格式（PROG JSON Schema）
@@ -279,6 +287,14 @@ setup／loop／procedures（stage 與存檔驗證共用），拒絕遞迴，呼�
 ---
 
 ## 重要檔案速查
+
+### ESP-NOW 相撲比賽（獨立建置角色）
+
+- 設計與實作差異：[docs/espnow_competition_sdd.md](docs/espnow_competition_sdd.md)；操作：[docs/competition_setup.md](docs/competition_setup.md)。
+- `esp32dev_referee` 僅編譯 `src/referee_main.cpp`，檔案系統來自 `referee_data/`（含未轉碼 FRC WAV）；`esp32dev_competitor` 使用 `src/competitor_main.cpp` 與既有 `data/`。
+- 競賽角色不得重新開放舊 WS／USB／hardwareTest／I2C 動作入口。`src/competition/Gate.h` 是輸出最後防線；撤權要解除 HOLD、取消舵機脈波、退出長程式且不回中。
+- 配對工具 `tools/competition_pair.py` 只將金鑰寫板上 NVS；不得把配對金鑰或 `--show-credentials` 輸出存入 repo。
+- 修改共用競賽核心後加跑 `bash tools/check_competition_core.sh`（Windows 可從 WSL 執行），它編譯真正的 Core.h／Protocol.h。改韌體需編譯兩個競賽角色並回歸既有兩角色；打包兩角色 `buildfs`。尚未量測的無線同步／停止時限不得宣稱已驗證。
 
 | 需求 | 位置 |
 |------|------|
