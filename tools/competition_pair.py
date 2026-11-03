@@ -1,4 +1,4 @@
-"""USB provisioning for the isolated referee/competitor firmware. Never stores keys."""
+"""USB provisioning fallback for referee/competitor firmware. Never stores keys."""
 from __future__ import annotations
 
 import argparse
@@ -37,12 +37,23 @@ def connect(name):
     return port
 
 
+def pairing_channel(ref, requested):
+    if ref.get("wifi_mode") in ("STA", "AP_STA"):
+        channel = ref.get("channel")
+        if not ref.get("wifi_connected") or channel not in range(1, 12):
+            raise RuntimeError("裁判 STA 尚未連線，或路由器頻道不在 1–11。")
+        if requested is not None and requested != channel:
+            raise RuntimeError("指定頻道與裁判 STA 路由器頻道不同；請省略 --channel 或使用實際頻道。")
+        return channel
+    return requested if requested is not None else 1
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--referee", help="裁判板 USB，例如 COM5")
     parser.add_argument("--student", help="學生板 USB，例如 COM6")
     parser.add_argument("--name", help="隊伍名稱，UTF-8 最多 48 bytes")
-    parser.add_argument("--channel", type=int, choices=range(1, 12), default=1)
+    parser.add_argument("--channel", type=int, choices=range(1, 12), help="STA 裁判預設沿用路由器頻道；指定時必須相符")
     parser.add_argument("--info", metavar="PORT", help="僅查詢指定控制板")
     parser.add_argument("--show-credentials", action="store_true", help="在本機終端顯示 AP／網頁密碼；請勿貼到版本庫或公開日誌")
     args = parser.parse_args()
@@ -64,17 +75,24 @@ def main():
         car = exchange(student, {"cmd": "competition_info"})
         if ref.get("role") != "referee" or car.get("role") != "competitor":
             raise RuntimeError("角色不符；請先燒錄對應的競賽韌體。")
+        channel = pairing_channel(ref, args.channel)
         key = secrets.token_hex(16)
         # Write the car first. If the second write fails, rerun the whole operation.
         exchange(student, {"cmd": "competition_pair", "mac": ref["mac"], "key": key, "name": "Referee"})
         exchange(referee, {"cmd": "competition_pair", "mac": car["mac"], "key": key, "name": args.name})
-        for port in (referee, student):
-            exchange(port, {"cmd": "competition_channel", "channel": args.channel})
-    print(f"已配對 {args.name} ({car['mac']})，場地頻道 {args.channel}。請重新啟動兩塊板。")
+        exchange(student, {"cmd": "competition_channel", "channel": channel})
+        if ref.get("wifi_mode") not in ("STA", "AP_STA"):
+            exchange(referee, {"cmd": "competition_channel", "channel": channel})
+    print(f"已配對 {args.name} ({car['mac']})，場地頻道 {channel}。請重新啟動兩塊板。")
     print("配對金鑰只寫入控制板 NVS，未儲存至本機檔案。")
     if args.show_credentials:
         for label, info in (("裁判板", ref), ("學生板", car)):
-            print(f"{label}: Wi-Fi {info['ssid']}；AP／網頁密碼 {info['key']}")
+            if info.get("wifi_mode") in ("STA", "AP_STA"):
+                print(f"{label}: STA {info['ssid']}；網頁 http://{info['ip']}/；裁判操作密碼 {info['key']}")
+                if info.get("ap_ssid"):
+                    print(f"裁判 AP: {info['ap_ssid']}；http://{info['ap_ip']}/；AP 密碼同裁判操作密碼")
+            else:
+                print(f"{label}: Wi-Fi {info['ssid']}；AP 密碼 {info['key']}")
 
 
 if __name__ == "__main__":

@@ -293,6 +293,7 @@ OLED：SSD1306 I2C 128×32（0.91 吋），SDA21 / SCL22，0x3C 或 0x3D。
 
 - 設計與實作差異：[docs/espnow_competition_sdd.md](docs/espnow_competition_sdd.md)；操作：[docs/competition_setup.md](docs/competition_setup.md)。
 - `esp32dev_referee` 僅編譯 `src/referee_main.cpp`，檔案系統來自 `referee_data/`；repo 不附 WAV，不自動下載。音檔須由操作者確認使用許可後在本機提供，不可提交或隨映像轉散布。
+- 裁判使用 AP＋STA；AP 名稱為 `<MAC末四碼>-<STA IPv4>`，STA 離線則顯示 `STA-offline`，可從 Wi-Fi 清單讀到 STA IP；AP 與 STA 都能進同一裁判頁。路由器帳密只放 Git 排除的 `include/referee_wifi.local.h`，格式見 `include/referee_wifi.example.h`。不可放在 `referee_data/`（會被靜態網頁服務公開）或 build_flags。裁判頻道跟隨 STA 路由器，斷線／換頻／同頻重連都使活躍本場中止，不自動恢復。
 - 2026-11-03 使用者確認：學生車沿用原控制板、`main.cpp`、`WebServerHandler` 與既有 `data/`，`esp32dev_competitor` 只加入 `src/competition/Student.cpp` 管制。原頁面載入 `competition_client.js` 顯示裁判狀態；不得另外建立替代學生操控頁。
 - 未選入比賽可使用原功能；準備至清場期間，原 `/ws` 指令由 jsonTask 排隊，手動指令驗證當階段 token；AUTO 僅執行鎖定快照。USB 動作、設定寫入與 hardwareTest 在管制中拒絕。HTTP mutation guard 與接管共用鎖，禁止繞過此機制。I2C 版維持獨立。
 - `src/competition/Gate.h` 是輸出最後防線；撤權解除 HOLD、SysId、GPIO/PWM 與舵機脈波，退出長程式且不回中。管制持久化，重開機仍鎖定；只有本場終局 RELEASE 清場才返回教學。ESP-NOW v2 裁判與學生須一起更新。

@@ -451,7 +451,7 @@ node tests/check_oled.cjs
 
 學生競賽建置使用原 entrypoint 與原網頁。WS／JSON USB 指令排入最多 8 筆的佇列，由 jsonTask 執行；每筆附入列 epoch，接管／換段／清場使舊命令失效。HTTP 設定／存檔與原始 USB 指令持有 mutation guard，與接管共用鎖。管制中拒絕 USB 動作、hardwareTest 與設定寫入；手動僅允許原 joy 與明列動作指令，自動僅允許鎖定快照。`InputPolicy.h` 對齊 processor 的 mode 優先序，不能以 read cmd 搭配 PROG／hardwareTest 或 legacy command 繞過。
 
-一般教學及 I2C 建置不編入 ESP-NOW 功能。競賽建置未配對／未參賽時保留原操作；已配對時固定 AP 頻道、不連外部 STA，但保留原 AP 名稱／密碼。I2C 組合仍以編譯 guard 拒絕。
+一般教學及 I2C 建置不編入 ESP-NOW 功能。學生競賽建置未配對／未參賽時保留原操作；已配對時固定 AP 頻道、不連外部 STA，但保留原 AP 名稱／密碼。裁判現改為 AP＋STA，見 §13。I2C 組合仍以編譯 guard 拒絕。
 
 接管先停止原程式／SysId／HOLD／PWM／已記錄的 digital 輸出與舵機，再載入 AUTO 快照。管制旗標寫入 NVS 並驗證成功後才能 READY；重開機維持鎖定且不 autorun。終局 Disable 保持管制，裁判 reset 逐車送 Release，學生在 jsonTask 安全點清空舊程式後才解除 NVS 管制；所有學生回覆 owned=false 才移除 peers、回 IDLE。不可在程式自身 yield callback 內套用新程式或清除執行向量。
 
@@ -519,3 +519,23 @@ header 維持 §6.2 的 64 bytes；magic 為 ASCII `SM`、version=2、flags=0（
 - `tests/competition_core.cpp` 加驗實際 InputPolicy、防 read + hardwareTest／PROG 繞過、v2 長度與拒絕 v1。
 - 原 Python 4 項、所有原 Node 回歸、核心 UBSan、四角色編譯及兩角色檔案系統須通過。這些不代替兩塊以上實體板驗收。
 - 上板需驗證：原頁面手機排版／多頁並用、未參賽車不受影響、停止／模式轉換與 held joystick、長程式接管、管制中重開機、清場封包遺失重送，以及所有 HTTP／USB 操作無法繞過授權。
+
+## 13. 裁判 AP＋STA 與後續無線探索需求（2026-11-03）
+
+### 13.1 已實作的 STA 行為
+
+裁判使用 `WIFI_AP_STA`，AP 與 STA 共用同一 Web 伺服器；AP 名稱為 `<MAC末四碼>-<STA IPv4>`，STA 離線時改為 `STA-offline`。最大格式長度在 32-byte SSID 限制內；IP 沒變不重設 AP，連線／失聯／IP 改變才更新名稱。AP 密碼沿用板上產生的裁判操作密碼。`RefereeStation.h` 讀取本機忽略的 `include/referee_wifi.local.h`，公開範例不含路由器帳密。不得把私密檔案移到會被 LittleFS 靜態服務公開的 `referee_data/`。STA 未配置／未連線／頻道不在 1–11 時仍可由 AP 進管理頁，但不能準備比賽。
+
+ESP-NOW peers 使用 channel=0 跟隨當前 STA 頻道；比賽準備時另以 `StationTicket` 記錄頻道與斷線代次。Wi-Fi callback 只增加原子計數，裁判 loop 偵測斷線、換頻、短暫斷線後同頻重連，都將活躍場次改為故障且不再續租。重新連線不恢復原比賽。狀態 API 與 USB info 僅提供 SSID、IP、頻道與連線狀態，不回傳路由器密碼。
+
+現有 USB 配對是備援／測試路徑，改以裁判已連線的實際頻道設定學生；指定頻道不同時，在寫入配對資料前拒絕。核心測試驗證斷線代次與頻道契約，Python 驗證配對工具的自動頻道及錯誤處理。未燒錄、未驗證現場路由器連線或 RF 停止時限。
+
+### 13.2 使用者已確認、尚待實作
+
+- 裁判主動廣播搜尋，現場學生車自動回報 MAC／名稱／占用狀態，無須學生先按配對或接 USB。
+- 裁判依搜尋列表選擇參賽車；搜尋本身不授權動作。
+- 現場可有兩塊裁判板；車端確認唯一控制者，競爭選取只接受一方，其餘顯示占用。
+- 清場釋放；失聯先停止並維持管制，另設明確接管流程。原學生 UI 顯示管理裁判。
+- 搜尋重試、回覆錯開、金鑰建立、頻道協調及多裁判衝突測試需一起完成；MAC 本身不作為身分驗證秘密。
+
+STA 設定完成不等於上述探索／分配功能完成。學生端目前仍使用既有預先設定的場地頻道與單一裁判配對。

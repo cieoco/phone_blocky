@@ -32,6 +32,7 @@ venv/
 # Local secrets (Azure key for inst.py) — never commit
 config.py
 .env
+/include/referee_wifi.local.h
 
 # Match recordings are supplied locally after checking usage permission.
 # Do not redistribute them through this repository.

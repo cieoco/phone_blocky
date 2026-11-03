@@ -1,11 +1,14 @@
 #include "competition/Runtime.h"
 #include "competition/WebSupport.h"
+#include "competition/RefereeStation.h"
 using namespace Competition;
 
 namespace {
 Settings settings;
 Radio radio;
 MatchEngine engine;
+RefereeStation station;
+StationTicket matchNetwork;
 AsyncWebServer server(80);
 Snapshot snapshot;
 Jobs jobs;
@@ -33,7 +36,10 @@ String serialLine;
 
 void publish() {
   DynamicJsonDocument d(12288); Time now=nowMs();
-  d["role"]="referee"; d["ready"]=initialized; d["boot_id"]=hexId(bootId); d["mac"]=WiFi.macAddress();
+  d["role"]="referee"; d["ready"]=initialized && station.ready(); d["boot_id"]=hexId(bootId); d["mac"]=WiFi.macAddress();
+  d["wifi_mode"]="AP_STA";d["wifi_connected"]=station.connected();d["wifi_status"]=station.status();
+  d["ap_ssid"]=station.apName();d["ap_ip"]=WiFi.softAPIP().toString();
+  d["ssid"]=station.ssid();d["ip"]=WiFi.localIP().toString();
   d["releasing"]=releasing;
   d["match_id"]=hexId(engine.match); d["version"]=engine.version; d["generation"]=engine.generation;
   d["state"]=stateName(engine.state); d["mode"]=modeName(engine.config.mode); d["phase_mode"]=modeName(engine.mode());
@@ -43,7 +49,7 @@ void publish() {
   d["request_id"]=lastRequest; d["request_result"]=lastResult;
   JsonArray history=d.createNestedArray("results");
   for(const auto& result:results)if(result.id.length()){JsonObject item=history.createNestedObject();item["id"]=result.id;item["result"]=result.result;}
-  d["channel"]=settings.channel; d["owner"]=owner;
+  d["channel"]=station.channel(); d["owner"]=owner;
   JsonArray teams=d.createNestedArray("teams");
   for(size_t i=0;i<settings.count;++i) {JsonObject t=teams.createNestedObject();t["mac"]=macString(settings.teams[i].mac);t["name"]=settings.teams[i].name;}
   JsonArray ps=d.createNestedArray("players");
@@ -84,6 +90,7 @@ const char* action(JsonDocument& d) {
   if(!d["expected_version"].is<uint32_t>() || d["expected_version"].as<uint32_t>()!=engine.version) return "state_conflict";
   if(!strcmp(op,"prepare")) {
     if(engine.state!=State::Idle)return "invalid_state";
+    if(!station.ready())return station.status();
     Config c; c.mode=parseMode(d["mode"]|"");c.first=parseMode(d["first_mode"]|"");
     if(!d["manual_ms"].is<uint32_t>() || !d["auto_ms"].is<uint32_t>() || !d["gap_ms"].is<uint32_t>())return "invalid_time";
     c.manualMs=d["manual_ms"];c.autoMs=d["auto_ms"];c.gapMs=d["gap_ms"];
@@ -99,10 +106,10 @@ const char* action(JsonDocument& d) {
     releasePlayers();
     for(size_t i=0;i<count;++i) {
       players[i]=Player();players[i].team=chosen[i];
-      if(!radio.add(chosen[i],settings.channel)){releasePlayers();return "peer_add_failed";}
+      if(!radio.add(chosen[i],0)){releasePlayers();return "peer_add_failed";} // follow current STA channel
       ++playerCount;
     }
-    engine.prepare(c,randomId(),now);return "ok";
+    matchNetwork=station.ticket();engine.prepare(c,randomId(),now);return "ok";
   }
   if(!strcmp(op,"start"))return engine.begin(now)?"ok":"invalid_state";
   if(!strcmp(op,"pause"))return engine.pause(now)?"ok":"invalid_state";
@@ -156,7 +163,8 @@ void receivePackets() {
   }
 }
 void transmit() {
-  if(!playerCount)return;
+  if(!playerCount || !station.ready())return;
+  if(engine.active() && !station.matches(matchNetwork))engine.fault("referee_network_changed");
   Time now=nowMs();
   for(size_t n=0;n<playerCount;++n) {
     Player& p=players[(cursor+n)%playerCount];
@@ -199,13 +207,18 @@ void serialCommands() {
     StaticJsonDocument<1024> d; bool parsed=!deserializeJson(d,serialLine);serialLine="";
     if(!parsed)continue;const char* cmd=d["cmd"]|"";
     StaticJsonDocument<512> out;out["ok"]=false;
-    if(!strcmp(cmd,"competition_info")) {out["ok"]=true;out["role"]="referee";out["mac"]=WiFi.macAddress();out["channel"]=settings.channel;out["ssid"]=WiFi.softAPSSID();out["key"]=settings.secret;}
+    if(!strcmp(cmd,"competition_info")) {
+      out["ok"]=true;out["role"]="referee";out["mac"]=WiFi.macAddress();out["channel"]=station.channel();
+      out["wifi_mode"]="AP_STA";out["wifi_connected"]=station.connected();out["wifi_status"]=station.status();
+      out["ap_ssid"]=station.apName();out["ap_ip"]=WiFi.softAPIP().toString();
+      out["ssid"]=station.ssid();out["ip"]=WiFi.localIP().toString();out["key"]=settings.secret;
+    }
     else if(!strcmp(cmd,"competition_pair") && engine.state==State::Idle) {
       Team t;String name=d["name"]|"";
       if(parseMac(d["mac"]|"",t.mac)&&parseKey(d["key"]|"",t.key)&&name.length()&&name.length()<sizeof(t.name)) {
         name.toCharArray(t.name,sizeof(t.name));out["ok"]=settings.saveTeam(t);
       }
-    } else if(!strcmp(cmd,"competition_channel") && engine.state==State::Idle) {out["ok"]=settings.setChannel(d["channel"]|0);out["restart_required"]=true;}
+    } else if(!strcmp(cmd,"competition_channel")) {out["error"]="STA channel is assigned by the router";}
     serializeJson(out,Serial);Serial.println();
   }
 }
@@ -214,7 +227,7 @@ void serialCommands() {
 void setup() {
   Serial.begin(115200);bootId=randomId();
   if(!settings.load()){Serial.println("competition settings failed");return;}
-  beginWifi("Sumo-Ref-",settings);initialized=radio.begin(settings.pmk);
+  station.begin(settings.secret,settings.channel);initialized=radio.begin(settings.pmk);
   bool fs=LittleFS.begin(false); if(!fs)Serial.println("Upload referee filesystem before opening the web page.");
   server.on("/api/competition/state",HTTP_GET,[](AsyncWebServerRequest* r){r->send(200,"application/json",snapshot.get());});
   server.addHandler(new JsonEndpoint("/api/competition/action",1535,[](AsyncWebServerRequest* r,const char* data,size_t n){
@@ -227,7 +240,7 @@ void setup() {
 }
 void loop() {
   if(!initialized){delay(100);return;}
-  Time now=nowMs();receivePackets();
+  Time now=nowMs();station.tick();receivePackets();
   if(releasing) {
     bool released=playerCount>0;
     for(size_t i=0;i<playerCount;++i)if(players[i].owned || players[i].appliedGen!=engine.generation || now-players[i].lastStatus>HealthMs)released=false;
@@ -235,7 +248,7 @@ void loop() {
   }
   if(engine.generation!=observedGen){observedGen=engine.generation;generationAt=now;}
   if(radio.failed())engine.fault("radio_queue_or_callback_failure");
-  if(WiFi.channel()!=settings.channel)engine.fault("channel_changed");
+  if(engine.active() && !station.matches(matchNetwork))engine.fault("referee_network_changed");
   if(engine.state==State::Preparing && allReady())engine.ready();
   bool healthy=allHealthy(now);
   engine.tick(now,healthy,allCommitted()); // deadlines take precedence over UI actions

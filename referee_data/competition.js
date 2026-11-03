@@ -8,9 +8,11 @@
   const labels={IDLE:'等待準備',PREPARING:'檢查參賽車輛',READY:'全員就緒',STARTING:'準備啟動',RUN_MANUAL:'手動模式',RUN_AUTO:'自動模式',GAP:'階段間暫停',PAUSED:'裁判暫停',FINISHED:'比賽結束',ABORTED:'比賽已中止',FAULT:'故障停止'};
   const errors={another_operator:'另一位裁判持有控制權',claim_control_first:'請先取得裁判控制權',state_conflict:'狀態已變更，請重新操作',invalid_state:'目前狀態不能執行此操作',invalid_config:'請選擇 1–4 隊並檢查時間設定',stop_not_confirmed:'仍有車輛尚未回覆輸出鎖定，不能清場',not_paired:'隊伍尚未完成配對',participant_unhealthy:'參賽板失聯或回報故障',prepare_timeout:'準備逾時：請檢查配對、頻道與已儲存程式',commit_timeout:'啟動確認逾時，本場已停止'};
   function note(text){$('notice').textContent=text;}
+  Object.assign(errors,{referee_network_changed:'裁判 Wi-Fi 連線或頻道已變更，本場已停止；重新連線不會自動續賽',wifi_not_configured:'尚未設定裁判 STA 網路',wifi_disconnected:'裁判尚未連上路由器',unsupported_channel:'路由器須使用 2.4GHz 頻道 1–11'});
   function hasControl(){return online&&state&&state.owner===operator;}
   function render() {
     if(!state)return;
+    $('network').textContent=['STA','AP_STA'].includes(state.wifi_mode)?`裁判板 ${state.mac} · STA ${state.ssid}：${state.wifi_connected?state.ip:'未連線'} · AP ${state.ap_ssid||''}：${state.ap_ip||''} · 頻道 ${state.channel}`:'';
     $('phase').textContent=state.releasing?'清場中・等待各車解除管制':labels[state.state]||state.state;
     const timing=['RUN_MANUAL','RUN_AUTO','GAP','STARTING'].includes(state.state);
     const ms=Math.max(0,state.remaining_ms-(online&&timing?performance.now()-lastUpdate:0));
@@ -19,7 +21,7 @@
     const idle=state.state==='IDLE', own=hasControl();
     for(const id of ['mode','first','manual','auto','gap'])$(id).disabled=!idle||!own;
     for(const el of document.querySelectorAll('#teams input'))el.disabled=!idle||!own;
-    const allowed={prepare:idle,cancel:['PREPARING','READY'].includes(state.state),start:state.state==='READY',pause:['RUN_MANUAL','RUN_AUTO','GAP'].includes(state.state),resume:state.state==='PAUSED',reset:['FINISHED','ABORTED','FAULT'].includes(state.state)};
+    const allowed={prepare:idle&&state.ready,cancel:['PREPARING','READY'].includes(state.state),start:state.state==='READY',pause:['RUN_MANUAL','RUN_AUTO','GAP'].includes(state.state),resume:state.state==='PAUSED',reset:['FINISHED','ABORTED','FAULT'].includes(state.state)};
     for(const [id,value] of Object.entries(allowed))$(id).disabled=!own||busy||state.releasing||!value;
     $('stop').disabled=!own||state.state==='IDLE';
     $('players').replaceChildren();

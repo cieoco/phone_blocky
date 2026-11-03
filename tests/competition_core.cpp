@@ -1,10 +1,21 @@
 #include "../src/competition/Core.h"
 #include "../src/competition/Protocol.h"
 #include "../src/competition/InputPolicy.h"
+#include "../src/competition/StationPolicy.h"
 #include <cassert>
 #include <iostream>
 using namespace Competition;
 int main() {
+  char apName[33];refereeAPName(apName,sizeof(apName),"A1B2","192.168.1.50");
+  assert(!strcmp(apName,"A1B2-192.168.1.50"));
+  refereeAPName(apName,sizeof(apName),"FFFF","255.255.255.255");assert(strlen(apName)<=32);
+  refereeAPName(apName,sizeof(apName),"A1B2","");assert(!strcmp(apName,"A1B2-STA-offline"));
+  StationTicket network;network.epoch=7;network.channel=6;
+  assert(network.matches(true,6,7));
+  assert(!network.matches(false,6,7));
+  assert(!network.matches(true,11,7));
+  assert(!network.matches(true,6,8)); // a short disconnect/reconnect cannot resume
+  assert(!StationTicket::usable(true,12));
   assert(inputKind("","read",false)==InputKind::Read);
   assert(inputKind("joy","read",false)==InputKind::Motion);
   assert(inputKind("PROG","read",false)==InputKind::Denied);
