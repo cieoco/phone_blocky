@@ -95,7 +95,7 @@ python tools/competition_pair.py --info COM5 --show-credentials
 
 ## 5. 音效與驗收
 
-repo 不再提供 Team 254 的四個 WAV，也不自動下載。上游條款對使用與轉散布有不同限制，本專案未取得另外的轉散布許可；來源與雜湊僅留作歷史紀錄，見 [音效說明](../referee_data/audio/README.md)。移除新版本檔案不會刪除舊公開 Git 歷史。
+repo 不再提供 Team 254 的四個 WAV，也不自動下載。上游條款對使用與轉散布有不同限制，本專案未取得另外的轉散布許可；來源與雜湊僅留作歷史紀錄，見 [音效說明](../referee_data/audio/README.md)。2026-11-03 已另經使用者授權改寫 main 的相關歷史；託管服務快取與他人副本不在本次清除範圍。
 
 預設請勾選「靜音」。需要音效時，由操作者自行確認使用許可，在本機 `referee_data/audio/` 提供 `start.wav`、`resume.wav`、`end.wav`、`abort.wav`，再執行裁判角色的 `buildfs` 與 `uploadfs`。四檔皆載入成功才能啟用音效；不要把含音檔的映像發布出去。可選用有適當授權的替代錄音，但不能稱其為 FRC 原版。上板後需試聽版本與音量；本機 WAV 已列入 `.gitignore`。
 
