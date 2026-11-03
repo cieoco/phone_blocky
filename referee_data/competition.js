@@ -11,7 +11,7 @@
   function hasControl(){return online&&state&&state.owner===operator;}
   function render() {
     if(!state)return;
-    $('phase').textContent=labels[state.state]||state.state;
+    $('phase').textContent=state.releasing?'清場中・等待各車解除管制':labels[state.state]||state.state;
     const timing=['RUN_MANUAL','RUN_AUTO','GAP','STARTING'].includes(state.state);
     const ms=Math.max(0,state.remaining_ms-(online&&timing?performance.now()-lastUpdate:0));
     const seconds=Math.ceil(ms/1000);$('timer').textContent=`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
@@ -20,7 +20,7 @@
     for(const id of ['mode','first','manual','auto','gap'])$(id).disabled=!idle||!own;
     for(const el of document.querySelectorAll('#teams input'))el.disabled=!idle||!own;
     const allowed={prepare:idle,cancel:['PREPARING','READY'].includes(state.state),start:state.state==='READY',pause:['RUN_MANUAL','RUN_AUTO','GAP'].includes(state.state),resume:state.state==='PAUSED',reset:['FINISHED','ABORTED','FAULT'].includes(state.state)};
-    for(const [id,value] of Object.entries(allowed))$(id).disabled=!own||busy||!value;
+    for(const [id,value] of Object.entries(allowed))$(id).disabled=!own||busy||state.releasing||!value;
     $('stop').disabled=!own||state.state==='IDLE';
     $('players').replaceChildren();
     for(const p of state.players||[]) {

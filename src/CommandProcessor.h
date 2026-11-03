@@ -1937,6 +1937,7 @@ public:
         pwmMgr.dynamicAnalogWrite(gpio, constrain(value, 0, 255));
       } else {
         pinMode(gpio, OUTPUT);
+        CompetitionGate::noteDigitalOutput(gpio);
         digitalWrite(gpio, value ? HIGH : LOW);
       }
       if (sendJsonResponseCallback) {
@@ -2088,14 +2089,17 @@ public:
   {
     stopAllRuntime();
 #if COMPETITION_COMPETITOR
-    servoCtrl.disableOutputs();
-    pwmMgr.disableOutputs();
-#else
+    if (CompetitionGate::managed()) {
+      servoCtrl.disableOutputs();
+      pwmMgr.disableOutputs();
+    } else
+#endif
+    {
     servoDeg[1] = 90;
     servoDeg[2] = 90;
     servoCtrl.controlServo(1, servoDeg[1]);
     servoCtrl.controlServo(2, servoDeg[2]);
-#endif
+    }
 
     setupCommands.clear();
     loopCommands.clear();
@@ -3061,10 +3065,12 @@ public:
     switch (cmd.type) {
       case CMD_PIN_MODE:
         pinMode(cmd.pin, cmd.value);
+        if(cmd.value==OUTPUT)CompetitionGate::noteDigitalOutput(cmd.pin);
         if (cmd.pin >= 0 && cmd.pin < kUserPinCount) pullupPins[cmd.pin] = (cmd.value == INPUT_PULLUP);
         break;
       case CMD_DIGITAL_WRITE:
         pinMode(cmd.pin, OUTPUT);
+        CompetitionGate::noteDigitalOutput(cmd.pin);
         digitalWrite(cmd.pin, cmd.value);
         break;
       case CMD_ANALOG_WRITE:

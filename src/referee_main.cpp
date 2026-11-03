@@ -11,14 +11,15 @@ Snapshot snapshot;
 Jobs jobs;
 uint64_t bootId=0;
 bool initialized=false;
+bool releasing=false;
 struct Player {
   Team team;
   uint64_t boot=0,previousBoot=0;
   uint32_t tx=0, rx=0, readyGen=0, commitGen=0, appliedGen=0, hash=0, disabledGen=0;
-  Time lastRx=0, lastStatus=0, lastPing=0, lastSend=0, pingT1=0;
+  Time lastRx=0, lastStatus=0, lastPing=0, lastSend=0, pingT1=0, lastRenew=0, lastView=0, lastDisable=0;
   int64_t offset=0;
   uint32_t uncertainty=1000;
-  bool syncPending=false, locked=true, fault=false, sync=false;
+  bool syncPending=false, locked=true, fault=false, sync=false, owned=true;
 };
 Player players[MaxPlayers]; size_t playerCount=0, cursor=0;
 Time lastSnapshot=0, generationAt=0;
@@ -33,6 +34,7 @@ String serialLine;
 void publish() {
   DynamicJsonDocument d(12288); Time now=nowMs();
   d["role"]="referee"; d["ready"]=initialized; d["boot_id"]=hexId(bootId); d["mac"]=WiFi.macAddress();
+  d["releasing"]=releasing;
   d["match_id"]=hexId(engine.match); d["version"]=engine.version; d["generation"]=engine.generation;
   d["state"]=stateName(engine.state); d["mode"]=modeName(engine.config.mode); d["phase_mode"]=modeName(engine.mode());
   d["first_mode"]=modeName(engine.config.first); d["phase"]=engine.phase; d["remaining_ms"]=uint32_t(engine.remaining(now));
@@ -112,7 +114,7 @@ const char* action(JsonDocument& d) {
   if(!strcmp(op,"reset")) {
     if(!engine.terminal())return "invalid_state";
     if(!allLocked())return "stop_not_confirmed";
-    if(!engine.reset())return "invalid_state";releasePlayers();return "ok";
+    releasing=true;return "ok"; // Release is acknowledged before removing peers.
   }
   return "unknown_action";
 }
@@ -145,6 +147,7 @@ void receivePackets() {
     } else if(packet.type==Message::Status && packet.match==engine.match) {
       p.lastStatus=r.received;p.appliedGen=packet.generation;p.locked=packet.payload[13];p.fault=packet.payload[3];p.sync=packet.payload[14];
       p.hash=uint32_t(get(packet.payload+8,4));
+      p.owned=packet.payload[15];
       if(packet.generation==engine.generation) {
         p.readyGen=packet.payload[0] && p.sync && !p.fault?packet.generation:0;
         p.commitGen=packet.payload[1] && p.sync && !p.fault?packet.generation:0;
@@ -161,22 +164,29 @@ void transmit() {
     Packet q;q.controllerBoot=bootId;q.match=engine.match;q.deviceBoot=p.boot;q.generation=engine.generation;q.sequence=wireSequence+1;q.sent=now;
     if(!q.sequence){engine.fault("sequence_exhausted");return;}
     bool disable=engine.terminal() || engine.state==State::Paused;
-    if(disable && (p.disabledGen!=engine.generation || now-p.lastSend>=RenewMs)) {q.type=Message::Disable;q.payload[0]=engine.terminal();}
+    if(releasing && (!p.boot || now-p.lastPing>=700)) {q.type=Message::Ping;q.deviceBoot=0;}
+    else if(releasing && p.disabledGen!=engine.generation) {q.type=Message::Disable;q.payload[0]=1;}
+    else if(releasing) {q.type=Message::Release;}
+    else if(disable && (p.disabledGen!=engine.generation || now-p.lastDisable>=RenewMs)) {q.type=Message::Disable;q.payload[0]=engine.terminal();}
     else if(p.syncPending) {q.type=Message::Sync;put(q.payload,uint64_t(p.offset),8);put(q.payload+8,p.uncertainty,4);}
     else if(!p.boot || now-p.lastPing>=700) {q.type=Message::Ping;q.deviceBoot=0;}
     else if(engine.active() && engine.state!=State::Paused && p.readyGen!=engine.generation) {
       q.type=Message::Prepare;q.payload[0]=uint8_t(engine.mode());q.payload[1]=engine.config.mode!=Mode::Manual;
     } else if(engine.scheduling() && p.commitGen!=engine.generation) {
       q.type=Message::Commit;q.effective=engine.start;put(q.payload,engine.end,8);
-    } else if((engine.running() || (engine.scheduling() && engine.guardPassed)) && now-p.lastSend>=RenewMs) {
+    } else if((engine.running() || (engine.scheduling() && engine.guardPassed)) && now-p.lastRenew>=RenewMs) {
       q.type=Message::Renew;q.until=std::min(now+LeaseMs,engine.end);
+    } else if(now-p.lastView>=100) {
+      q.type=Message::View;q.payload[0]=uint8_t(engine.state);q.payload[1]=uint8_t(engine.mode());put(q.payload+2,engine.remaining(now),4);
     } else continue;
     q.length=payloadSize(q.type);
     if(radio.send(p.team.mac,q)) {
       wireSequence=q.sequence;p.tx=q.sequence;p.lastSend=now;
       if(q.type==Message::Ping){p.lastPing=now;p.pingT1=now;}
       if(q.type==Message::Sync)p.syncPending=false;
-      if(q.type==Message::Disable)p.disabledGen=engine.generation;
+      if(q.type==Message::Disable){p.disabledGen=engine.generation;p.lastDisable=now;}
+      if(q.type==Message::Renew)p.lastRenew=now;
+      if(q.type==Message::View)p.lastView=now;
       cursor=(cursor+n+1)%playerCount;
     }
     return;
@@ -218,6 +228,11 @@ void setup() {
 void loop() {
   if(!initialized){delay(100);return;}
   Time now=nowMs();receivePackets();
+  if(releasing) {
+    bool released=playerCount>0;
+    for(size_t i=0;i<playerCount;++i)if(players[i].owned || players[i].appliedGen!=engine.generation || now-players[i].lastStatus>HealthMs)released=false;
+    if(released){engine.reset();releasePlayers();releasing=false;}
+  }
   if(engine.generation!=observedGen){observedGen=engine.generation;generationAt=now;}
   if(radio.failed())engine.fault("radio_queue_or_callback_failure");
   if(WiFi.channel()!=settings.channel)engine.fault("channel_changed");

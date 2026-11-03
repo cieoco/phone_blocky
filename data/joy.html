@@ -10,6 +10,7 @@
 <html>
 
 <head>
+  <script src="competition_client.js?v=20261103-1"></script>
 	<title>🎮 ESP32 機器人遙控器</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1" ; charset="utf-8">
 	<link rel="stylesheet" href="joy.css">
@@ -651,6 +652,16 @@
 	var slider1Value = 90, slider2Value = 90;
 	var vM3AngleValue = 0, vM4AngleValue = 0;
 	var estopActive = false;
+	// A new referee phase always requires neutral controls before driving again.
+	window.addEventListener('competitionchange', function () {
+		estopActive = true;
+		['ActionSlider_ON_M1', 'ActionSlider_ON_M2'].forEach(function (id) {
+			var el = document.getElementById(id); if (el) el.value = 0;
+		});
+		['M1PowerValue', 'M2PowerValue'].forEach(function (id) {
+			var el = document.getElementById(id); if (el) el.textContent = '0';
+		});
+	});
 	var encoderPollEnabled = false;
 	var encoderPollTimer = null;
 	var encoderPollIntervalMs = 1000;
@@ -829,6 +840,9 @@
 
 
 	function emergencyStop() {
+		if (window.CompetitionStudent && window.CompetitionStudent.state && window.CompetitionStudent.state.managed) {
+			window.CompetitionStudent.stop();
+		}
 		estopActive = true;
 		["ActionSlider_ON_M1", "ActionSlider_ON_M2"].forEach(function (id) {
 			var slider = document.getElementById(id);

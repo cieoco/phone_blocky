@@ -6,6 +6,9 @@
 WebServerHandler *WebServerHandler::instance = nullptr;
 
 void WebServerHandler::handleSystemRestart(AsyncWebServerRequest *request) {
+  Student::MutationGuard competitionGuard;
+  if (!competitionGuard.allowed()) {request->send(409,"application/json","{\"ok\":false,\"err\":\"competition_locked\"}");return;}
+
   Serial.println("[系統] 網頁請求: 重啟ESP32");
 
   // 先回應請求，告知重啟指令已收到
@@ -72,6 +75,9 @@ void WebServerHandler::handleMotorPIDGet(AsyncWebServerRequest *request) {
 
 void WebServerHandler::handleMotorPIDPost(AsyncWebServerRequest *request,
                                           uint8_t *data, size_t len) {
+  Student::MutationGuard competitionGuard;
+  if (!competitionGuard.allowed()) {request->send(409,"application/json","{\"ok\":false,\"err\":\"competition_locked\"}");return;}
+
   DynamicJsonDocument doc(1024);
   DeserializationError error = deserializeJson(doc, data, len);
   if (error) {
@@ -119,6 +125,9 @@ void WebServerHandler::handleMotorPIDPost(AsyncWebServerRequest *request,
 
 void WebServerHandler::handleMotorPIDApply(AsyncWebServerRequest *request,
                                            uint8_t *data, size_t len) {
+  Student::MutationGuard competitionGuard;
+  if (!competitionGuard.allowed()) {request->send(409,"application/json","{\"ok\":false,\"err\":\"competition_locked\"}");return;}
+
   DynamicJsonDocument doc(768);
   if (deserializeJson(doc, data, len)) {
     request->send(400, "text/plain", "Invalid JSON");
@@ -167,6 +176,9 @@ void WebServerHandler::handleMotorPIDApply(AsyncWebServerRequest *request,
 
 void WebServerHandler::handleMotorHWApply(AsyncWebServerRequest *request,
                                           uint8_t *data, size_t len) {
+  Student::MutationGuard competitionGuard;
+  if (!competitionGuard.allowed()) {request->send(409,"application/json","{\"ok\":false,\"err\":\"competition_locked\"}");return;}
+
   DynamicJsonDocument doc(256);
   if (deserializeJson(doc, data, len)) {
     request->send(400, "text/plain", "Invalid JSON");
@@ -189,6 +201,9 @@ void WebServerHandler::handleMotorHWApply(AsyncWebServerRequest *request,
 
 void WebServerHandler::handleMotorSysIdPost(AsyncWebServerRequest *request,
                                             uint8_t *data, size_t len) {
+  Student::MutationGuard competitionGuard;
+  if (!competitionGuard.allowed()) {request->send(409,"application/json","{\"ok\":false,\"err\":\"competition_locked\"}");return;}
+
   DynamicJsonDocument doc(256);
   DeserializationError error = deserializeJson(doc, data, len);
   if (error) {
@@ -254,7 +269,11 @@ void WebServerHandler::loadPIDSettings() {
 void WebServerHandler::stopAllMotors() {
   Serial.println("[WebSocket] 連接中斷，停止所有馬達");
   String stopCommand = "{\"cmd\":\"stop\"}";
+#if COMPETITION_COMPETITOR
+  Student::submit(stopCommand, Comm::CH_WS);
+#else
   cmdProcessor.processCommands(stopCommand, Comm::CH_WS);
+#endif
 }
 
 void WebServerHandler::checkWebSocketTimeout() {
@@ -297,6 +316,9 @@ void WebServerHandler::handleProgramGet(AsyncWebServerRequest *request) {
 void WebServerHandler::handleProgramPost(AsyncWebServerRequest *request,
                                          uint8_t *data, size_t len,
                                          size_t index, size_t total) {
+  Student::MutationGuard competitionGuard;
+  if (!competitionGuard.allowed()) {request->send(409,"application/json","{\"ok\":false,\"err\":\"competition_locked\"}");return;}
+
   // 累積多段 chunk (XML 可能 > 1 packet)
   if (index == 0) {
     programPostBuffer = "";
@@ -376,6 +398,9 @@ void WebServerHandler::handleProgramPost(AsyncWebServerRequest *request,
 }
 
 void WebServerHandler::handleProgramDelete(AsyncWebServerRequest *request) {
+  Student::MutationGuard competitionGuard;
+  if (!competitionGuard.allowed()) {request->send(409,"application/json","{\"ok\":false,\"err\":\"competition_locked\"}");return;}
+
   ProgramStore::clear();
   Serial.println("[ProgramStore] 已清除存檔");
   request->send(200, "application/json", "{\"ok\":true}");
@@ -392,6 +417,9 @@ void WebServerHandler::handleProgramAutorunGet(AsyncWebServerRequest *request) {
 
 void WebServerHandler::handleProgramAutorunPost(
     AsyncWebServerRequest *request, uint8_t *data, size_t len) {
+  Student::MutationGuard competitionGuard;
+  if (!competitionGuard.allowed()) {request->send(409,"application/json","{\"ok\":false,\"err\":\"competition_locked\"}");return;}
+
   DynamicJsonDocument doc(64);
   if (deserializeJson(doc, data, len)) {
     request->send(400, "application/json",

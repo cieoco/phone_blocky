@@ -23,7 +23,7 @@ public:
     ESP32PWM::allocateTimer(3);
 
 #if COMPETITION_COMPETITOR
-    return; // Competition boot must not attach or command a 90-degree movement.
+    if (CompetitionGate::managed()) return; // A managed reboot never moves a servo.
 #endif
 
     servo1.setPeriodHertz(50);

@@ -6,6 +6,7 @@
 #include "ServoController.h"
 #include "WebServerHandler.h"
 #include "config.h"
+#include "competition/Student.h"
 #include <Arduino.h>
 #include <WiFi.h>
 
@@ -179,6 +180,11 @@ static void expHandleCommand(const String &line) {
 // JSON 處理任務
 void jsonTask(void *pvParameters) {
   for (;;) {
+#if COMPETITION_COMPETITOR
+    if(!Student::managed())webServerHandler.checkWebSocketTimeout();
+    Student::step(webServerHandler.isSerialMode());
+    vTaskDelay(1 / portTICK_PERIOD_MS);
+#else
     static unsigned long lastPrint = 0;
 
 #if !I2C_SLAVE_MODE
@@ -221,6 +227,7 @@ void jsonTask(void *pvParameters) {
 #endif
     }
     vTaskDelay(10 / portTICK_PERIOD_MS); // 高頻率運行
+#endif
   }
 }
 
@@ -236,7 +243,11 @@ void serialTask(void *pvParameters) {
       // JSON cmd 行（{...}）與 WebSocket 共用同一個 router，回應走 SERIAL 通道；
       // 不受 serialMode 限制，USB 不需先連 WiFi 即可下 JSON 指令。
       if (line.startsWith("{")) {
+#if COMPETITION_COMPETITOR
+        if(!Student::submit(line, Comm::CH_SERIAL))Serial.println("{\"ok\":false,\"err\":\"queue_full\"}");
+#else
         cmdProcessor.processCommands(line, Comm::CH_SERIAL);
+#endif
 #if I2C_SLAVE_MODE
         // 共存實驗指令不受 serialMode 閘門限制——從機模式下 serialMode 為 false，
         // 掛在閘門後面會永遠收不到。
@@ -244,6 +255,8 @@ void serialTask(void *pvParameters) {
         expHandleCommand(line);
 #endif
       } else if (webServerHandler.isSerialMode()) {
+        Student::MutationGuard competitionGuard;
+        if (!competitionGuard.allowed()) {Serial.println("{\"ok\":false,\"err\":\"competition_locked\"}");continue;}
         String jsonStr;
         if (line.startsWith("M")) {
           int firstComma = line.indexOf(',');
@@ -324,6 +337,9 @@ void serialTask(void *pvParameters) {
 void setup() {
   Serial.begin(115200);
   delay(1000); // 等待序列埠穩定
+#if COMPETITION_COMPETITOR
+  Student::boot();
+#endif
 
   Serial.println("");
   Serial.println("========================================");
@@ -343,7 +359,12 @@ void setup() {
   encoderHandler.begin();
 
   // 建立回呼讓 CommandProcessor 能回傳 JSON
-  cmdProcessor.setSendJsonResponseCallback(WebServerHandler::sendJsonResponse);
+  cmdProcessor.setSendJsonResponseCallback([](const DynamicJsonDocument& d,uint8_t channel){
+#if COMPETITION_COMPETITOR
+    if(d["ok"]==false || d.containsKey("err"))Student::commandError();
+#endif
+    WebServerHandler::sendJsonResponse(d,channel);
+  });
 
 #if I2C_SLAVE_MODE
   // I2C 從機先起來，再啟動 WiFi。順序有意義：WiFi 的 STA 連線最多會阻塞
@@ -451,13 +472,16 @@ void setup() {
   webServerHandler.begin();
 
   // 開機 autorun:若 NVS 有存檔且 autorun flag 開,自動載入並執行
-  webServerHandler.runAutorunProgramIfEnabled();
+#if COMPETITION_COMPETITOR
+  Student::begin();
+#endif
+  if (!Student::managed()) webServerHandler.runAutorunProgramIfEnabled();
 #endif
 
   // 建立一個新任務，將 JSON 處理工作分配給 core1
   xTaskCreatePinnedToCore(jsonTask,   // 任務函式
                           "JSONTask", // 任務名稱
-                          12288,      // 堆疊大小（巢狀 if/repeat/while 每層一次遞迴，最多 8 層）
+                          COMPETITION_COMPETITOR ? 24576 : 12288, // 競賽 service hook 也使用此堆疊
                           NULL,       // 傳入參數
                           2,          // 任務優先權
                           NULL, // 任務句柄（不需要時可設為 NULL）

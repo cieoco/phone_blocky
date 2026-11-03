@@ -432,7 +432,7 @@ node tests/check_oled.cjs
 
 ## 12. 實作版契約與驗證更新（2026-11-03）
 
-本節記錄 P0 之後、依使用者「開始動手直到完成」授權所完成的第一版。原稿中的 5 秒間隔與 AUTO 重跑 setup 採作第一版預設，已在裁判與學生 UI 明示。這不是上板性能認證。
+本節是現行實作契約，已依使用者後續確認更新為「沿用原學生控制板、韌體與 UI，只新增裁判管制」。與前文原規劃或舊版記錄不同時，以本節為準。原稿中的 5 秒間隔與 AUTO 重跑 setup 採作第一版預設，已在裁判與學生 UI 明示。這不是上板性能認證。
 
 ### 12.1 實際檔案與範圍
 
@@ -443,23 +443,27 @@ node tests/check_oled.cjs
 | 無線／NVS／時鐘基礎 | `src/competition/Runtime.h`，接收 queue 20 筆、callbacks 不操作致動器 |
 | HTTP 共用 | `src/competition/WebSupport.h`，每請求獨立、有上限且 null-terminated 的 JSON body |
 | 裁判 | `src/referee_main.cpp`，Async HTTP 只入列，loop 持有狀態機；無馬達初始化 |
-| 學生 | `src/competitor_main.cpp`，唯一 loop 執行致動器／PROG；program service hook 維持通訊與租約 |
+| 學生 | 原 `main.cpp`／`WebServerHandler` + `competition/Student.cpp`；jsonTask 持有無線／PROG，service hook 維持租約 |
 | 底層閘門 | Gate.h + MotorController／ServoController／PWMManager；CommandProcessor 長迴圈退出與競賽停止不回中 |
 | 裁判檔案系統 | `referee_data/`；`tools/referee_filesystem.py` 選擇資料來源，沿用 1700 KiB 分割區；repo 不附 WAV |
-| 學生頁 | `data/competition_drive.html`／`.js`，按住行駛、換段清舊操作，既有 Blockly 僅儲存 |
+| 學生頁 | 原首頁、Blockly、joy、設定等頁 + `competition_client.js`；顯示狀態／時間並限制操作 |
 | 配對 | `tools/competition_pair.py`，USB 確認角色後建立每車 LMK、隊名、STA MAC 與固定頻道 |
 
-學生競賽板採獨立 entrypoint，因此不需要把所有舊 JSON 動作改寫成跨任務 queue；舊 main／WebServerHandler 根本不編入此角色。USB 只開配對、資訊、GPIO 設定、停止，不開動作控制。I2C 組合以編譯 guard 拒絕。教學與 I2C 原入口維持既有行為。
+學生競賽建置使用原 entrypoint 與原網頁。WS／JSON USB 指令排入最多 8 筆的佇列，由 jsonTask 執行；每筆附入列 epoch，接管／換段／清場使舊命令失效。HTTP 設定／存檔與原始 USB 指令持有 mutation guard，與接管共用鎖。管制中拒絕 USB 動作、hardwareTest 與設定寫入；手動僅允許原 joy 與明列動作指令，自動僅允許鎖定快照。`InputPolicy.h` 對齊 processor 的 mode 優先序，不能以 read cmd 搭配 PROG／hardwareTest 或 legacy command 繞過。
+
+一般教學及 I2C 建置不編入 ESP-NOW 功能。競賽建置未配對／未參賽時保留原操作；已配對時固定 AP 頻道、不連外部 STA，但保留原 AP 名稱／密碼。I2C 組合仍以編譯 guard 拒絕。
+
+接管先停止原程式／SysId／HOLD／PWM／已記錄的 digital 輸出與舵機，再載入 AUTO 快照。管制旗標寫入 NVS 並驗證成功後才能 READY；重開機維持鎖定且不 autorun。終局 Disable 保持管制，裁判 reset 逐車送 Release，學生在 jsonTask 安全點清空舊程式後才解除 NVS 管制；所有學生回覆 owned=false 才移除 peers、回 IDLE。不可在程式自身 yield callback 內套用新程式或清除執行向量。
 
 控制節拍修正：`src/ControlTiming.h` 讓共用閉迴路的所有呼叫入口至少間隔 10ms，使用真實 dt，避免同毫秒重複呼叫多計積分／斜坡。學生車的頂層 Blockly loop 在每圈完成後至少間隔 10ms，再執行下一圈；不補跑積欠圈數。通訊外層仍 `delay(1)`，長程式仍依既有 service hook 讓出；這不是每 1ms 必定收發的承諾。host 測試涵蓋重複呼叫、長圈、實際 dt 與 millis 環回，實體 PID 手感及 CPU 耗時尚待量測。
 
 閒置恢復補充：有效 dt 僅接受 10–100ms（含端點）；超過 100ms 更新 last 到現在、回傳不執行本步，至少再隔 10ms 才恢復控制。開機等待、手動轉 AUTO、暫停與教學 serial 模式等長間隔不會再一次灌入 PID 積分或加速斜坡。此機制不清除控制器積分，也不代替競賽授權／撤權機制；測試涵蓋 100／101ms 邊界、60 秒閒置、恢復下一拍及跨 millis 環回。
 
-手動第一版是新 `/drive` WebSocket 的四馬達 duty 與選用兩舵機角度，並非舊 joy／USB 的全部功能。原有 PROG 中 speed／move_to／move_by 等仍可在 AUTO 使用，沿用既有單位與 NVS 調校參數。GPIO 致動輸出只允許 USB 預先登記的 4／15／18／26／32，安全值 LOW；超音波固定 2／33，避免以感測器設定改動馬達腳位。
+手動沿用原 joy.html 的搖桿、馬達與舵機控制及單位，使用原 `/ws`；原 PROG speed／move_to／move_by 等可在 AUTO 使用。比賽 GPIO 致動輸出仍須預先登記 4／15／18／26／32，安全值 LOW；超音波固定 2／33。未參賽的教學 GPIO 行為維持原樣，接管時也會清除先前教學程式留下的數位輸出。
 
 ### 12.2 實際 radio 契約
 
-header 維持 §6.2 的 64 bytes；magic 為 ASCII `SM`、version=1、flags=0。序號每控制器開機單調增加，**跨場次不歸零**；每車回覆序號也跨場次保留，重啟改 boot ID。實際 message_type 為下表數值，所有整數 little-endian：
+header 維持 §6.2 的 64 bytes；magic 為 ASCII `SM`、version=2、flags=0（裁判與學生必須一起升級，拒絕 v1 封包）。序號每控制器開機單調增加，**跨場次不歸零**；每車回覆序號也跨場次保留，重啟改 boot ID。實際 message_type 為下表數值，所有整數 little-endian：
 
 | 值／訊息 | payload bytes | 內容 |
 |---|---:|---|
@@ -471,7 +475,9 @@ header 維持 §6.2 的 64 bytes；magic 為 ASCII `SM`、version=1、flags=0。
 | 6 Commit | 8 | uint64 phase_end；header.effective 為 phase_start，until=0，沒有授權 |
 | 7 Renew | 0 | header.until 為裁判時鐘的絕對租約截止 |
 | 8 Disable | 1 | terminal bool；撤權、終止或取消準備 |
-| 9 Status | 15 | prepared／committed／outputs_on／fault 各 1 byte；ack_sequence 4；program_hash 4；mode／locked／synced 各 1 |
+| 9 Status | 16 | prepared／committed／outputs_on／fault 各 1 byte；ack_sequence 4；program_hash 4；mode／locked／synced／owned 各 1 |
+| 10 View | 6 | state、phase mode 各 1；remaining_ms uint32，只供 UI 顯示，不授權輸出 |
+| 11 Release | 0 | 僅本場本 generation 終局可解除管制，重複封包可安全重送 |
 
 第一版使用 Status 同時提供應用層確認與健康回報，沒有另一種 ACK_APPLIED 封包。名單由裁判建立的加密 peer 清單與逐車 match／boot／generation 約束，不另外傳送名單雜湊。程式摘要是 FNV-1a 32-bit，用於操作辨識，**不是密碼學完整性證明**；程式快照仍只從本車 NVS 鎖定。
 
@@ -484,8 +490,10 @@ header 維持 §6.2 的 64 bytes；magic 為 ASCII `SM`、version=1、flags=0。
 - 裁判讀取 `GET /api/competition/state`，前端約每 200 ms 輪詢，並以 performance.now 平滑顯示；主控板仍是時間權威。第一版未增加 `/competition/ws`。
 - 裁判寫入統一 `POST /api/competition/action`，JSON 含 `request_id`、`operator`、`expected_version`、`match_id`、`action`。動作含 claim／heartbeat／prepare／start／pause／resume／stop／cancel／reset。prepare 連同 teams、mode、first_mode、manual_ms、auto_ms、gap_ms 提交設定。
 - 裁判 API 使用 `X-Competition-Key` 與 Origin 檢查；一個頁面持有操作者識別，保存最近 16 個 request_id 結果供重送／輪詢辨識。stop 忽略過期版本，但必須匹配本場 ID。名冊建立／更新走 USB；第一版未開 `/teams` PUT 或獨立 `/config` PUT。
-- 學生 `POST /api/competition/login` 驗證本車密碼，建立 HttpOnly／SameSite=Strict cookie，供同板 Blockly `/api/program` 儲存使用。`/drive` 另以 claim 驗證，綁定單一 WebSocket client；token 只發給該 client。
-- `/drive` 每約 100 ms 發新 context，保留最近三個，**各自固定 250 ms 到期**。每次 drive 要有有效 token 與遞增 sequence；heartbeat 不續動作。手動 JSON 詳見 prog_json_schema.md。
+- 學生沿用原 AP 存取方式與 `/ws`，不另設登入或替代控制頁。每 100ms 推送 competition_state；沒有 WS 的原頁面以 GET 輪詢同一快照。顯示 View 最多容許 500ms 舊資料，前端連線逾 350ms 停送動作；真正輸出仍由租約／本車 gate 決定。
+- 每約 100ms 發新 token，保留最近三個，各自固定 250ms 到期。第一個有效手動指令綁定本階段單一 WS client；序號必須遞增，其他頁可觀看。換段清 token 與操作者；原 joy 觸發中立鎖定，放開舊方向／按鈕才可再動。詳見 prog_json_schema.md。
+- 共用狀態列／原緊急停止可送 competition_stop，無 WS 頁面使用 POST /api/competition/stop；只停止本車並回報故障，不自行恢復。裁判 reset 顯示清場中，直到各車回覆解除才返回待賽。
+- View、Renew 與 Disable 各自記錄傳送時間；新增 UI 同步封包不會把續租的 80ms 基準一直往後推。
 - 暫停 GAP 後恢復，增加 1200 ms 的重新準備窗口，再消耗已保存的 GAP 剩餘時間；AUTO 恢復從 setup 重跑，僅使用保存的動作剩餘時間。
 - 時間／模式／勾選名單本次不存 NVS，重開機回預設。名冊、配對、頻道、密碼及安全 GPIO 設定持久化。
 
@@ -503,3 +511,11 @@ header 維持 §6.2 的 64 bytes；magic 為 ASCII `SM`、version=1、flags=0。
 本機瀏覽器連線預覽伺服器逾時，因此尚未完成真瀏覽器視覺／音訊驗證；不以假 DOM 測試替代這項結果。未燒錄板子、未測無線性能、未量測車體停止、未完成 30 分鐘場地測試。詳細上板步驟與待驗項目見 [competition_setup.md](competition_setup.md)。
 
 審查修正後重新驗證：Python 4 項、六組 Node 檢查通過；競賽檢查在 0 個本機 WAV 下驗證缺檔拒絕啟用音效，且仍允許有適當授權的替代 WAV。裁判 `buildfs` 成功，檔案清單不含 WAV。本次未修改韌體；無線溢位鎖定機制維持原設計，補齊重開機操作說明。
+
+
+### 12.5 原 UI 整合驗證與待驗
+
+- `tests/check_student_competition.cjs` 執行共用前端程式，驗證教學／READY／手動／自動／暫停／GAP／結束／清場、過期 token、原按鈕限制、指令 mode 優先序及 joy 中立重設。
+- `tests/competition_core.cpp` 加驗實際 InputPolicy、防 read + hardwareTest／PROG 繞過、v2 長度與拒絕 v1。
+- 原 Python 4 項、所有原 Node 回歸、核心 UBSan、四角色編譯及兩角色檔案系統須通過。這些不代替兩塊以上實體板驗收。
+- 上板需驗證：原頁面手機排版／多頁並用、未參賽車不受影響、停止／模式轉換與 held joystick、長程式接管、管制中重開機、清場封包遺失重送，以及所有 HTTP／USB 操作無法繞過授權。

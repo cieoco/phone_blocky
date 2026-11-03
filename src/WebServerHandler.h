@@ -4,6 +4,7 @@
 #include "CommandProcessor.h"
 #include "CommChannel.h"
 #include "config.h"
+#include "competition/Student.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>
@@ -129,17 +130,24 @@ public:
       break;
 
     case WS_EVT_DISCONNECT:
+#if COMPETITION_COMPETITOR
+      Student::disconnected(client->id());
+#endif
       Serial.printf("WebSocket 用戶端 #%u 已斷線\n", client->id());
       // AsyncWebSocket::count() 只計算 WS_CONNECTED client。關閉其中一個
       // Blockly／搖桿分頁時，其他仍在線的控制頁不應被誤判為全部斷線。
       webSocketConnected = server && server->count() > 0;
-      if (!webSocketConnected) {
+      if (!webSocketConnected && !Student::managed()) {
         // 最後一個 WebSocket client 離線才停止所有馬達。
         stopAllMotors();
       }
       break;
 
     case WS_EVT_DATA: {
+#if COMPETITION_COMPETITOR
+      auto* frame=static_cast<AwsFrameInfo*>(arg);
+      if(!frame->final || frame->index || frame->len!=len || len>32768 || frame->opcode!=WS_TEXT){client->close();break;}
+#endif
       String msg;
       for (size_t i = 0; i < len; i++) {
         msg += (char)data[i];
@@ -147,7 +155,12 @@ public:
       // 更新最後接收訊息的時間
       lastWebSocketMessage = millis();
 
+#if COMPETITION_COMPETITOR
+      if(!Student::submit(msg,Comm::CH_WS,client->id()))client->text("{\"ok\":false,\"err\":\"queue_full\"}");
+      break; // Responses are produced by the command owner, never optimistic success.
+#else
       cmdProcessor.processCommands(msg, Comm::CH_WS);
+#endif
 
       // 在收到成功回應後，重置 waitingForResponse 以允許新的訊息送出
       if (msg.indexOf("message_success") >= 0) {
@@ -212,7 +225,8 @@ public:
     staSsid = wifiSSID;
     staPassword = wifiPassword;
     WiFi.mode(WIFI_AP_STA);
-    WiFi.setAutoReconnect(true);
+    WiFi.setAutoReconnect(!Student::paired());
+    if(Student::paired()){staSsid="";staPassword="";WiFi.disconnect(false,false);}
     if (staSsid.length() > 0 && staPassword.length() > 0) {
       WiFi.begin(staSsid.c_str(), staPassword.c_str());
       Serial.printf("嘗試連線至路由器 ssid=%s（密碼 %u 字元）...\n",
@@ -257,7 +271,7 @@ public:
     if (apPassword == nullptr || strlen(apPassword) == 0) {
       apPassword = "12345678";
     }
-    bool apResult = WiFi.softAP(apName.c_str(), apPassword, 1, 0, 4);
+    bool apResult = WiFi.softAP(apName.c_str(), apPassword, Student::channel(), 0, 4);
     if (apResult) {
       // 記下「實際廣播出去的是哪個名字」。AP 名稱在這裡定案之後就不再更動
       // （重設 softAP 會把學生已連上的手機踢掉），所以 /api/wifi 必須回報
@@ -404,19 +418,23 @@ public:
       request->send(200, "application/json", out);
     });
 
+#if COMPETITION_COMPETITOR
+    Student::attach(server,ws);
+#endif
     // 靜態檔案服務
     server.serveStatic("/", LittleFS, "/")
         .setDefaultFile("index.html")
-        .setCacheControl("max-age=86400");
+        .setCacheControl("no-cache");
     server.serveStatic("/joy", LittleFS, "/joy.html")
-        .setCacheControl("max-age=3600");
+        .setCacheControl("no-cache");
 
     // 新增 WiFi 設定頁面
     server.serveStatic("/set", LittleFS, "/set.html")
-        .setCacheControl("max-age=3600");
+        .setCacheControl("no-cache");
 
     // 新增 WiFi 設定 POST handler
     server.on("/setwifi", HTTP_POST, [this](AsyncWebServerRequest *request) {
+      Student::MutationGuard guard;if(!guard.allowed()){request->send(409,"application/json","{\"err\":\"competition_locked\"}");return;}
       const String ssid = request->arg("ssid");
       const String password = request->arg("password");
       const String apName = request->arg("name");
@@ -460,6 +478,7 @@ public:
     // 新增僅設定控制板名稱 POST handler
     server.on("/setnameonly", HTTP_POST,
               [this](AsyncWebServerRequest *request) {
+                Student::MutationGuard guard;if(!guard.allowed()){request->send(409,"application/json","{\"err\":\"competition_locked\"}");return;}
                 String apName = request->arg("name");
                 if (apName.length() > 0) {
                   // 規範 #5：寫入要驗證，失敗不得回報成功、也不重開機
@@ -490,6 +509,7 @@ public:
     // 新增進入 Serial 控制模式的處理器
     server.on("/serialmode/enable", HTTP_POST,
               [this](AsyncWebServerRequest *request) {
+                Student::MutationGuard guard;if(!guard.allowed()){request->send(409,"application/json","{\"err\":\"competition_locked\"}");return;}
                 serialMode = true;
                 // 印出目前的 Serial 控制模式狀態
                 Serial.println("Serial 控制模式已啟用。");
@@ -501,6 +521,7 @@ public:
     // 新增停用 Serial 控制模式的處理器
     server.on("/serialmode/disable", HTTP_POST,
               [this](AsyncWebServerRequest *request) {
+                Student::MutationGuard guard;if(!guard.allowed()){request->send(409,"application/json","{\"err\":\"competition_locked\"}");return;}
                 serialMode = false;
                 // 印出目前的 Serial 控制模式狀態
                 Serial.println("Serial 控制模式已停用。");

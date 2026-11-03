@@ -1,9 +1,17 @@
 #include "../src/competition/Core.h"
 #include "../src/competition/Protocol.h"
+#include "../src/competition/InputPolicy.h"
 #include <cassert>
 #include <iostream>
 using namespace Competition;
 int main() {
+  assert(inputKind("","read",false)==InputKind::Read);
+  assert(inputKind("joy","read",false)==InputKind::Motion);
+  assert(inputKind("PROG","read",false)==InputKind::Denied);
+  assert(inputKind("hardwareTest","pwm",false)==InputKind::Denied);
+  assert(inputKind("","read",true)==InputKind::Denied);
+  assert(inputKind("","apply_config",false)==InputKind::Denied);
+  for(const char* command:{"pwm","speed","move_to","move_by","servo","stop"})assert(inputKind("",command,false)==InputKind::Motion);
   for(Mode matchMode:{Mode::Manual,Mode::Auto,Mode::Mixed})for(Mode first:{Mode::Manual,Mode::Auto}) {
     MatchEngine m;Config config;config.mode=matchMode;config.first=first;config.manualMs=1000;config.autoMs=2000;config.gapMs=1000;
     assert(m.prepare(config,90,0));m.ready();m.begin(0);
@@ -39,9 +47,14 @@ int main() {
   Packet p; p.type=Message::Commit; p.length=8; p.sequence=12; p.controllerBoot=UINT64_MAX-1; p.match=123;
   p.generation=42; p.effective=1234; put(p.payload,99999,8);
   uint8_t data[MaxFrame]; size_t len=encode(p,data); Packet q; assert(len==72 && decode(data,len,q));
+  data[2]=1;assert(!decode(data,len,q));data[2]=2; // mixed firmware versions fail closed
   assert(q.controllerBoot==p.controllerBoot && q.generation==42 && get(q.payload,8)==99999);
   for(size_t i=0;i<len;++i) assert(!decode(data,i,q));
   data[6]=1; assert(!decode(data,len,q)); data[6]=0; data[3]=255; assert(!decode(data,len,q));
+  for(Message type:{Message::View,Message::Release,Message::Status}) {
+    p.type=type;p.length=payloadSize(type);len=encode(p,data);assert(decode(data,len,q));assert(q.type==type);
+    assert(!decode(data,len-1,q));
+  }
   // Fault injection across a 30-second stage: no packet can resurrect an expired lease.
   for(unsigned dropAt=1000;dropAt<30000;dropAt+=113) {
     Lease x;assert(x.prepare(1,1,1,Mode::Auto,1));assert(x.commit(1,2,1000,31000,0));

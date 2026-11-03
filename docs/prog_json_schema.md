@@ -6,11 +6,11 @@
 
 ### 競賽角色的執行權限
 
-`esp32dev_competitor` 的 PROG JSON 格式與角度／PWM 單位維持本文件定義；程式先經 `/api/program` 儲存，再由裁判授權執行鎖定快照。直接傳送 `mode:"PROG"`、舊即時 WS／USB 動作或 autorun 不會啟動車輛。一般教學／I2C 角色不受此限制。
+`esp32dev_competitor` 沿用原韌體與 `/ws`，PROG JSON、角度與 PWM 單位維持本文件定義。未進入比賽時保留原有即時控制、Blockly 執行／存檔、USB、設定與 autorun。裁判準備本場後鎖定存檔快照，AUTO 只執行該快照；Blockly 執行、存檔、設定寫入、hardwareTest 與 USB 動作在管制中拒絕。一般教學／I2C 建置不受此限制。
 
-競賽手動控制另用 `/drive` WebSocket：先 `{"type":"claim","key":"<本車密碼>"}`，取得學生板定期發出的 `context`。當 `allowed:true` 時，送 `{"type":"drive","token":<context token>,"sequence":<遞增整數>,"motors":[0,0,0,0]}`；四個值依序為 M1–M4 的 ±100 duty。選用 `servos:[90,90]` 為 S1／S2 的角度。token 綁定本場階段、操作者與學生板上的 250 ms 到期時間，不能自行展延；`heartbeat` 不會延長馬達動作。
+原頁面的 `competition_client.js` 接收 `/ws` 每 100ms 推送的 `type:"competition_state"`，包含 managed、state、remaining_ms、generation、epoch、allowed 與短效 token。管制中的手動指令仍是原 `mode:"joy"` 或 `cmd:pwm/speed/move_to/move_by/servo/stop`，額外帶 `_competition:{token,generation,sequence}`。token 在學生板上固定 250ms 到期、綁定當階段；第一個合法手動指令取得本階段單一 WebSocket 操作者，其他連線只能讀取。頁面序號單調增加。讀取指令不能搭配其他 mode 或舊 command 欄位繞過權限。
 
-`{"type":"stop"}` 會撤權本車並向裁判回報故障。一般放開方向鍵應送四個零 duty，不使用故障停止。新控制入口、配對與權限說明見 [比賽操作](competition_setup.md)；ESP-NOW wire 契約見 [SDD §12](espnow_competition_sdd.md#12-實作版契約與驗證更新2026-11-03)。
+`{"cmd":"competition_stop"}`（或 `POST /api/competition/stop`）停止本車並回報裁判故障；原 Blockly 空程式停止由共用前端轉成此指令。一般放開搖桿仍送零值。終局停止不代表解除管制；裁判清場發出 RELEASE、收到學生回覆後，原 UI 才回到教學。見 [比賽操作](competition_setup.md) 與 [SDD](espnow_competition_sdd.md)。
 
 ### OLED（Blockly 專用擴充；AI 子集尚不產生）
 
