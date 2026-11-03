@@ -75,6 +75,8 @@ pio device monitor           # 序列監視器（115200 baud）
 
 一塊裁判板提供統一登入入口，登入後選 **A 場裁判／B 場裁判／中央音效台**。兩場獨立計時與控制，共用最多 4 台參賽車；同一車不可同時參加兩場。接喇叭的 PC 開中央音效頁並按啟用，即可播放兩場聲音，不需 Python。更新時須燒錄裁判韌體及 `uploadfs`，詳見 [操作與音效說明](docs/competition_setup.md)。
 
+裁判使用 **ESP32-S3-Zero（4 MB Flash）** 時，選 `esp32s3_zero_referee` 建置及燒錄；一般 ESP32 才用 `esp32dev_referee`。兩者共用裁判網頁，學生板維持原 `esp32dev_competitor`。
+
 ### Wi-Fi 設定
 
 [`include/config.h`](include/config.h) 中的 `CONFIG_STA_SSID` / `CONFIG_STA_PASSWORD` **預設留空**，

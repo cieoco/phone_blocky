@@ -569,3 +569,11 @@ ESP-NOW peers 使用 channel=0 跟隨當前 STA 頻道；比賽準備時另以 `
 更新需同時燒錄裁判韌體與裁判 uploadfs。本次學生通訊格式未變，已使用最新 v2 competitor 的學生板無須因雙場 UI 重燒。尚需實體裁判板、四車、真實手機與喇叭驗證 RF 停止時限、音效延遲及至少 30 分鐘負載；離線測試不代表硬體已驗收。
 
 2026-11-04 離線驗證結果：Python 8 項、10 組 Node 檢查、C++ 核心與控制節拍 UBSan 測試皆通過；四角色編譯、裁判及學生 buildfs 皆成功。裁判韌體 RAM 56,160 bytes／Flash 914,317 bytes；LittleFS 已包含統一入口、兩場裁判頁及中央音效頁。本機四個 WAV 僅存在忽略的本機目錄與建置映像，未加入版本庫。未執行 upload／uploadfs，未進行真實瀏覽器、RF 或喇叭硬體驗收。
+
+## 15. ESP32-S3-Zero 實板部署（2026-11-04）
+
+- 使用者提供 ESP32-S3-Zero。esptool 實際辨識 ESP32-S3 revision v0.2、4 MB quad Flash；新增 `esp32s3_zero_referee`，沿用裁判邏輯、分割表及網頁，不啟用 PSRAM。
+- 建置以 S3 通用定義覆寫 4 MB Flash、啟用原生 USB Serial/JTAG CDC，僅使用裁判所需的 JSON／非同步 Web 通訊依賴。S3 韌體 RAM 55,780 bytes、Flash 861,709 bytes，編譯成功。
+- 經使用者授權已完成實板韌體 upload 與 LittleFS uploadfs，兩者皆通過 esptool 寫入雜湊校驗。USB 重置後仍停在下載模式，使用者按 RESET／重新上電後，原生 USB `competition_info` 正常回覆，STA 已連線、AP＋STA 同時運作。
+- HTTP 實板驗證通過：正確登入密碼接受、錯誤密碼回 403、A／B 場皆 IDLE、ready 為 true；首頁、兩個工作頁及其 JS／CSS 與四個 WAV 的 SHA-256 均與本機上傳來源相符，檢查期間 boot_id 保持不變。密碼只從 USB 讀入記憶體供驗證，未存入 repo。
+- 此次未連學生車、未實測 ESP-NOW 同步啟停，也未確認瀏覽器實際出聲；上述實板結果僅代表裁判開機、網路、登入與靜態資源服務已驗證。

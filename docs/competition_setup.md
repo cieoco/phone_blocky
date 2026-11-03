@@ -1,6 +1,6 @@
 # ESP-NOW 相撲比賽：建置與操作
 
-裁判網頁已加入同頻道 ESP-NOW 搜尋、隊伍登記／配對，以及學生原網頁同意後更換裁判的流程；比賽計時與授權管制沿用既有實作。尚未完成兩塊以上實體板的無線與機構驗收。裁判板與學生競賽板均以本專案 ESP32／4 MB Flash 配置建置；請先確認實際板型。
+裁判網頁已加入同頻道 ESP-NOW 搜尋、隊伍登記／配對，以及學生原網頁同意後更換裁判的流程；比賽計時與授權管制沿用既有實作。尚未完成兩塊以上實體板的無線與機構驗收。學生競賽板使用原 ESP32；裁判可用一般 ESP32 或 ESP32-S3-Zero（4 MB Flash），必須選擇對應建置環境，兩者韌體不可互燒。
 
 ## 連線速查
 
@@ -38,6 +38,7 @@ STA 連線／失聯或 DHCP IP 改變時會更新 AP 名稱；IP 沒變就不反
 | 韌體角色 | 行為 | 網頁資料來源 |
 |---|---|---|
 | `esp32dev_referee` | AP＋STA 裁判計時、名單、ESP-NOW 授權，不初始化致動器 | `referee_data/` |
+| `esp32s3_zero_referee` | ESP32-S3-Zero／4 MB Flash 裁判，同樣功能；原生 USB Serial/JTAG | `referee_data/` |
 | `esp32dev_competitor` | 原學生韌體加裁判管制；未參賽可正常操作，參賽期間才需授權 | 原有 `data/`，增加共用狀態列 |
 | 原有 `esp32dev`／`esp32dev_i2c` | 保持既有教學／I2C 模式，不能當成已受裁判限制的競賽車 | 原有 `data/` |
 
@@ -58,6 +59,21 @@ pio run -e esp32dev_competitor --target uploadfs --upload-port COM6
 ```
 
 兩種角色的 `uploadfs` 不可互換。裁判的建置腳本會自動使用 `referee_data/`；repo 不附 WAV，未提供本機音檔也能建置。音效準備見第 5 節；學生板保留原首頁、Blockly、搖桿與設定頁。這次未更動分割表。**雙場版本須更新裁判韌體與裁判 uploadfs；已使用最新 ESP-NOW v2 competitor 的學生板不用因此重燒。** 若學生仍是早期 v1 或一般教學韌體，則需一起更新為 v2 competitor 與其網頁。手機重新載入頁面。
+
+### ESP32-S3-Zero 裁判板
+
+4 MB Flash 型號使用 `esp32s3_zero_referee`，沿用本專案分割表與 LittleFS；裁判功能使用內部 RAM，不啟用 PSRAM。此環境使用 S3 通用板型定義並覆寫為 4 MB，啟用原生 USB CDC；不能使用上面的 `esp32dev_referee` 韌體。學生環境保持原設定。
+
+用可傳資料 USB-C 線連接，首次燒錄可按住 BOOT 再插入 USB，放開 BOOT。已插線時也可按住 BOOT、按一下 RESET 後放開 BOOT。關閉序列監視器，執行以下指令；COM4 是範例，實際以 `python -m serial.tools.list_ports -v` 查到的 USB 埠為準。
+
+```powershell
+pio run -e esp32s3_zero_referee
+pio run -e esp32s3_zero_referee --target upload --upload-port COM4
+pio run -e esp32s3_zero_referee --target uploadfs --upload-port COM4
+python tools/competition_pair.py --info COM4
+```
+
+燒錄後若仍停在下載模式，放開 BOOT 並按一次 RESET。重新列出序列埠；原生 USB 埠可能重新枚舉。查詢時加 `--show-credentials` 可在本機取得裁判 AP／登入密碼，請勿存進版本庫。確認 STA 已連線後，開啟回傳的 IP 即可登入；日常使用只需 USB 供電。
 
 ## 2. 車輛搜尋與登記（ESP-NOW）
 
