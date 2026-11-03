@@ -10,6 +10,8 @@
   function note(text){$('notice').textContent=text;}
   Object.assign(errors,{referee_network_changed:'裁判 Wi-Fi 連線或頻道已變更，本場已停止；重新連線不會自動續賽',wifi_not_configured:'尚未設定裁判 STA 網路',wifi_disconnected:'裁判尚未連上路由器',unsupported_channel:'路由器須使用 2.4GHz 頻道 1–11'});
   Object.assign(errors,{discovery_stale:'車輛資訊已過期，請重新搜尋',student_consent_required:'請先在學生原網頁允許更換裁判',invalid_name:'隊名需為 1–48 個 UTF-8 bytes',key_exchange_failed:'無法建立配對金鑰，請重新搜尋',pairing_write_failed:'配對資料儲存失敗',peer_add_failed:'無法建立車輛通訊'});
+  Object.assign(errors,{central_audio_online:'中央音效台已接管，本頁保持靜音',another_audio_station:'另一個中央音效台已連線'});
+  let localPlaying=false;
   function hasControl(){return online&&state&&state.owner===operator;}
   function render() {
     if(!state)return;
@@ -20,6 +22,8 @@
     const seconds=Math.ceil(ms/1000);$('timer').textContent=`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
     $('next').textContent=state.state==='GAP'?`下一階段：${state.phase_mode==='AUTO'?'自動':'手動'}`:state.state==='PAUSED'?'等待裁判恢復；不會自動繼續':`${state.mode==='MIXED'?'混合比賽':'單一模式'} · 頻道 ${state.channel}`;
     const idle=state.state==='IDLE', own=hasControl();
+    $('audio').disabled=!own||busy||state.audio_route==='CENTRAL';
+    $('audioState').textContent=state.audio_route==='CENTRAL'?'中央音效台已連線・由中央播放，本頁自動靜音':state.audio_route==='LOCAL'?'本機音效模式・僅本頁持有操作權且啟用音效時播放':'中央音效未連線・目前不播放；可按「本機接回音效」，或選擇靜音比賽';
     $('scan').disabled=!idle||!own||busy||state.pairing||!state.ready;
     $('pairState').textContent=state.pairing?`正在配對 ${state.pair_mac}，等待車輛確認…`:state.pair_result==='ok'?`${state.pair_mac} 配對已確認`:state.pair_result==='pairing_unconfirmed'?`${state.pair_mac} 配對未確認；請查看學生頁的裁判 MAC，必要時重新開放接管。`:state.scanning?'正在搜尋同頻道車輛（15 秒）…':'';
     const discoverySig=JSON.stringify([state.discovered,idle,own,busy,state.pairing]);
@@ -54,7 +58,9 @@
     const r=await fetch('/api/competition/state',{cache:'no-store',signal:AbortSignal.timeout(2000)});
     if(!r.ok)throw new Error('主控板無回應');state=await r.json();lastUpdate=performance.now();online=true;
     $('online').textContent=state.owner===operator?'已連線 · 本頁持有裁判控制權':'已連線 · 觀看模式';$('online').className='';
-    audio.observe(state,hasControl()&&!$('mute').checked);render();
+    const local=hasControl()&&state.audio_route==='LOCAL'&&!$('mute').checked;
+    if(local!==localPlaying){audio.reset();localPlaying=local;}
+    audio.observe(state,local);render();
     if(state.reason)note(errors[state.reason]||state.reason);
   }
   async function invoke(action,extra={}) {
@@ -71,9 +77,9 @@
   $('scan').onclick=()=>click('scan');
   $('prepare').onclick=()=>click('prepare',{mode:$('mode').value,first_mode:$('first').value,manual_ms:Number($('manual').value)*1000,auto_ms:Number($('auto').value)*1000,gap_ms:Number($('gap').value)*1000,teams:Array.from(document.querySelectorAll('#teams input:checked'),x=>x.value)});
   for(const action of ['pause','resume','stop','cancel','reset'])$(action).onclick=()=>click(action);
-  $('start').onclick=()=>{if(!audio.ready&&!$('mute').checked){note('請先啟用音效，或明確勾選本場靜音。');return;}click('start');};
-  $('audio').onclick=async()=>{try{await audio.enable();$('audioState').textContent='四種音效已載入，可離線播放。';}catch(e){$('audioState').textContent=e.message;}};
+  $('start').onclick=()=>{if(state?.audio_route!=='CENTRAL'&&!(state?.audio_route==='LOCAL'&&audio.ready)&&!$('mute').checked){note('請連上中央音效台、啟用本機音效，或明確勾選靜音。');return;}click('start');};
+  $('audio').onclick=async()=>{try{await audio.enable(false);await invoke('audio_local');audio.reset();note('本機音效已接回，僅播放接下來的事件。');}catch(e){audio.stop();note(e.message);}};
   $('volume').oninput=()=>{audio.volume=Number($('volume').value);};
   setInterval(render,100);
-  (async function poll(){try{await refresh();if(hasControl()&&!busy&&Date.now()-lastHeartbeat>3000){lastHeartbeat=Date.now();await invoke('heartbeat');}}catch(e){online=false;$('online').textContent='連線中斷 · 畫面資料已過期；主控板計時仍持續';$('online').className='offline';render();}setTimeout(poll,200);})();
+  (async function poll(){try{await refresh();if(hasControl()&&!busy&&Date.now()-lastHeartbeat>3000){lastHeartbeat=Date.now();await invoke('heartbeat');}}catch(e){online=false;audio.reset();localPlaying=false;$('online').textContent='連線中斷 · 畫面資料已過期；主控板計時仍持續';$('online').className='offline';render();}setTimeout(poll,200);})();
 })();

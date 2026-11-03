@@ -3,6 +3,7 @@
 #include "competition/RefereeStation.h"
 #include "competition/PairingPolicy.h"
 #include "competition/PairingCrypto.h"
+#include "competition/AudioRoute.h"
 using namespace Competition;
 
 namespace {
@@ -47,6 +48,7 @@ struct PairAttempt {
   Time until=0,sent=0;uint8_t channel=0;
 } pairing;
 String pairResult,pairMac;
+AudioRoute audioRoute;
 
 void publish() {
   DynamicJsonDocument d(32768); Time now=nowMs();
@@ -60,6 +62,9 @@ void publish() {
   d["first_mode"]=modeName(engine.config.first); d["phase"]=engine.phase; d["remaining_ms"]=uint32_t(engine.remaining(now));
   d["manual_ms"]=engine.config.manualMs; d["auto_ms"]=engine.config.autoMs; d["gap_ms"]=engine.config.gapMs;
   d["event_id"]=engine.event; d["sound"]=engine.sound; d["reason"]=engine.reason;
+  d["audio_route"]=audioRoute.name(now);
+  d["audio_owner"]=audioRoute.central(now)?hexId(audioRoute.holder):String("");
+  d["audio_lease_ms"]=audioRoute.central(now)?uint32_t(audioRoute.until-now):0;
   d["request_id"]=lastRequest; d["request_result"]=lastResult;
   JsonArray history=d.createNestedArray("results");
   for(const auto& result:results)if(result.id.length()){JsonObject item=history.createNestedObject();item["id"]=result.id;item["result"]=result.result;}
@@ -98,6 +103,13 @@ void releasePlayers() {for(size_t i=0;i<playerCount;++i)radio.remove(players[i].
 Mode parseMode(const char* s) {return !strcmp(s,"MANUAL")?Mode::Manual:!strcmp(s,"AUTO")?Mode::Auto:!strcmp(s,"MIXED")?Mode::Mixed:Mode(0);}
 const char* action(JsonDocument& d) {
   const char* op=d["action"]|""; Time now=nowMs();
+  // Authenticated by the HTTP endpoint, but does not require or acquire the
+  // referee operator's control token. Central audio is a separate lease.
+  if(!strcmp(op,"audio_heartbeat") || !strcmp(op,"audio_release")) {
+    uint64_t id=0;if(!parseId(d["audio_id"]|"",id) || !id)return "invalid_audio_id";
+    bool ok=!strcmp(op,"audio_heartbeat")?audioRoute.heartbeat(id,now):audioRoute.release(id);
+    return ok?"ok":"another_audio_station";
+  }
   if(!strcmp(op,"claim")) {
     String id=d["operator"]|""; if(id.length()<8 || id.length()>48) return "invalid_operator";
     if(owner.length() && owner!=id && now-ownerSeen<10000) return "another_operator";
@@ -106,6 +118,7 @@ const char* action(JsonDocument& d) {
   if(owner.length()==0 || owner!=String(d["operator"]|"")) return "claim_control_first";
   ownerSeen=now;
   if(!strcmp(op,"heartbeat")) return "ok";
+  if(!strcmp(op,"audio_local"))return audioRoute.takeLocal(now)?"ok":"central_audio_online";
   if(!strcmp(op,"stop")) {
     if(String(d["match_id"]|"")!=hexId(engine.match))return "wrong_match";
     return engine.stop()?"ok":"invalid_state";

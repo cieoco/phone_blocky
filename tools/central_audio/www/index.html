@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>相撲比賽｜中央音效台</title><link rel="stylesheet" href="desk.css"></head>
+<body><main><header><p class="eyebrow">相撲比賽 · 中央音效台</p><h1>兩個場地，一台音效電腦。</h1><p>裁判各自操作比賽；這台電腦負責播放。兩場音效即時播放，可同時出聲。</p></header>
+<section class="controls"><button id="enable">啟用中央音效</button><button id="disable" disabled>停止中央播放</button><label>總音量 <input id="volume" type="range" min="0" max="1" step="0.05" value="0.8"></label><p id="notice" role="status">填入裁判板 IP 與操作密碼，再啟用音效。</p></section>
+<div class="fields">
+<section class="field"><div class="field-title"><h2>A 場</h2><span id="statusA" class="badge">尚未啟用</span></div><label>裁判板 IP<input id="hostA" placeholder="192.168.1.50" autocomplete="off" inputmode="url"></label><label>裁判操作密碼<input id="keyA" type="password" autocomplete="off"></label><p id="phaseA">等待連線</p><strong id="clockA" class="clock">—</strong><p id="eventA" class="event">尚未播放</p><button id="testA">試播 A 場</button></section>
+<section class="field"><div class="field-title"><h2>B 場</h2><span id="statusB" class="badge">尚未啟用</span></div><label>裁判板 IP<input id="hostB" placeholder="192.168.1.51（可留空）" autocomplete="off" inputmode="url"></label><label>裁判操作密碼<input id="keyB" type="password" autocomplete="off"></label><p id="phaseB">等待連線</p><strong id="clockB" class="clock">—</strong><p id="eventB" class="event">尚未播放</p><button id="testB">試播 B 場</button></section>
+</div><footer>保持此頁與 Python 視窗開啟，並關閉電腦休眠。重新連線只接收新音效，不補播舊事件。<br>密碼只在本次頁面使用，不儲存到檔案。音檔讀取自這台 PC 的本機資料夾。</footer></main>
+<script src="competition_audio.js"></script><script src="desk.js"></script></body></html>

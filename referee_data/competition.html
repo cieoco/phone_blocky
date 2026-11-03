@@ -16,7 +16,7 @@
 <div><button id="prepare">準備本場</button> <button id="cancel">取消準備</button> <button id="reset">清場／下一場</button></div>
 <p class="muted">預設每階段 30 秒。混合模式中間全車停止，暫停倒數完自動換段。自動階段被裁判暫停後，恢復會從程式 setup 重跑，保留剩餘時間。</p></section>
 <section><h2>參賽車輛</h2><div class="tablewrap"><table><thead><tr><th>隊伍</th><th>連線</th><th>準備</th><th>輸出狀態</th></tr></thead><tbody id="players"></tbody></table></div><p class="muted">「輸出已鎖定」表示控制板已回覆，不代表車體已消除慣性。未參賽車輛不受本場控制。</p></section>
-<section><h2>FRC 音效</h2><button id="audio">啟用並試播號角</button><label>音量 <input id="volume" type="range" min="0" max="1" step="0.05" value="0.8"></label><label><input id="mute" type="checkbox">本場靜音</label><p id="audioState" class="muted">請在指定的裁判播放裝置啟用；只有持有控制權的頁面播放音效。</p><details><summary>音效來源</summary><p>使用 Team 254 Cheesy Arena 提供的原始 WAV，沒有重新合成或轉碼。<a href="audio/manifest.json">檔案來源與校驗值</a>／<a href="audio/LICENSE.txt">來源授權文字</a>。場地計時以主控板為準。</p></details></section>
+<section><h2>比賽音效</h2><button id="audio">本機接回音效</button><label>本機音量 <input id="volume" type="range" min="0" max="1" step="0.05" value="0.8"></label><label><input id="mute" type="checkbox">本頁靜音／允許無音效開始</label><p id="audioState" class="muted">等待中央音效台。中央上線後本頁自動靜音；中央離線時，可由裁判手動接回。</p><p class="muted">中央電腦執行 tools/central_audio/run.bat，啟用音效後自動接管。本頁的靜音選項不會關閉中央喇叭。</p><details><summary>音效來源</summary><p>音檔由操作者在本機提供，repo 不附錄音。<a href="audio/manifest.json">歷史原版檔案校驗資料</a>／<a href="audio/LICENSE.txt">來源授權文字</a>。場地計時以主控板為準。</p></details></section>
 <p id="notice" class="notice" role="alert"></p>
 <div class="bar"><button id="start" class="primary">開始比賽</button><button id="pause">裁判暫停</button><button id="resume">繼續比賽</button><button id="stop" class="danger">停止本場全部車輛</button></div>
-<script src="competition_audio.js?v=1"></script><script src="competition.js?v=20261103-pairing"></script></body></html>
+<script src="competition_audio.js?v=20261104-central"></script><script src="competition.js?v=20261104-central"></script></body></html>

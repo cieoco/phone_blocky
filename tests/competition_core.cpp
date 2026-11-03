@@ -3,10 +3,22 @@
 #include "../src/competition/InputPolicy.h"
 #include "../src/competition/StationPolicy.h"
 #include "../src/competition/PairingPolicy.h"
+#include "../src/competition/AudioRoute.h"
 #include <cassert>
 #include <iostream>
 using namespace Competition;
 int main() {
+  AudioRoute audio;
+  assert(!strcmp(audio.name(0),"WAITING"));
+  assert(audio.takeLocal(0));assert(!strcmp(audio.name(0),"LOCAL"));
+  assert(audio.heartbeat(11,100));assert(!audio.local);assert(!strcmp(audio.name(100),"CENTRAL"));
+  assert(!audio.takeLocal(5099));assert(!audio.heartbeat(22,5099));
+  assert(!audio.release(22));assert(audio.central(5099));
+  assert(!audio.central(5100));assert(!strcmp(audio.name(5100),"WAITING"));
+  assert(audio.takeLocal(5100));assert(audio.heartbeat(22,5200));
+  assert(!audio.release(11));assert(audio.central(5200)); // old page cannot revoke a new station
+  assert(audio.release(22));assert(!strcmp(audio.name(5200),"WAITING"));
+  assert(!audio.heartbeat(0,5300));
   PairingAdmission admission;admission.ticket=123;
   assert(admission.accepts(0,false,false,false,123)); // first enrollment
   assert(!admission.accepts(0,true,false,false,123)); // another referee cannot steal a registered car
