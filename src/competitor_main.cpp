@@ -9,6 +9,7 @@ Settings settings; Radio radio; Lease lease;
 MotorController motors; ServoController servos(SERVO1_PIN,SERVO2_PIN);
 EncoderHandler encoders; PWMManager pwm;
 CommandProcessor processor(motors,servos,encoders,pwm);
+ControlTiming::LoopCadence programCadence;
 AsyncWebServer server(80); AsyncWebSocket drive("/drive"), blockly("/ws");
 Snapshot snapshot; Jobs jobs;
 SemaphoreHandle_t programMutex;
@@ -292,6 +293,14 @@ void loop() {
     processor.processCommands(program,Comm::CH_SERIAL);
   }
   processor.applyPendingProgramIfAny();
-  if(permitted() && lease.mode==Mode::Auto) {processor.executeLoopCommands();processor.updateAngleControl();}
+  if(permitted() && lease.mode==Mode::Auto) {
+    if(programCadence.ready(millis())) {
+      processor.executeLoopCommands();
+      programCadence.complete(millis());
+    }
+    // The controller itself gates all entrypoints to >=10 ms, including calls
+    // made inside Blockly. Radio/lease service above still runs each outer pass.
+    processor.updateAngleControl();
+  }
   drive.cleanupClients();blockly.cleanupClients();delay(1);
 }

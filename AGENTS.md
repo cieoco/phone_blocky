@@ -182,7 +182,8 @@ examples/             ← 內建範例程式（唯讀）：index.json 清單 + �
 
 層數上限三處需一致：韌體 `PROG_MAX_BLOCK_DEPTH`（CommandProcessor.h）、前端 `MAX_BLOCK_DEPTH`（app.js）、
 `platformio.ini` 的 `ARDUINOJSON_DEFAULT_NESTING_LIMIT=32`（每層積木佔 2 層 JSON，拿掉會退回只剩 3 層）。
-頂層 loop 每 10 ms 整圈執行，容器同步執行；`delay` 與每圈迴圈經 `programYield()` 讓出 CPU 並維持 10ms 控制節拍（含 I2C 從機的主機命令落地與看門狗，見 `setProgramServiceHook`），新程式到達時全部跳出。
+頂層 loop 每圈完成後間隔約 10 ms 再整圈執行，容器同步執行；競賽學生車由 `ControlTiming::LoopCadence` 對齊此節奏。`delay` 與每圈迴圈經 `programYield()` 讓出 CPU 並維持 10ms 控制節拍（含 I2C 從機的主機命令落地與看門狗，見 `setProgramServiceHook`），新程式到達時全部跳出。
+`updateAngleControl()` 所有入口共用 `ControlTiming::takeStep`：距上次不足 10ms 不更新，dt 一律用實際經過時間，不得把同毫秒呼叫補成 0.01 秒。時間與環回測試隨 `bash tools/check_competition_core.sh` 執行。
 **不要在 `programYield()` 裡呼叫 WebSocket 逾時檢查**：Blockly 頁沒有心跳，會提早停掉正常的延遲動作。
 AI 子集（`prompts.py` / `schema.py` / `ai.html`）目前不產生迴圈。
 

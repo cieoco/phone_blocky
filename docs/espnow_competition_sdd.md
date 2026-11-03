@@ -451,6 +451,8 @@ node tests/check_oled.cjs
 
 學生競賽板採獨立 entrypoint，因此不需要把所有舊 JSON 動作改寫成跨任務 queue；舊 main／WebServerHandler 根本不編入此角色。USB 只開配對、資訊、GPIO 設定、停止，不開動作控制。I2C 組合以編譯 guard 拒絕。教學與 I2C 原入口維持既有行為。
 
+控制節拍修正：`src/ControlTiming.h` 讓共用閉迴路的所有呼叫入口至少間隔 10ms，使用真實 dt，避免同毫秒重複呼叫多計積分／斜坡。學生車的頂層 Blockly loop 在每圈完成後至少間隔 10ms，再執行下一圈；不補跑積欠圈數。通訊外層仍 `delay(1)`，長程式仍依既有 service hook 讓出；這不是每 1ms 必定收發的承諾。host 測試涵蓋重複呼叫、長圈、實際 dt 與 millis 環回，實體 PID 手感及 CPU 耗時尚待量測。
+
 手動第一版是新 `/drive` WebSocket 的四馬達 duty 與選用兩舵機角度，並非舊 joy／USB 的全部功能。原有 PROG 中 speed／move_to／move_by 等仍可在 AUTO 使用，沿用既有單位與 NVS 調校參數。GPIO 致動輸出只允許 USB 預先登記的 4／15／18／26／32，安全值 LOW；超音波固定 2／33，避免以感測器設定改動馬達腳位。
 
 ### 12.2 實際 radio 契約

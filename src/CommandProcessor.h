@@ -18,6 +18,7 @@
 #include "ProgramStore.h"
 #include "config.h"
 #include "OledDisplay.h"
+#include "ControlTiming.h"
 
 // --- 效能優化：定義指令的枚舉和結構體 ---
 enum CommandType {
@@ -174,7 +175,7 @@ private:
   struct PlotSeriesClock { String series; unsigned long lastMs = 0; };
   PlotSeriesClock plotClocks[kPlotSeriesSlots];
   int plotClockCount = 0;
-  unsigned long lastPIDTime = 0;
+  uint32_t lastPIDTime = 0;
   unsigned long lastTelemetryTime = 0;
   unsigned long lastPositionLogMs[NUM_MOTORS + 1] = {0};
   uint8_t telemetryChannels = 0;   // 哪些通道訂閱了 telemetry（bitmask，精準路由）
@@ -2045,9 +2046,8 @@ public:
       return;
     }
 
-    float dt = (now - lastPIDTime) / 1000.0f;
-    if (dt <= 0) dt = 0.01f;
-    lastPIDTime = now;
+    float dt;
+    if (!ControlTiming::takeStep(now, lastPIDTime, dt)) return;
 
     updateMeasuredRpm(3, now);
     updateMeasuredRpm(4, now);
@@ -2890,7 +2890,7 @@ public:
   //  2. 外部服務掛鉤(I2C 從機:主機命令落地、看門狗),主機的 STOP_ALL 不必等 delay 結束。
   void controlTickDuringProgram() {
     unsigned long now = millis();
-    if (now - lastProgramYieldControlMs >= 9) {
+    if (now - lastProgramYieldControlMs >= ControlTiming::PeriodMs) {
       lastProgramYieldControlMs = now;
 #if COMPETITION_COMPETITOR
       if (programServiceHook) programServiceHook();

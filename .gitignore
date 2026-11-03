@@ -36,3 +36,7 @@ config.py
 # Match recordings are supplied locally after checking usage permission.
 # Do not redistribute them through this repository.
 /referee_data/audio/*.wav
+
+# Desktop tuner build outputs
+/motor_tuner/build*/
+/motor_tuner/dist/
