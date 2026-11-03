@@ -2,7 +2,8 @@
 #include "Core.h"
 #include <string.h>
 namespace Competition {
-enum class Message : uint8_t { Ping = 1, Pong, Sync, Prepare, Ready, Commit, Renew, Disable, Status, View, Release };
+enum class Message : uint8_t { Ping = 1, Pong, Sync, Prepare, Ready, Commit, Renew, Disable, Status, View, Release,
+  Discover, Announce, PairOffer, PairAck };
 constexpr size_t HeaderBytes = 64, MaxPayload = 128, MaxFrame = HeaderBytes + MaxPayload;
 inline void put(uint8_t* p, uint64_t v, size_t n) { for (size_t i=0; i<n; ++i) p[i]=uint8_t(v >> (8*i)); }
 inline uint64_t get(const uint8_t* p, size_t n) { uint64_t v=0; for(size_t i=0;i<n;++i) v |= uint64_t(p[i]) << (8*i); return v; }
@@ -27,6 +28,10 @@ inline uint16_t payloadSize(Message t) {
     case Message::Status: return 16; // previous flags + referee ownership
     case Message::View: return 6; // state, phase mode, remaining milliseconds (display only)
     case Message::Release: return 0; // terminal match: explicitly return to teaching
+    case Message::Discover: return 0;
+    case Message::Announce: return 113; // ticket[8], public[65], owner MAC[6], flags[1], name[33]
+    case Message::PairOffer: return 79; // target MAC[6], ticket[8], public[65]
+    case Message::PairAck: return 16; // key-confirmation HMAC, also sent encrypted
   }
   return 65535;
 }

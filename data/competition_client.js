@@ -4,6 +4,7 @@
   const NativeSocket = window.WebSocket;
   const sockets = new Set();
   let state = null, seenAt = 0, sequence = 0, lastKey = '', stale = false;
+  let handoverBusy = false, handoverNotice = '';
   const disabledByUs = new Set();
   const names = { TEACHING: '一般教學', IDLE: '等待裁判', PREPARING: '準備本場', READY: '準備完成',
     STARTING: '即將開始', RUN_MANUAL: '手動階段', RUN_AUTO: '自動階段', GAP: '換段暫停',
@@ -29,7 +30,22 @@
     }
     fetch('/api/competition/stop', {method: 'POST'}).catch(() => {});
   }
-  window.CompetitionStudent = { get state() { return state; }, stop };
+  async function handover() {
+    if (!current() || state.committed || handoverBusy) return;
+    const value = window.prompt('請輸入裁判頁顯示的頻道（1–11）。更換頻道後，手機可能需要重新連上這台車。', String(state.channel || 1));
+    if (value === null) return;
+    const channel = Number(value);
+    if (!Number.isInteger(channel) || channel < 1 || channel > 11) { window.alert('頻道須為 1–11 的整數。'); return; }
+    if (!window.confirm('停止本車、移除原裁判配對，並開放新裁判接管 60 秒？學生程式與設定會保留。逾時仍保持停止，可再次開放。')) return;
+    handoverBusy = true; handoverNotice = '正在送出更換裁判請求…'; render();
+    try {
+      const response = await fetch('/api/competition/handover', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({channel})});
+      if (!response.ok) throw new Error('請求未接受，請重新確認車輛狀態。');
+      handoverNotice = '請等待「開放接管」狀態；若手機斷線，請重新連上這台車。';
+    } catch (e) { handoverNotice = '尚未確認結果，請重新連線查看學生頁。'; }
+    finally { handoverBusy = false; render(); }
+  }
+  window.CompetitionStudent = { get state() { return state; }, stop, handover };
   window.WebSocket = class extends NativeSocket {
     constructor(...args) {
       super(...args);
@@ -73,16 +89,27 @@
       const label = document.createElement('span'); label.id = 'competitionStatusText'; banner.appendChild(label);
       const button = document.createElement('button'); button.id = 'competitionStop'; button.textContent = '停止本車';
       button.onclick = stop; banner.appendChild(button); document.body.prepend(banner);
+      const change = document.createElement('button'); change.id = 'competitionHandover';
+      change.onclick = handover; banner.appendChild(change);
     }
-    banner.hidden = !state.managed && !state.paired;
+    banner.hidden = false;
     banner.style.display = banner.hidden ? 'none' : 'flex';
     const staleState = !current() || !state.state_fresh;
     let label = names[state.state] || '等待裁判';
     if (state.managed && staleState && !state.fault) label = '狀態連線中斷・操作鎖定';
     if (state.managed && !staleState) label += ' · ' + (state.remaining_ms / 1000).toFixed(1) + ' 秒';
     if (state.managed) label += state.allowed && !staleState ? ' · 可手動操作' : ' · 手動操作鎖定';
+    label += ` · 頻道 ${state.channel || '?'}`;
+    if (state.controller_mac) label += ` · 裁判 ${state.controller_mac}`;
+    if (state.pairing_open) { handoverNotice = ''; label += ` · 開放接管 ${Math.ceil(state.pairing_remaining_ms / 1000)} 秒`; }
+    const pairingErrors = {authorization_active:'授權仍在進行，請先停止本車後再更換裁判',ownership_write_failed:'管制狀態寫入失敗，維持鎖定',pairing_write_failed:'配對寫入失敗，維持鎖定',channel_write_failed:'頻道儲存失敗',channel_change_failed:'頻道切換失敗',peer_add_failed:'新裁判通訊建立失敗'};
+    if (state.pairing_error) { handoverNotice = ''; label += ' · ' + (pairingErrors[state.pairing_error] || '配對未完成'); }
+    if (handoverNotice) label += ' · ' + handoverNotice;
     document.getElementById('competitionStatusText').textContent = label;
     document.getElementById('competitionStop').hidden = !state.managed;
+    const change = document.getElementById('competitionHandover');
+    change.textContent = state.paired || state.managed ? '允許更換裁判' : '開放配對／設定頻道';
+    change.disabled = !current() || !!state.committed || handoverBusy;
     const locked = state.managed;
     for (const id of ['runBtn', 'saveBtn', 'autorunToggle']) {
       const el = document.getElementById(id); if (el) setDisabled(el, locked);
@@ -91,7 +118,7 @@
     const path = location.pathname;
     if (/\/(set(?:\.html)?|hardware_test\.html)$/.test(path)) {
       document.querySelectorAll('input,select,button').forEach(el => {
-        if (el.id !== 'competitionStop') setDisabled(el, locked);
+        if (!['competitionStop', 'competitionHandover'].includes(el.id)) setDisabled(el, locked);
       });
     }
     if (/\/joy(?:\.html)?$/.test(path)) {

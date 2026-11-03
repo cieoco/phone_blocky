@@ -226,7 +226,7 @@ public:
     staPassword = wifiPassword;
     WiFi.mode(WIFI_AP_STA);
     WiFi.setAutoReconnect(!Student::paired());
-    if(Student::paired()){staSsid="";staPassword="";WiFi.disconnect(false,false);}
+    if(Student::paired() || Student::managed()){staSsid="";staPassword="";WiFi.disconnect(false,false);}
     if (staSsid.length() > 0 && staPassword.length() > 0) {
       WiFi.begin(staSsid.c_str(), staPassword.c_str());
       Serial.printf("嘗試連線至路由器 ssid=%s（密碼 %u 字元）...\n",
@@ -643,7 +643,7 @@ public:
       ESP.restart();
     }
 
-    if (staSsid.length() == 0 || staPassword.length() == 0) return;
+    if (Student::paired() || Student::managed() || staSsid.length() == 0 || staPassword.length() == 0) return;
 
     if (WiFi.status() == WL_CONNECTED) {
       if (!staWasConnected) {

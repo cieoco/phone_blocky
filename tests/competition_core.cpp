@@ -2,10 +2,33 @@
 #include "../src/competition/Protocol.h"
 #include "../src/competition/InputPolicy.h"
 #include "../src/competition/StationPolicy.h"
+#include "../src/competition/PairingPolicy.h"
 #include <cassert>
 #include <iostream>
 using namespace Competition;
 int main() {
+  PairingAdmission admission;admission.ticket=123;
+  assert(admission.accepts(0,false,false,false,123)); // first enrollment
+  assert(!admission.accepts(0,true,false,false,123)); // another referee cannot steal a registered car
+  assert(!admission.accepts(0,false,true,false,123)); // reboot while locked is not implicit consent
+  assert(!admission.open(10,456,true)); // even scheduled authorization blocks handover
+  assert(admission.open(10,456,false));
+  assert(!admission.accepts(11,true,true,true,456));
+  assert(!admission.accepts(11,true,true,false,123)); // old window replay
+  assert(admission.accepts(60009,true,true,false,456));
+  assert(!admission.accepts(60010,true,true,false,456)); // exact expiry boundary
+  assert(admission.open(70000,789,false));
+  assert(admission.claim(70001,false,true,false,789));
+  assert(!admission.claim(70001,false,true,false,789)); // simultaneous referee B loses
+  for(int fail=0;fail<4;++fail) {
+    bool managed=true,paired=false,installed=false;int unlockCalls=0;
+    const char* error=commitPairing(
+      [&](){if(fail==1)return false;paired=true;return true;},
+      [&](){assert(paired && managed);if(fail==2)return false;installed=true;return true;},
+      [&](){++unlockCalls;assert(paired && installed && managed);if(fail==3)return false;managed=false;return true;});
+    assert(bool(error)==(fail!=0));assert(managed==(fail!=0));
+    assert(unlockCalls==(fail==0 || fail==3?1:0));
+  }
   char apName[33];refereeAPName(apName,sizeof(apName),"A1B2","192.168.1.50");
   assert(!strcmp(apName,"A1B2-192.168.1.50"));
   refereeAPName(apName,sizeof(apName),"FFFF","255.255.255.255");assert(strlen(apName)<=32);
@@ -62,7 +85,7 @@ int main() {
   assert(q.controllerBoot==p.controllerBoot && q.generation==42 && get(q.payload,8)==99999);
   for(size_t i=0;i<len;++i) assert(!decode(data,i,q));
   data[6]=1; assert(!decode(data,len,q)); data[6]=0; data[3]=255; assert(!decode(data,len,q));
-  for(Message type:{Message::View,Message::Release,Message::Status}) {
+  for(Message type:{Message::View,Message::Release,Message::Status,Message::Discover,Message::Announce,Message::PairOffer,Message::PairAck}) {
     p.type=type;p.length=payloadSize(type);len=encode(p,data);assert(decode(data,len,q));assert(q.type==type);
     assert(!decode(data,len-1,q));
   }

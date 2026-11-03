@@ -296,7 +296,8 @@ OLED：SSD1306 I2C 128×32（0.91 吋），SDA21 / SCL22，0x3C 或 0x3D。
 - 裁判使用 AP＋STA；AP 名稱為 `<MAC末四碼>-<STA IPv4>`，STA 離線則顯示 `STA-offline`，可從 Wi-Fi 清單讀到 STA IP；AP 與 STA 都能進同一裁判頁。路由器帳密只放 Git 排除的 `include/referee_wifi.local.h`，格式見 `include/referee_wifi.example.h`。不可放在 `referee_data/`（會被靜態網頁服務公開）或 build_flags。裁判頻道跟隨 STA 路由器，斷線／換頻／同頻重連都使活躍本場中止，不自動恢復。
 - 2026-11-03 使用者確認：學生車沿用原控制板、`main.cpp`、`WebServerHandler` 與既有 `data/`，`esp32dev_competitor` 只加入 `src/competition/Student.cpp` 管制。原頁面載入 `competition_client.js` 顯示裁判狀態；不得另外建立替代學生操控頁。
 - 未選入比賽可使用原功能；準備至清場期間，原 `/ws` 指令由 jsonTask 排隊，手動指令驗證當階段 token；AUTO 僅執行鎖定快照。USB 動作、設定寫入與 hardwareTest 在管制中拒絕。HTTP mutation guard 與接管共用鎖，禁止繞過此機制。I2C 版維持獨立。
-- `src/competition/Gate.h` 是輸出最後防線；撤權解除 HOLD、SysId、GPIO/PWM 與舵機脈波，退出長程式且不回中。管制持久化，重開機仍鎖定；只有本場終局 RELEASE 清場才返回教學。ESP-NOW v2 裁判與學生須一起更新。
+- `src/competition/Gate.h` 是輸出最後防線；撤權解除 HOLD、SysId、GPIO/PWM 與舵機脈波，退出長程式且不回中。管制持久化，重開機仍鎖定；正常由本場終局 RELEASE 清場返回教學。裁判故障可由學生原頁開放接管，成功配對新裁判後返回教學；不得以逾時或重開機自行解除。ESP-NOW v2 裁判與學生須一起更新。
+- 同頻道搜尋／登記走 ESP-NOW：`PairingPolicy.h` 管理 60 秒接管窗口與先到先得，`PairingCrypto.h` 以 ECDH 推導金鑰、HMAC 確認持久化配對。搜尋回報不代表認證／READY。更換裁判必須在 `!lease.committed` 時由學生頁確認；先持久化鎖定再移除舊配對。NVS／peer 失敗保留鎖定；只在直譯器外層安全點完成配對與解除。不得清除學生程式、Wi-Fi 或 PID NVS。前端變更加跑 `node tests/check_student_competition.cjs`、`node tests/check_pairing_ui.cjs`。
 - 配對工具 `tools/competition_pair.py` 只將金鑰寫板上 NVS；不得把配對金鑰或 `--show-credentials` 輸出存入 repo。
 - 修改共用競賽核心後加跑 `bash tools/check_competition_core.sh`（Windows 可從 WSL 執行），它編譯真正的 Core.h／Protocol.h。改韌體需編譯兩個競賽角色並回歸既有兩角色；打包兩角色 `buildfs`。尚未量測的無線同步／停止時限不得宣稱已驗證。
 

@@ -3,6 +3,8 @@
 #include "../CommandProcessor.h"
 #include "Runtime.h"
 #include "InputPolicy.h"
+#include "PairingPolicy.h"
+#include "PairingCrypto.h"
 #include "WebSupport.h"
 #include <new>
 
@@ -19,11 +21,22 @@ Snapshot snapshot;
 AsyncWebSocket* socket=nullptr;
 SemaphoreHandle_t mutationMutex=nullptr;
 QueueHandle_t commandQueue=nullptr;
-struct Input {String json;uint8_t source;uint32_t client,epoch;};
+struct Input {String json;uint8_t source;uint32_t client,epoch;bool wasManaged;};
 std::atomic<bool> owned{true}, localStop{false};
 std::atomic<uint32_t> epoch{0}, owner{0};
-bool initialized=false, settingsOk=false, isPaired=false, synced=false, outputsOn=false, programRunning=false;
+bool initialized=false, settingsOk=false, synced=false, outputsOn=false, programRunning=false;
+std::atomic<bool> isPaired{false};
 bool releasePending=false;
+PairingCrypto pairingCrypto;
+PairingAdmission admission;
+std::atomic<uint8_t> handoverRequest{0};
+uint8_t handoverPending=0;
+bool bindingPending=false, announcePending=false, ackPending=false;
+Team binding;
+uint64_t bindingSession=0,bindingController=0,boundSession=0,boundController=0;
+Packet announcement;
+Time announceAt=0,lastAnnounce=0;
+String pairingError;
 bool ownershipDurable=false;
 uint64_t bootId=0,controllerBoot=0,previousControllerBoot=0,runMatch=0,runController=0,outputMask=0;
 uint32_t txSeq=0,rxSeq=0,runGeneration=0,programHash=0,manualSeq=0;
@@ -92,8 +105,9 @@ bool loadSnapshot(bool needAuto,bool newMatch) {
   program=candidate;programHash=hashProgram(program);return true;
 }
 void publish() {
-  StaticJsonDocument<1024>d;d["type"]="competition_state";d["role"]="competitor";
-  d["managed"]=owned.load();d["paired"]=isPaired;d["ready"]=initialized;
+  const Time now=nowMs();
+  StaticJsonDocument<1792>d;d["type"]="competition_state";d["role"]="competitor";
+  d["managed"]=owned.load();d["paired"]=isPaired.load();d["ready"]=initialized;
   d["mac"]=WiFi.macAddress();d["channel"]=settings.channel;d["boot_id"]=hexId(bootId);
   d["match_id"]=hexId(lease.match);d["generation"]=lease.generation;d["epoch"]=epoch.load();
   d["mode"]=modeName(lease.mode);d["locked"]=owned && !permitted();
@@ -101,6 +115,12 @@ void publish() {
   d["state"]=!owned?"TEACHING":lease.faulted?"FAULT":stateName(viewState);
   bool fresh=viewAt && nowMs()-viewAt<500;
   d["state_fresh"]=!owned || fresh;
+  d["committed"]=lease.committed;
+  d["pairing_open"]=admission.window(now);
+  d["pairing_remaining_ms"]=admission.window(now)?uint32_t(admission.deadline-now):0;
+  d["pairing_error"]=pairingError;
+  d["controller_mac"]=isPaired?macString(settings.teams[0].mac):String("");
+  d["channel"]=WiFi.channel();
   d["remaining_ms"]=fresh?viewRemaining:0;
   d["allowed"]=manualAllowed();
   if(manualAllowed()) {
@@ -124,9 +144,53 @@ void sendStatus() {
   if(radio.send(settings.teams[0].mac,p)){++txSeq;statusAt=nowMs();if(havePong)havePong=false;}
 }
 
+bool pairingPacket(const Received& r,const Packet& p) {
+  if(p.type==Message::Discover) {
+    if(!p.controllerBoot || !p.match || nowMs()-lastAnnounce<350 || announcePending)return true;
+    announcement=Packet();announcement.type=Message::Announce;
+    announcement.controllerBoot=p.controllerBoot;announcement.match=p.match;announcement.deviceBoot=bootId;
+    put(announcement.payload,admission.ticket,8);memcpy(announcement.payload+8,pairingCrypto.bytes,65);
+    if(isPaired)memcpy(announcement.payload+73,settings.teams[0].mac,6);
+    announcement.payload[79]=(isPaired?1:0)|(owned?2:0)|(lease.committed?4:0)|
+      (admission.accepts(nowMs(),isPaired,owned,lease.committed,admission.ticket)?8:0);
+    WiFi.softAPSSID().toCharArray(reinterpret_cast<char*>(announcement.payload+80),33);
+    announceAt=nowMs()+20+esp_random()%250;announcePending=true;return true;
+  }
+  if(p.type!=Message::PairOffer)return p.type==Message::Announce || p.type==Message::PairAck;
+  uint8_t localMac[6];WiFi.macAddress(localMac);
+  if(memcmp(p.payload,localMac,6) || p.deviceBoot!=bootId || !p.controllerBoot || !p.match)return true;
+  if(isPaired && !memcmp(r.mac,settings.teams[0].mac,6) && p.match==boundSession && p.controllerBoot==boundController) {
+    ackPending=true;return true; // lost acknowledgement: no repeated NVS mutation
+  }
+  if(bindingPending || handoverPending || !admission.accepts(nowMs(),isPaired,owned,lease.committed,get(p.payload+6,8)))return true;
+  Team next;memcpy(next.mac,r.mac,6);strcpy(next.name,"Referee");
+  if(!pairingCrypto.derive(p.payload+14,p.controllerBoot,bootId,p.match,next.key))return true;
+  // First accepted offer closes admission before another referee can claim it.
+  if(!admission.claim(nowMs(),isPaired,owned,lease.committed,get(p.payload+6,8)))return true;
+  owned=true;clearContexts();stopOutputs();releasePending=false;
+  binding=next;bindingSession=p.match;bindingController=p.controllerBoot;bindingPending=true;
+  return true;
+}
+void pairingTransmit() {
+  Packet p;const uint8_t* target=Radio::broadcastMac();
+  if(ackPending && isPaired) {
+    p.type=Message::PairAck;p.controllerBoot=boundController;p.match=boundSession;p.deviceBoot=bootId;
+    if(!pairAckTag(settings.teams[0].key,boundController,bootId,boundSession,p.payload))return;
+    target=settings.teams[0].mac;
+  } else if(announcePending && nowMs()>=announceAt) p=announcement;
+  else return;
+  p.sequence=txSeq+1;p.sent=nowMs();p.length=payloadSize(p.type);
+  if(radio.send(target,p)) {
+    ++txSeq;
+    if(p.type==Message::PairAck)ackPending=false;
+    else {announcePending=false;lastAnnounce=nowMs();}
+  }
+}
 void receivePackets() {
-  if(!isPaired)return;Received r;Packet p;
+  Received r;Packet p;
   for(int i=0;i<12&&radio.receive(r,p);++i) {
+    if(pairingPacket(r,p))continue;
+    if(!isPaired || bindingPending || handoverPending)continue;
     if(memcmp(r.mac,settings.teams[0].mac,6) || !p.controllerBoot || (p.deviceBoot && p.deviceBoot!=bootId))continue;
     if(p.controllerBoot!=controllerBoot) {
       if(p.type!=Message::Ping || p.controllerBoot==previousControllerBoot)continue;
@@ -218,7 +282,7 @@ void processInputs() {
   if(in->source==Comm::CH_SERIAL && adminCommand(d)){delete in;return;}
   const char* cmd=d["cmd"]|"";
   // A delayed match command must never turn into an unrestricted teaching command.
-  if(!owned && d.containsKey("_competition")){reply(*in,"competition_state_changed");delete in;return;}
+  if(!owned && (in->wasManaged || d.containsKey("_competition"))){reply(*in,"competition_state_changed");delete in;return;}
   if(owned) {
     if(d["message_success"]==true){processor.resetWaitingForResponse();delete in;return;}
     if(!strcmp(cmd,"competition_stop")) {localStop=true;delete in;return;}
@@ -241,7 +305,7 @@ void service() {
   if(!initialized)return;
   // MutationGuard serializes legacy HTTP/USB actions with acquiring ownership.
   if(xSemaphoreTakeRecursive(mutationMutex,0)!=pdTRUE)return;
-  if(isPaired)receivePackets();
+  if(!bindingPending && !handoverPending)receivePackets();
   if(owned) {
     if(radio.failed() || WiFi.channel()!=settings.channel || localStop.exchange(false))lease.fail();
     if(lease.committed && !clockHealthy())lease.fail();
@@ -249,10 +313,16 @@ void service() {
     if(!permitted() && outputsOn)stopOutputs();
     if(!lease.committed && programRunning){processor.requestProgramStop();programRunning=false;}
   }
+  uint8_t requested=handoverRequest.exchange(0);
+  if(requested) {
+    if(lease.committed || bindingPending || handoverPending)pairingError="authorization_active";
+    else {owned=true;clearContexts();stopOutputs();releasePending=false;handoverPending=requested;}
+  }
   // Called recursively from Blockly yield: do not execute another command there.
   static bool processing=false;
-  if(!processing){processing=true;processInputs();processing=false;}
+  if(!processing && !bindingPending && !handoverPending){processing=true;processInputs();processing=false;}
   if(isPaired && (havePong || nowMs()-statusAt>=80))sendStatus();
+  pairingTransmit();
   if(nowMs()-snapshotAt>=100){snapshotAt=nowMs();publish();}
   xSemaphoreGiveRecursive(mutationMutex);
 }
@@ -269,7 +339,7 @@ void disconnected(uint32_t client){if(owned && owner.load()==client)localStop=tr
 void commandError(){if(owned)localStop=true;}
 bool submit(const String& json,uint8_t source,uint32_t client) {
   if(!commandQueue || json.length()>32768)return false;
-  auto* in=new(std::nothrow) Input{json,source,client,epoch.load()};
+  auto* in=new(std::nothrow) Input{json,source,client,epoch.load(),owned.load()};
   if(!in || xQueueSend(commandQueue,&in,0)!=pdTRUE){delete in;if(owned)localStop=true;return false;}return true;
 }
 void boot() {
@@ -285,6 +355,16 @@ void boot() {
 }
 void attach(AsyncWebServer& server,AsyncWebSocket& ws) {
   socket=&ws;
+  server.addHandler(new JsonEndpoint("/api/competition/handover",64,[](AsyncWebServerRequest* r,const char* data,size_t n){
+    if(!sameOrigin(r)){errorResponse(r,403,"origin_rejected");return;}
+    StaticJsonDocument<96>d;
+    if(deserializeJson(d,data,n) || !d["channel"].is<unsigned>() || d["channel"].as<unsigned>()<1 || d["channel"].as<unsigned>()>11) {
+      errorResponse(r,400,"invalid_channel");return;
+    }
+    uint8_t empty=0;
+    if(!handoverRequest.compare_exchange_strong(empty,uint8_t(d["channel"].as<unsigned>()))) {errorResponse(r,409,"request_pending");return;}
+    r->send(202,"application/json","{\"ok\":true,\"queued\":true}");
+  }));
   server.on("/api/competition/stop",HTTP_POST,[](AsyncWebServerRequest* r){
     if(!sameOrigin(r)){errorResponse(r,403,"origin_rejected");return;}
     if(owned)localStop=true;
@@ -295,10 +375,11 @@ void attach(AsyncWebServer& server,AsyncWebSocket& ws) {
   });
 }
 void begin() {
-  initialized=settingsOk && mutationMutex && commandQueue;
+  initialized=settingsOk && mutationMutex && commandQueue && pairingCrypto.begin() && radio.begin(settings.pmk) && radio.addBroadcast();
+  admission.ticket=randomId(); // unpaired teaching boards can be discovered immediately
   if(isPaired) {
     WiFi.setAutoReconnect(false);WiFi.disconnect(false,false);esp_wifi_set_ps(WIFI_PS_NONE);
-    initialized=initialized && radio.begin(settings.pmk) && radio.add(settings.teams[0],settings.channel);
+    initialized=initialized && radio.add(settings.teams[0],settings.channel);
   }
   if(!initialized || owned) {owned=true;lease.fail();stopOutputs();}
   processor.setProgramServiceHook(service);publish();
@@ -306,6 +387,43 @@ void begin() {
 void step(bool serialMode) {
   service();
   if(!initialized)return;
+  if(bindingPending || handoverPending) {
+    MutationGuard guard;
+    clearContexts();stopOutputs();processor.applyPendingProgramIfAny();stopOutputs();
+    programRunning=false;lease.fail();pairingError="";
+    if(!persistOwned(true))pairingError="ownership_write_failed";
+    else if(handoverPending) {
+      if(!settings.forgetTeams())pairingError="pairing_write_failed";
+      else {
+        if(isPaired)radio.remove(settings.teams[0].mac);
+        isPaired=false;ackPending=false;havePong=false;
+        WiFi.setAutoReconnect(false);WiFi.disconnect(false,false);
+        String ap=WiFi.softAPSSID();
+        const char* pass=strlen(CONFIG_AP_PASSWORD)>=8?CONFIG_AP_PASSWORD:"12345678";
+        if(!settings.setChannel(handoverPending))pairingError="channel_write_failed";
+        else if(!WiFi.softAP(ap.c_str(),pass,handoverPending,0,4))pairingError="channel_change_failed";
+        else admission.open(nowMs(),randomId(),false);
+      }
+    } else {
+      uint8_t ch=WiFi.channel();
+      WiFi.setAutoReconnect(false);WiFi.disconnect(false,false);
+      String ap=WiFi.softAPSSID();
+      const char* pass=strlen(CONFIG_AP_PASSWORD)>=8?CONFIG_AP_PASSWORD:"12345678";
+      if(!WiFi.softAP(ap.c_str(),pass,ch,0,4)) {pairingError="channel_change_failed";bindingPending=false;publish();return;}
+      const char* error=commitPairing(
+        [&](){return ch>=1 && ch<=11 && settings.setChannel(ch) && settings.saveTeam(binding,true);},
+        [&](){isPaired=true;radio.remove(binding.mac);return radio.add(binding,ch);},
+        [](){return persistOwned(false);});
+      if(error)pairingError=error;
+      else {
+        lease=Lease();program="";programHash=0;runMatch=runController=0;runGeneration=0;
+        controllerBoot=previousControllerBoot=0;rxSeq=0;synced=false;havePong=false;
+        boundSession=bindingSession;boundController=bindingController;ackPending=true;
+        localStop=false;viewState=State::Idle;viewAt=0;viewRemaining=0;clearContexts();owned=false;
+      }
+    }
+    bindingPending=false;handoverPending=0;publish();return;
+  }
   if(owned && permitted() && lease.mode==Mode::Auto &&
      (runGeneration!=lease.generation || runMatch!=lease.match || runController!=lease.controllerBoot)) {
     runGeneration=lease.generation;runMatch=lease.match;runController=lease.controllerBoot;

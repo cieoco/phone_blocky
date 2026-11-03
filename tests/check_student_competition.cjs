@@ -59,3 +59,25 @@ doc.hidden=true;documentListeners.visibilitychange();assert.equal(ws.sent.at(-1)
 ws.receive({...base,generation:6,managed:true,state:'RUN_MANUAL',allowed:true,token:12,state_fresh:false});
 const staleViewCount=ws.sent.length;send({mode:'joy',y1:80});assert.equal(ws.sent.length,staleViewCount);
 console.log('Original student UI: teaching/manual/auto/pause/gap/end/release, stale token, command precedence and joy reset PASS');
+(async () => {
+  const requests=[];
+  win.prompt=()=> '6';win.confirm=()=>true;win.alert=()=>{};
+  context.fetch=async(url,options)=>{requests.push({url,options});return {ok:true,status:202};};
+  ws.receive({...base,managed:true,committed:true,channel:1,state:'RUN_AUTO'});
+  assert.equal(elements.get('competitionHandover').disabled,true);
+  await win.CompetitionStudent.handover();assert.equal(requests.length,0);
+  ws.receive({...base,managed:true,committed:false,channel:1,state:'FAULT'});
+  win.confirm=()=>false;await win.CompetitionStudent.handover();assert.equal(requests.length,0);
+  win.confirm=()=>true;win.prompt=()=> '12';await win.CompetitionStudent.handover();assert.equal(requests.length,0);
+  win.prompt=()=> '6';await win.CompetitionStudent.handover();
+  assert.equal(requests.length,1);assert.equal(requests[0].url,'/api/competition/handover');
+  assert.equal(requests[0].options.method,'POST');assert.deepEqual(JSON.parse(requests[0].options.body),{channel:6});
+  ws.receive({...base,managed:true,paired:false,committed:false,pairing_open:true,pairing_remaining_ms:59000,channel:6,state:'FAULT'});
+  assert.equal(elements.get('runBtn').disabled,true,'opening consent must not unlock the original run control');
+  assert.match(elements.get('competitionStatusText').textContent,/開放接管 59 秒/);
+  now+=400;await win.CompetitionStudent.handover();assert.equal(requests.length,1,'stale state cannot start recovery');
+  ws.receive({...base,channel:6,controller_mac:'AA:BB:CC:DD:EE:FF'});
+  assert.equal(elements.get('runBtn').disabled,false);
+  assert.match(elements.get('competitionStatusText').textContent,/AA:BB:CC:DD:EE:FF/);
+  console.log('Student handover: active lease, consent, channel validation, stale state and locked waiting window PASS');
+})().catch(error=>{console.error(error);process.exitCode=1;});

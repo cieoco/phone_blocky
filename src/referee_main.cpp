@@ -1,6 +1,8 @@
 #include "competition/Runtime.h"
 #include "competition/WebSupport.h"
 #include "competition/RefereeStation.h"
+#include "competition/PairingPolicy.h"
+#include "competition/PairingCrypto.h"
 using namespace Competition;
 
 namespace {
@@ -33,9 +35,21 @@ Time ownerSeen=0;
 struct RequestResult {String id,result;};
 RequestResult results[16]; size_t resultIndex=0;
 String serialLine;
+PairingCrypto pairingCrypto;
+struct Discovered {
+  uint8_t mac[6]={},controller[6]={},publicKey[65]={},flags=0;
+  char name[33]={};uint64_t boot=0,ticket=0;Time seen=0;
+};
+Discovered discovered[32];size_t discoveredCount=0;
+uint64_t discoveryId=0;Time scanUntil=0,scanSent=0;
+struct PairAttempt {
+  bool active=false;Team team;uint64_t device=0,session=0,ticket=0;
+  Time until=0,sent=0;uint8_t channel=0;
+} pairing;
+String pairResult,pairMac;
 
 void publish() {
-  DynamicJsonDocument d(12288); Time now=nowMs();
+  DynamicJsonDocument d(32768); Time now=nowMs();
   d["role"]="referee"; d["ready"]=initialized && station.ready(); d["boot_id"]=hexId(bootId); d["mac"]=WiFi.macAddress();
   d["wifi_mode"]="AP_STA";d["wifi_connected"]=station.connected();d["wifi_status"]=station.status();
   d["ap_ssid"]=station.apName();d["ap_ip"]=WiFi.softAPIP().toString();
@@ -50,6 +64,15 @@ void publish() {
   JsonArray history=d.createNestedArray("results");
   for(const auto& result:results)if(result.id.length()){JsonObject item=history.createNestedObject();item["id"]=result.id;item["result"]=result.result;}
   d["channel"]=station.channel(); d["owner"]=owner;
+  d["scanning"]=now<scanUntil;d["pairing"]=pairing.active;
+  d["pair_result"]=pairResult;d["pair_mac"]=pairMac;
+  JsonArray found=d.createNestedArray("discovered");
+  for(size_t i=0;i<discoveredCount;++i) {
+    const auto& car=discovered[i];JsonObject t=found.createNestedObject();
+    t["mac"]=macString(car.mac);t["name"]=car.name;t["controller_mac"]=car.flags&1?macString(car.controller):String("");
+    t["fresh"]=now-car.seen<DiscoveryFreshMs;t["managed"]=bool(car.flags&2);t["committed"]=bool(car.flags&4);
+    t["available"]=bool(car.flags&8) && now-car.seen<DiscoveryFreshMs;
+  }
   JsonArray teams=d.createNestedArray("teams");
   for(size_t i=0;i<settings.count;++i) {JsonObject t=teams.createNestedObject();t["mac"]=macString(settings.teams[i].mac);t["name"]=settings.teams[i].name;}
   JsonArray ps=d.createNestedArray("players");
@@ -88,8 +111,33 @@ const char* action(JsonDocument& d) {
     return engine.stop()?"ok":"invalid_state";
   }
   if(!d["expected_version"].is<uint32_t>() || d["expected_version"].as<uint32_t>()!=engine.version) return "state_conflict";
+  if(!strcmp(op,"scan")) {
+    if(engine.state!=State::Idle || pairing.active)return "invalid_state";
+    if(!station.ready())return station.status();
+    discoveryId=randomId();scanUntil=now+15000;scanSent=0;discoveredCount=0;return "ok";
+  }
+  if(!strcmp(op,"pair")) {
+    if(engine.state!=State::Idle || pairing.active)return "invalid_state";
+    if(!station.ready())return station.status();
+    uint8_t mac[6];if(!parseMac(d["mac"]|"",mac))return "invalid_mac";
+    Discovered* car=nullptr;for(size_t i=0;i<discoveredCount;++i)if(!memcmp(mac,discovered[i].mac,6))car=&discovered[i];
+    if(!car || now-car->seen>=DiscoveryFreshMs)return "discovery_stale";
+    if(!(car->flags&8) || car->flags&4)return "student_consent_required";
+    Team team;memcpy(team.mac,mac,6);String name=d["name"]|"";
+    if(!name.length() || name.length()>=sizeof(team.name))return "invalid_name";
+    name.toCharArray(team.name,sizeof(team.name));uint64_t session=randomId();
+    if(!pairingCrypto.derive(car->publicKey,bootId,car->boot,session,team.key))return "key_exchange_failed";
+    // Store the derived key before sending an offer. ACK loss/reboot must not
+    // strand a student whose new binding has already become durable.
+    if(!settings.saveTeam(team))return "pairing_write_failed";
+    radio.remove(team.mac);
+    if(!radio.add(team,0))return "peer_add_failed";
+    pairing=PairAttempt();pairing.active=true;pairing.team=team;pairing.device=car->boot;
+    pairing.session=session;pairing.ticket=car->ticket;pairing.until=now+12000;pairing.channel=station.channel();
+    pairMac=macString(mac);pairResult="pending";return "ok";
+  }
   if(!strcmp(op,"prepare")) {
-    if(engine.state!=State::Idle)return "invalid_state";
+    if(engine.state!=State::Idle || pairing.active)return "invalid_state";
     if(!station.ready())return station.status();
     Config c; c.mode=parseMode(d["mode"]|"");c.first=parseMode(d["first_mode"]|"");
     if(!d["manual_ms"].is<uint32_t>() || !d["auto_ms"].is<uint32_t>() || !d["gap_ms"].is<uint32_t>())return "invalid_time";
@@ -109,7 +157,7 @@ const char* action(JsonDocument& d) {
       if(!radio.add(chosen[i],0)){releasePlayers();return "peer_add_failed";} // follow current STA channel
       ++playerCount;
     }
-    matchNetwork=station.ticket();engine.prepare(c,randomId(),now);return "ok";
+    scanUntil=0;matchNetwork=station.ticket();engine.prepare(c,randomId(),now);return "ok";
   }
   if(!strcmp(op,"start"))return engine.begin(now)?"ok":"invalid_state";
   if(!strcmp(op,"pause"))return engine.pause(now)?"ok":"invalid_state";
@@ -136,6 +184,21 @@ void webJobs() {
 void receivePackets() {
   Received r;Packet packet;
   for(int n=0;n<12 && radio.receive(r,packet);++n) {
+    if(packet.type==Message::Announce) {
+      if(nowMs()>=scanUntil || packet.controllerBoot!=bootId || packet.match!=discoveryId || !packet.deviceBoot)continue;
+      size_t i=0;while(i<discoveredCount && memcmp(r.mac,discovered[i].mac,6))++i;
+      if(i==discoveredCount){if(discoveredCount>=32)continue;++discoveredCount;}
+      auto& car=discovered[i];memcpy(car.mac,r.mac,6);car.boot=packet.deviceBoot;car.ticket=get(packet.payload,8);
+      memcpy(car.publicKey,packet.payload+8,65);memcpy(car.controller,packet.payload+73,6);car.flags=packet.payload[79];
+      memcpy(car.name,packet.payload+80,32);car.name[32]=0;car.seen=nowMs();continue;
+    }
+    if(packet.type==Message::PairAck) {
+      if(pairing.active && !memcmp(r.mac,pairing.team.mac,6) && packet.controllerBoot==bootId &&
+         packet.deviceBoot==pairing.device && packet.match==pairing.session && validPairAck(pairing.team.key,packet)) {
+        pairing.active=false;pairResult="ok";radio.remove(pairing.team.mac);
+      }
+      continue;
+    }
     Player* pp=nullptr;for(size_t i=0;i<playerCount;++i)if(!memcmp(players[i].team.mac,r.mac,6))pp=&players[i];
     if(!pp || packet.controllerBoot!=bootId)continue; Player& p=*pp;
     if(p.boot && p.boot!=packet.deviceBoot) {
@@ -160,6 +223,24 @@ void receivePackets() {
         p.commitGen=packet.payload[1] && p.sync && !p.fault?packet.generation:0;
       }
     }
+  }
+}
+void discoveryTransmit() {
+  if(engine.state!=State::Idle)return;
+  Time now=nowMs();
+  if(pairing.active && (now>=pairing.until || !station.ready() || station.channel()!=pairing.channel)) {
+    pairing.active=false;pairResult="pairing_unconfirmed";radio.remove(pairing.team.mac);
+  }
+  if(!station.ready())return;
+  Packet p;p.controllerBoot=bootId;p.sequence=wireSequence+1;p.sent=now;
+  if(pairing.active && now-pairing.sent>=300) {
+    p.type=Message::PairOffer;p.deviceBoot=pairing.device;p.match=pairing.session;
+    memcpy(p.payload,pairing.team.mac,6);put(p.payload+6,pairing.ticket,8);memcpy(p.payload+14,pairingCrypto.bytes,65);
+  } else if(now<scanUntil && now-scanSent>=750) {p.type=Message::Discover;p.match=discoveryId;}
+  else return;
+  p.length=payloadSize(p.type);
+  if(radio.send(Radio::broadcastMac(),p)) {
+    ++wireSequence;if(p.type==Message::Discover)scanSent=now;else pairing.sent=now;
   }
 }
 void transmit() {
@@ -227,7 +308,7 @@ void serialCommands() {
 void setup() {
   Serial.begin(115200);bootId=randomId();
   if(!settings.load()){Serial.println("competition settings failed");return;}
-  station.begin(settings.secret,settings.channel);initialized=radio.begin(settings.pmk);
+  station.begin(settings.secret,settings.channel);initialized=pairingCrypto.begin() && radio.begin(settings.pmk) && radio.addBroadcast();
   bool fs=LittleFS.begin(false); if(!fs)Serial.println("Upload referee filesystem before opening the web page.");
   server.on("/api/competition/state",HTTP_GET,[](AsyncWebServerRequest* r){r->send(200,"application/json",snapshot.get());});
   server.addHandler(new JsonEndpoint("/api/competition/action",1535,[](AsyncWebServerRequest* r,const char* data,size_t n){
@@ -252,7 +333,7 @@ void loop() {
   if(engine.state==State::Preparing && allReady())engine.ready();
   bool healthy=allHealthy(now);
   engine.tick(now,healthy,allCommitted()); // deadlines take precedence over UI actions
-  webJobs();serialCommands();transmit();
+  webJobs();serialCommands();transmit();discoveryTransmit();
   if(now-lastSnapshot>=100){lastSnapshot=now;publish();}
   delay(1);
 }

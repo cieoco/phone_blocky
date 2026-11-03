@@ -58,6 +58,11 @@ struct Settings {
     p.end(); if(!ok) {teams[i]=old;count=oldCount;} return ok;
   }
   bool setChannel(uint8_t ch) { if(ch<1||ch>11) return false; Preferences p; if(!p.begin("competition",false)) return false; bool ok=p.putUChar("channel",ch)==1; p.end(); if(ok) channel=ch; return ok; }
+  bool forgetTeams() {
+    Preferences p;if(!p.begin("competition",false))return false;
+    bool ok=p.putUChar("count",0)==1 && p.getUChar("count",255)==0;p.end();
+    if(ok)count=0;return ok;
+  }
 };
 
 struct Received { uint8_t mac[6]; uint16_t length; Time received; uint8_t bytes[MaxFrame]; };
@@ -73,6 +78,11 @@ class Radio {
   }
   static void sent(const uint8_t*,esp_now_send_status_t) { if(instance()) instance()->busy_=false; }
 public:
+  static const uint8_t* broadcastMac(){static const uint8_t mac[6]={255,255,255,255,255,255};return mac;}
+  bool addBroadcast() {
+    esp_now_peer_info_t peer={};memcpy(peer.peer_addr,broadcastMac(),6);peer.ifidx=WIFI_IF_STA;
+    return esp_now_is_peer_exist(peer.peer_addr) || esp_now_add_peer(&peer)==ESP_OK;
+  }
   bool begin(const uint8_t* pmk) {
     queue_=xQueueCreate(20,sizeof(Received)); if(!queue_) return false; instance()=this;
     return esp_now_init()==ESP_OK && esp_now_set_pmk(pmk)==ESP_OK && esp_now_register_recv_cb(receive)==ESP_OK && esp_now_register_send_cb(sent)==ESP_OK;
