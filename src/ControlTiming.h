@@ -3,6 +3,7 @@
 
 namespace ControlTiming {
 constexpr uint32_t PeriodMs = 10;
+constexpr uint32_t MaxStepMs = 100;
 
 // Shared by the outer loop and in-program control calls. Never invent elapsed
 // time for duplicate calls; unsigned subtraction also handles millis rollover.
@@ -10,6 +11,9 @@ inline bool takeStep(uint32_t now, uint32_t& last, float& seconds) {
   const uint32_t elapsed = now - last;
   if (elapsed < PeriodMs) return false;
   last = now;
+  // An inactive controller must not integrate/ramp over the entire idle gap.
+  // Rebase and wait for a fresh tick instead of fabricating a control step.
+  if (elapsed > MaxStepMs) { seconds = 0.0f; return false; }
   seconds = elapsed / 1000.0f;
   return true;
 }

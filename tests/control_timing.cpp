@@ -18,6 +18,27 @@ int main() {
   assert(!ControlTiming::takeStep(1009, last, dt));
   assert(ControlTiming::takeStep(1037, last, dt));
   assert(std::fabs(dt - 0.037f) < 0.000001f); // actual time after blocking work
+  assert(ControlTiming::takeStep(1137, last, dt));
+  assert(std::fabs(dt - 0.100f) < 0.000001f); // inclusive 100 ms boundary
+  for (const uint32_t gap : {101u, 60000u}) {
+    last = 2000;
+    const uint32_t resumedAt = last + gap;
+    const float before = integral;
+    if (ControlTiming::takeStep(resumedAt, last, dt)) integral += dt;
+    assert(last == resumedAt && dt == 0.0f && integral == before);
+    assert(!ControlTiming::takeStep(resumedAt, last, dt));
+    assert(!ControlTiming::takeStep(resumedAt + 9, last, dt));
+    assert(ControlTiming::takeStep(resumedAt + 10, last, dt));
+    assert(std::fabs(dt - 0.010f) < 0.000001f);
+  }
+  last = 0; // first AUTO after a long boot/prepare period
+  assert(!ControlTiming::takeStep(60000, last, dt));
+  assert(last == 60000 && dt == 0.0f);
+  last = UINT32_MAX - 100;
+  assert(!ControlTiming::takeStep(59900, last, dt)); // idle gap across rollover
+  assert(last == 59900 && dt == 0.0f);
+  assert(ControlTiming::takeStep(59910, last, dt));
+  assert(std::fabs(dt - 0.010f) < 0.000001f);
   last = UINT32_MAX - 4;
   assert(!ControlTiming::takeStep(4, last, dt));
   assert(ControlTiming::takeStep(5, last, dt));
@@ -35,5 +56,5 @@ int main() {
   assert(cadence.ready(1510));
   cadence.complete(UINT32_MAX - 4);
   assert(!cadence.ready(4) && cadence.ready(5));
-  std::cout << "control timing: duplicate callers, 10ms cadence, elapsed time, long bodies and rollover PASS\n";
+  std::cout << "control timing: duplicate callers, 10ms cadence, elapsed time, idle restart, long bodies and rollover PASS\n";
 }

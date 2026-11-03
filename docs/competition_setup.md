@@ -60,7 +60,7 @@ python tools/competition_pair.py --info COM5 --show-credentials
 
 自動階段被裁判暫停後，恢復會從 setup 重新執行，保留該階段剩餘時間。此規則已於 2026-11-03 由使用者確認定案；賽前需向裁判與參賽者說明。請勿假設能從原本 delay、迴圈或副程式的位置接續。
 
-頂層 Blockly loop 每圈完成後至少等待 10ms 才再執行，對齊教學版節奏；閉迴路所有呼叫入口也共用至少 10ms 的更新間隔，並使用實際時間差。通訊外層仍每圈 `delay(1)`，長程式由既有 service hook 服務；感測器與 OLED 等阻塞成本仍存在。需要計時請使用 millis／delay，不以 loop 圈數當精確時鐘。
+頂層 Blockly loop 每圈完成後至少等待 10ms 才再執行，對齊教學版節奏；閉迴路所有呼叫入口也共用至少 10ms 的更新間隔。10–100ms 使用實際時間差；超過 100ms 視為重新開始，重設時間基準並跳過該步，至少再等 10ms 才恢復更新，避免閒置後起步把整段等待算入積分與加速斜坡。通訊外層仍每圈 `delay(1)`，長程式由既有 service hook 服務；感測器與 OLED 等阻塞成本仍存在。需要計時請使用 millis／delay，不以 loop 圈數當精確時鐘。
 
 競賽角色只使用自己的 `/drive` 控制入口；舊 joy.html、USB M/S、USB JSON、hardwareTest、PID 寫入與 I2C 控制入口不啟用。已有的馬達 NVS 調校值會在開機讀入。需要調校時，先用教學角色完成；競賽角色不提供現場邊跑邊調參。
 
