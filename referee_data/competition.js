@@ -14,7 +14,7 @@
   function note(text){$('notice').textContent=text;}
   Object.assign(errors,{radio_unavailable:'ESP-NOW 無法使用；可清場後選「僅計時／音效」',invalid_control_mode:'控制方式不正確'});
   Object.assign(errors,{referee_network_changed:'裁判 Wi-Fi 連線或頻道已變更，本場已停止；重新連線不會自動續賽',wifi_not_configured:'尚未設定裁判 STA 網路',wifi_disconnected:'裁判尚未連上路由器',unsupported_channel:'路由器須使用 2.4GHz 頻道 1–11'});
-  Object.assign(errors,{discovery_stale:'車輛資訊已過期，請重新搜尋',student_consent_required:'請先在學生原網頁允許更換裁判',invalid_name:'隊名需為 1–48 個 UTF-8 bytes',key_exchange_failed:'無法建立配對金鑰，請重新搜尋',pairing_write_failed:'配對資料儲存失敗',peer_add_failed:'無法建立車輛通訊'});
+  Object.assign(errors,{discovery_stale:'小車超過 5 秒未回覆，請檢查供電與頻道；恢復連線後可再加入',student_consent_required:'請先在學生原網頁允許更換裁判',invalid_name:'隊名需為 1–48 個 UTF-8 bytes',key_exchange_failed:'無法建立配對金鑰，請重新搜尋',pairing_write_failed:'配對資料儲存失敗',peer_add_failed:'無法建立車輛通訊'});
   Object.assign(errors,{central_audio_online:'中央音效台已接管，本頁保持靜音',another_audio_station:'另一個中央音效台已連線'});
   Object.assign(errors,{registration_busy:'請等兩場清場完成後再搜尋／登記',team_in_other_arena:'車輛已被另一場使用，請先清場',participant_capacity:'兩場合計最多 4 台參賽車',invalid_arena:'請從比賽中心選擇場地'});
   let localPlaying=false;
@@ -48,7 +48,7 @@
     $('audio').disabled=!own||busy||state.audio_route==='CENTRAL';
     $('audioState').textContent=state.audio_route==='CENTRAL'?'中央音效台已連線・由中央播放，本頁自動靜音':state.audio_route==='LOCAL'?'本機音效模式・僅本頁持有操作權且啟用音效時播放':'中央音效未連線・目前不播放；可按「本機接回音效」，或選擇靜音比賽';
     $('scan').disabled=!idle||!own||busy||state.pairing||!state.registration_available||!state.ready;
-    $('pairState').textContent=state.pairing?`正在連線 ${state.pair_mac}，等待車輛確認…`:state.pair_result==='ok'?`${state.pair_mac} 連線登記完成`:state.pair_result==='pairing_unconfirmed'?`${state.pair_mac} 連線未確認；請重新搜尋，或檢查車輛供電與頻道。`:state.scanning?'正在搜尋車輛（15 秒）…':'';
+    $('pairState').textContent=(state.pairing?`正在連線 ${state.pair_mac}，等待車輛確認…`:state.pair_result==='ok'?`${state.pair_mac} 連線登記完成`:state.pair_result==='pairing_unconfirmed'?`${state.pair_mac} 連線未確認；請重新搜尋，或檢查車輛供電與頻道。`:'')+(state.scanning?' 持續搜尋中・準備比賽後停止':'');
     const discoverySig=JSON.stringify([state.discovered,idle,own,busy,state.pairing,state.registration_available]);
     if(discoverySig!==discoverySignature) {
       discoverySignature=discoverySig;
@@ -56,7 +56,7 @@
       $('discovered').replaceChildren();
       for(const car of state.discovered||[]) {
         const row=document.createElement('div'),label=document.createElement('span'),name=document.createElement('input'),button=document.createElement('button');
-        label.textContent=`${car.mac} · 頻道 ${car.channel||state.channel} · ${!car.fresh?'資料過期':car.registered?'已登記':car.available?'可加入':car.controller_mac?'由其他裁判登記':'尚未就緒'} `;
+        label.textContent=`${car.mac} · 頻道 ${car.channel||state.channel} · ${!car.fresh?'失聯（超過 5 秒未回覆）':car.registered?'已登記':car.available?'可加入':car.controller_mac?'由其他裁判登記':'尚未就緒'} `;
         name.dataset.mac=car.mac;name.value=names.get(car.mac)||car.name;name.placeholder='隊伍名稱';name.setAttribute('aria-label','隊伍名稱');
         button.textContent='加入本場';button.disabled=!idle||!own||busy||state.pairing||!state.registration_available||!car.available;
         button.onclick=async()=>{try{busy=true;render();await invoke('pair',{mac:car.mac,name:name.value.trim()});for(const input of document.querySelectorAll('#teams input'))if(input.value===car.mac&&!input.disabled)input.checked=true;note('已選入本場；等待自動連線確認後，按「準備本場」。');}catch(e){note(e.message);}finally{busy=false;render();}};row.append(label,name,button);$('discovered').append(row);

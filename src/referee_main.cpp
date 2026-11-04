@@ -56,7 +56,7 @@ struct Discovered {
   char name[33]={};uint64_t boot=0,ticket=0;Time seen=0;
 };
 Discovered discovered[32];size_t discoveredCount=0;
-uint64_t discoveryId=0;Time scanUntil=0,scanSent=0;
+uint64_t discoveryId=0;Time scanSent=0;bool scanning=false;
 struct PairAttempt {
   bool active=false;Team team;uint64_t device=0,session=0,ticket=0;
   Time until=0,sent=0;uint8_t channel=0;
@@ -78,7 +78,7 @@ void publish() {
   JsonArray history=d.createNestedArray("results");
   for(const auto& result:results)if(result.id.length()){JsonObject item=history.createNestedObject();item["id"]=result.id;item["result"]=result.result;}
   d["channel"]=station.channel();d["registration_available"]=allIdle();d["max_concurrent_players"]=MaxConcurrentPlayers;
-  d["scanning"]=now<scanUntil;d["pairing"]=pairing.active;
+  d["scanning"]=scanning && allIdle() && station.ready();d["pairing"]=pairing.active;
   d["pair_result"]=pairResult;d["pair_mac"]=pairMac;
   JsonArray found=d.createNestedArray("discovered");
   for(size_t i=0;i<discoveredCount;++i) {
@@ -161,7 +161,7 @@ const char* action(JsonDocument& d) {
     if(!initialized || radio.failed())return "radio_unavailable";
     if(!allIdle() || pairing.active)return "registration_busy";
     if(!station.ready())return station.status();
-    discoveryId=randomId();scanUntil=now+15000;scanSent=0;discoveredCount=0;return "ok";
+    discoveryId=randomId();scanning=true;scanSent=0;discoveredCount=0;return "ok";
   }
   if(!strcmp(op,"pair")) {
     if(!initialized || radio.failed())return "radio_unavailable";
@@ -206,7 +206,7 @@ const char* action(JsonDocument& d) {
       if(!c.valid() || selected.size() || names.length()>160)return "invalid_config";
       // Never turn a still-owned wireless match into a timer to bypass release.
       if(a.playerCount || a.releasing)return "stop_not_confirmed";
-      a.timerTeams=names;scanUntil=0;
+      a.timerTeams=names;scanning=false;
       return a.engine.prepare(c,randomId(),now,true)?"ok":"invalid_state";
     }
     if(!c.valid()||selected.size()<1||selected.size()>MaxPlayers)return "invalid_config";
@@ -226,7 +226,7 @@ const char* action(JsonDocument& d) {
       ++a.playerCount;
     }
     roster.reserve(size_t(index),selectedMacs,count);
-    a.timerTeams="";scanUntil=0;a.matchNetwork=station.ticket();a.engine.prepare(c,randomId(),now);return "ok";
+    a.timerTeams="";scanning=false;a.matchNetwork=station.ticket();a.engine.prepare(c,randomId(),now);return "ok";
   }
   if(!strcmp(op,"start"))return a.engine.begin(now)?"ok":"invalid_state";
   if(!strcmp(op,"pause"))return a.engine.pause(now)?"ok":"invalid_state";
@@ -255,7 +255,7 @@ void receivePackets() {
   Received r;Packet packet;
   for(int n=0;n<12 && radio.receive(r,packet);++n) {
     if(packet.type==Message::Announce) {
-      if(nowMs()>=scanUntil || packet.controllerBoot!=bootId || packet.match!=discoveryId || !packet.deviceBoot)continue;
+      if(!scanning || !allIdle() || packet.controllerBoot!=bootId || packet.match!=discoveryId || !packet.deviceBoot)continue;
       size_t i=0;while(i<discoveredCount && memcmp(r.mac,discovered[i].mac,6))++i;
       if(i==discoveredCount){if(discoveredCount>=32)continue;++discoveredCount;}
       auto& car=discovered[i];memcpy(car.mac,r.mac,6);car.boot=packet.deviceBoot;car.ticket=get(packet.payload,8);
@@ -308,7 +308,7 @@ void discoveryTransmit() {
   if(pairing.active && now-pairing.sent>=300) {
     p.type=Message::PairOffer;p.deviceBoot=pairing.device;p.match=pairing.session;
     memcpy(p.payload,pairing.team.mac,6);put(p.payload+6,pairing.ticket,8);memcpy(p.payload+14,pairingCrypto.bytes,65);
-  } else if(now<scanUntil && now-scanSent>=750) {p.type=Message::Discover;p.match=discoveryId;}
+  } else if(scanning && now-scanSent>=750) {p.type=Message::Discover;p.match=discoveryId;}
   else return;
   p.length=payloadSize(p.type);
   if(radio.send(Radio::broadcastMac(),p)) {

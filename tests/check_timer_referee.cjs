@@ -60,9 +60,17 @@ const root=path.resolve(__dirname,'..');
       await page.screenshot({path:path.join(root,`.pio/timer-referee-check/${arena}.png`),fullPage:true});
       // Selecting a discovered car registers and checks it without student UI steps.
       Object.assign(current,{state:'IDLE',control_mode:'ESP_NOW'});
-      Object.assign(snap,{ready:true,registration_available:true,channel:8,discovered:[{mac:'12:34:56:78:90:AB',name:'New car',channel:8,fresh:true,available:true}]});
+      Object.assign(snap,{ready:true,registration_available:true,scanning:true,channel:8,discovered:[{mac:'12:34:56:78:90:AB',name:'New car',channel:8,fresh:true,available:true}]});
       await page.locator('#controlMode').selectOption('ESP_NOW');
       await page.locator('#discovered input').fill('藍隊');
+      assert.match(await page.locator('#pairState').textContent(),/持續搜尋中/);
+      Object.assign(snap.discovered[0],{fresh:false,available:false});
+      await page.waitForFunction(()=>document.querySelector('#discovered button').disabled);
+      assert.match(await page.locator('#discovered').textContent(),/失聯（超過 5 秒未回覆）/);
+      assert.equal(await page.locator('#discovered input').inputValue(),'藍隊');
+      Object.assign(snap.discovered[0],{fresh:true,available:true});
+      await page.waitForFunction(()=>!document.querySelector('#discovered button').disabled);
+      assert.equal(await page.locator('#discovered input').inputValue(),'藍隊','reconnect preserves typed team name');
       await page.locator('#discovered button').click();
       const selected=page.locator('#teams input[value="12:34:56:78:90:AB"]');
       await selected.waitFor();
