@@ -72,7 +72,7 @@
         for(const f of fields){
           const state=RefereeSession.arenaState(snapshot,f.label);
           if(!f.feed.accept(state,id,performance.now()-sent,performance.now())){badge(f,'等待有效播放權');$('clock'+f.label).textContent='—';continue;}
-          badge(f,'中央播放中');$('phase'+f.label).textContent=phases[state.state]||state.state;
+          badge(f,state.control_mode==='TIMER_ONLY'?'中央播放中 · 僅計時／音效':'中央播放中');$('phase'+f.label).textContent=state.control_mode==='TIMER_ONLY'&&state.state==='READY'?'計時就緒':phases[state.state]||state.state;
           const sec=Math.ceil(Math.max(0,Number(state.remaining_ms)||0)/1000);
           $('clock'+f.label).textContent=`${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;
         }

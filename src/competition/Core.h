@@ -39,7 +39,7 @@ public:
   uint32_t generation = 0, version = 0, event = 0;
   uint8_t phase = 0;
   Time start = 0, end = 0, prepareDeadline = 0, remainingPaused = 0;
-  bool guardPassed = false, resumed = false;
+  bool guardPassed = false, resumed = false, timerOnly = false;
   const char* reason = "";
   const char* sound = "";
   Mode mode() const { return config.at(phase); }
@@ -52,11 +52,12 @@ public:
     if (state == State::Gap || state == State::Starting) return start > now ? start - now : 0;
     return running() && end > now ? end - now : 0;
   }
-  bool prepare(const Config& c, uint64_t id, Time now) {
+  bool prepare(const Config& c, uint64_t id, Time now, bool localTimer = false) {
     if (state != State::Idle || !c.valid() || !id) return false;
     config = c; match = id; phase = 0; ++generation; reason = ""; sound = "";
     start = end = 0; guardPassed = resumed = false; prepareDeadline = now + 6000;
-    change(State::Preparing); return true;
+    timerOnly = localTimer;
+    change(timerOnly ? State::Ready : State::Preparing); return true;
   }
   bool ready() { if (state != State::Preparing) return false; change(State::Ready); return true; }
   bool begin(Time now) {
@@ -64,6 +65,7 @@ public:
     schedule(now + StartDelayMs, config.duration(mode()), State::Starting); return true;
   }
   void tick(Time now, bool healthy, bool committed) {
+    if (timerOnly) healthy = committed = true;
     if (state == State::Preparing && now >= prepareDeadline) { fault("prepare_timeout"); return; }
     if ((running() || scheduling() || state == State::Ready || state == State::Paused) && !healthy) {
       fault("participant_unhealthy"); return;

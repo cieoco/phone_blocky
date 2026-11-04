@@ -212,3 +212,12 @@ wsl --exec bash /mnt/c/project/ROBOT/phone_blocky/tools/check_competition_core.s
 ```
 
 Linux／macOS 或 WSL 中也可在 repo 執行 `bash tools/check_competition_core.sh`，需 g++。此測試直接編譯韌體共用的 Core.h／Protocol.h，並啟用 undefined-behavior sanitizer。
+
+
+## 僅計時／音效（無 ESP-NOW 控車）
+
+各場取得控制權後，在「本場設定 → 控制方式」選「僅計時／音效」，可填本場隊伍文字（選填），再設定手動、自動或混合及各段時間，按準備與開始。不需登記 MAC、配對、READY 回覆或路由器連線；手機仍需連上裁判 AP 或同網路才能操作。中央喇叭頁的使用方式不變，須由操作者啟用音效。
+
+此模式的開始、暫停、換段、結束與停止只處理賽程和音效，**不會啟動或停止車輛**，須由現場人員控制車輛。A／B 場可各自選用不同控制方式；另一場若使用 ESP-NOW，仍維持其無線控制。
+
+控制方式只能在清場後的待賽狀態選擇。原 ESP-NOW 場故障且尚未收到解除管制回覆時，不能切換以繞過清場；可先用另一個空閒場計時，原場車輛仍須依故障復原流程解除。純計時不受 ESP-NOW 初始化／佇列故障或 STA 斷線影響；瀏覽器失聯期間仍持續板上計時，音效只播線上收到的新事件，不補播離線事件。這次只需更新裁判韌體與 referee_data 網頁，學生不需更新。

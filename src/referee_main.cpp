@@ -16,6 +16,7 @@ Snapshot snapshot;
 Jobs jobs;
 uint64_t bootId=0;
 bool initialized=false;
+bool webReady=false;
 struct Player {
   Team team;
   uint64_t boot=0,previousBoot=0;
@@ -32,6 +33,7 @@ struct Arena {
   size_t playerCount=0,cursor=0;
   bool releasing=false,localAudio=false;
   String owner;
+  String timerTeams;
   Time ownerSeen=0;
 };
 Arena arenas[ArenaCount];
@@ -63,6 +65,7 @@ AudioRoute audioRoute;
 void publish() {
   DynamicJsonDocument d(32768); Time now=nowMs();
   d["role"]="referee"; d["ready"]=initialized && station.ready(); d["boot_id"]=hexId(bootId); d["mac"]=WiFi.macAddress();
+  d["timer_ready"]=webReady;
   d["wifi_mode"]="AP_STA";d["wifi_connected"]=station.connected();d["wifi_status"]=station.status();
   d["ap_ssid"]=station.apName();d["ap_ip"]=WiFi.softAPIP().toString();
   d["ssid"]=station.ssid();d["ip"]=WiFi.localIP().toString();
@@ -88,6 +91,8 @@ void publish() {
   for(size_t index=0;index<ArenaCount;++index) {
     Arena& a=arenas[index];JsonObject item=matches.createNestedObject();
     item["id"]=arenaName(index);item["owner"]=a.owner;
+    item["control_mode"]=a.engine.timerOnly?"TIMER_ONLY":"ESP_NOW";
+    item["timer_teams"]=a.timerTeams;
     item["audio_route"]=audioRoute.central(now)?"CENTRAL":a.localAudio?"LOCAL":"WAITING";
     item["releasing"]=a.releasing;
     item["match_id"]=hexId(a.engine.match); item["version"]=a.engine.version; item["generation"]=a.engine.generation;
@@ -148,11 +153,13 @@ const char* action(JsonDocument& d) {
   }
   if(!d["expected_version"].is<uint32_t>() || d["expected_version"].as<uint32_t>()!=a.engine.version) return "state_conflict";
   if(!strcmp(op,"scan")) {
+    if(!initialized || radio.failed())return "radio_unavailable";
     if(!allIdle() || pairing.active)return "registration_busy";
     if(!station.ready())return station.status();
     discoveryId=randomId();scanUntil=now+15000;scanSent=0;discoveredCount=0;return "ok";
   }
   if(!strcmp(op,"pair")) {
+    if(!initialized || radio.failed())return "radio_unavailable";
     if(!allIdle() || pairing.active)return "registration_busy";
     if(!station.ready())return station.status();
     uint8_t mac[6];if(!parseMac(d["mac"]|"",mac))return "invalid_mac";
@@ -174,11 +181,23 @@ const char* action(JsonDocument& d) {
   }
   if(!strcmp(op,"prepare")) {
     if(a.engine.state!=State::Idle || pairing.active)return "invalid_state";
-    if(!station.ready())return station.status();
+    const char* control=d["control_mode"]|"ESP_NOW";
+    if(strcmp(control,"ESP_NOW") && strcmp(control,"TIMER_ONLY"))return "invalid_control_mode";
+    bool timerOnly=!strcmp(control,"TIMER_ONLY");
+    if(!timerOnly && (!initialized || radio.failed()))return "radio_unavailable";
+    if(!timerOnly && !station.ready())return station.status();
     Config c; c.mode=parseMode(d["mode"]|"");c.first=parseMode(d["first_mode"]|"");
     if(!d["manual_ms"].is<uint32_t>() || !d["auto_ms"].is<uint32_t>() || !d["gap_ms"].is<uint32_t>())return "invalid_time";
     c.manualMs=d["manual_ms"];c.autoMs=d["auto_ms"];c.gapMs=d["gap_ms"];
     JsonArray selected=d["teams"].as<JsonArray>();
+    if(timerOnly) {
+      String names=d["timer_teams"]|"";
+      if(!c.valid() || selected.size() || names.length()>160)return "invalid_config";
+      // Never turn a still-owned wireless match into a timer to bypass release.
+      if(a.playerCount || a.releasing)return "stop_not_confirmed";
+      a.timerTeams=names;scanUntil=0;
+      return a.engine.prepare(c,randomId(),now,true)?"ok":"invalid_state";
+    }
     if(!c.valid()||selected.size()<1||selected.size()>MaxPlayers)return "invalid_config";
     Team chosen[MaxPlayers];uint8_t selectedMacs[MaxPlayers][6]={};size_t count=0;
     for(JsonVariant v:selected) {
@@ -196,7 +215,7 @@ const char* action(JsonDocument& d) {
       ++a.playerCount;
     }
     roster.reserve(size_t(index),selectedMacs,count);
-    scanUntil=0;a.matchNetwork=station.ticket();a.engine.prepare(c,randomId(),now);return "ok";
+    a.timerTeams="";scanUntil=0;a.matchNetwork=station.ticket();a.engine.prepare(c,randomId(),now);return "ok";
   }
   if(!strcmp(op,"start"))return a.engine.begin(now)?"ok":"invalid_state";
   if(!strcmp(op,"pause"))return a.engine.pause(now)?"ok":"invalid_state";
@@ -207,6 +226,7 @@ const char* action(JsonDocument& d) {
   }
   if(!strcmp(op,"reset")) {
     if(!a.engine.terminal())return "invalid_state";
+    if(a.engine.timerOnly)return a.engine.reset()?"ok":"invalid_state";
     if(!allLocked(a))return "stop_not_confirmed";
     a.releasing=true;return "ok"; // Release is acknowledged before removing peers.
   }
@@ -217,7 +237,7 @@ void webJobs() {
   DynamicJsonDocument d(2048); if(deserializeJson(d,j.json))return;
   String id=d["request_id"]|""; if(id.length()<1 || id.length()>48)return;
   for(auto& r:results) if(r.id==id){lastRequest=id;lastResult=r.result;return;}
-  lastRequest=id;lastResult=initialized?action(d):"not_initialized";
+  lastRequest=id;lastResult=action(d);
   results[resultIndex]={lastRequest,lastResult}; resultIndex=(resultIndex+1)%16;
 }
 void receivePackets() {
@@ -285,7 +305,7 @@ void discoveryTransmit() {
   }
 }
 bool transmit(Arena& a) {
-  if(!a.playerCount || !station.ready())return false;
+  if(!initialized || a.engine.timerOnly || !a.playerCount || !station.ready())return false;
   if(a.engine.active() && !station.matches(a.matchNetwork))a.engine.fault("referee_network_changed");
   Time now=nowMs();
   for(size_t n=0;n<a.playerCount;++n) {
@@ -371,19 +391,19 @@ void setup() {
   server.addHandler(new JsonEndpoint("/api/competition/login",16,[](AsyncWebServerRequest* r,const char*,size_t){
     if(authenticate(r,settings.secret))r->send(200,"application/json","{\"ok\":true}");
   }));
-  staticFiles(server,"/index.html");publish();server.begin();
+  staticFiles(server,"/index.html");webReady=true;publish();server.begin();
 }
 void loop() {
-  if(!initialized){delay(100);return;}
-  Time now=nowMs();station.tick();receivePackets();
+  if(!webReady){delay(100);return;}
+  Time now=nowMs();station.tick();if(initialized)receivePackets();
   for(auto& a:arenas) {
     if(a.releasing) {
       bool released=a.playerCount>0;
       for(size_t i=0;i<a.playerCount;++i)if(a.players[i].owned || a.players[i].appliedGen!=a.engine.generation || now-a.players[i].lastStatus>HealthMs)released=false;
       if(released){a.engine.reset();releasePlayers(a);a.releasing=false;}
     }
-    if(radio.failed())a.engine.fault("radio_queue_or_callback_failure");
-    if(a.engine.active() && !station.matches(a.matchNetwork))a.engine.fault("referee_network_changed");
+    if(!a.engine.timerOnly && radio.failed())a.engine.fault("radio_queue_or_callback_failure");
+    if(!a.engine.timerOnly && a.engine.active() && !station.matches(a.matchNetwork))a.engine.fault("referee_network_changed");
     if(a.engine.state==State::Preparing && allReady(a))a.engine.ready();
     bool healthy=allHealthy(a,now);
     a.engine.tick(now,healthy,allCommitted(a)); // deadlines take precedence over UI actions
@@ -394,7 +414,7 @@ void loop() {
     size_t index=(nextArena+i)%ArenaCount;
     if(transmit(arenas[index])){nextArena=(index+1)%ArenaCount;break;}
   }
-  discoveryTransmit();
+  if(initialized)discoveryTransmit();
   if(now-lastSnapshot>=100){lastSnapshot=now;publish();}
   delay(1);
 }

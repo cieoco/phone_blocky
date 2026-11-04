@@ -9,6 +9,25 @@
 #include <iostream>
 using namespace Competition;
 int main() {
+  // Timer-only matches need no students/ACKs, but retain the same timeline/cues.
+  for(Mode first:{Mode::Manual,Mode::Auto}) {
+    MatchEngine timer;Config c;c.mode=Mode::Mixed;c.first=first;c.manualMs=c.autoMs=c.gapMs=1000;
+    assert(timer.prepare(c,42,0,true));assert(timer.timerOnly && timer.state==State::Ready);
+    assert(!timer.prepare(c,43,0,false)); // cannot switch control mode mid-match
+    assert(timer.begin(0));timer.tick(1200,false,false);
+    assert(timer.running() && timer.mode()==first && !strcmp(timer.sound,"start"));
+    assert(timer.pause(1500));assert(timer.remaining(99999)==700);
+    assert(timer.resume(2000));timer.tick(3200,false,false);
+    assert(timer.running() && timer.end==3900);
+    timer.tick(3900,false,false);assert(timer.state==State::Gap && !strcmp(timer.sound,"end"));
+    timer.tick(4900,false,false);assert(timer.running() && timer.mode()!=first);
+    timer.tick(5900,false,false);assert(timer.state==State::Finished && !strcmp(timer.sound,"end"));
+    assert(timer.reset());assert(timer.prepare(c,43,6000,true));assert(timer.stop());
+    assert(timer.state==State::Aborted && !strcmp(timer.sound,"abort"));
+    assert(timer.reset());assert(timer.prepare(c,44,7000));
+    assert(!timer.timerOnly && timer.state==State::Preparing);
+    timer.tick(13000,false,false);assert(timer.state==State::Fault);
+  }
   ArenaRoster roster;
   const uint8_t red[][6]={{1,2,3,4,5,6},{1,2,3,4,5,7}};
   const uint8_t blue[][6]={{1,2,3,4,5,8},{1,2,3,4,5,9}};

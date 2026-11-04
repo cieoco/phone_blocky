@@ -583,3 +583,10 @@ ESP-NOW peers 使用 channel=0 跟隨當前 STA 頻道；比賽準備時另以 `
 裁判 USB 新增 `competition_set_password`，只在兩場皆 IDLE 且無配對時接受。密碼限 8–32 個可列印 ASCII 字元，兼容 AP 密碼需求；儲存並讀回確認 NVS secret 後，回覆成功、flush USB 並重開機。HTTP 認證與 AP 密碼均在下次開機載入，避免執行中跨執行緒改寫 secret 緩衝區。不變更隊伍、配對金鑰、路由器設定或網頁資源。
 
 Settings.load 改為接受此有效範圍，不再將非 32 字元的自訂密碼覆寫成新隨機值；首次或無效值仍生成隨機密碼。使用者實際密碼不進程式碼或文件。S3 實板已驗證短於下限的密碼遭拒且舊值保持、有效 8 字元密碼保存並自動重啟、重啟後新密碼登入 HTTP 200／舊密碼 HTTP 403；STA 重新連線正常。密碼指令不開放 HTTP／WebSocket。
+
+
+## 2026-11-04 增補：每場控制方式
+
+`prepare.control_mode` 可為 `ESP_NOW`（省略時預設）或 `TIMER_ONLY`。純計時場不收 MAC 參賽清單，`teams` 必須為空；`timer_teams` 是選填顯示文字（至多 160 UTF-8 bytes）。沿用同一 MatchEngine 與音效 event，準備直接 READY，健康／commit 回覆不適用，禁止傳送本場無線封包。以 `control_mode`／`timer_teams` 發佈每場快照；全域 `timer_ready` 獨立於 ESP-NOW ready。
+
+R03／R04／R08／R12 的車輛授權及停車保證只適用 ESP_NOW；TIMER_ONLY 的操作不改變學生車狀態，也不建立或解除所有權。模式在 prepare 後固定至正常清場；原受管制車輛未解除不得直接轉為純計時。A／B 場模式獨立。原有起跑等待、三模式、兩種混合順序、換段、暫停續賽、終態及中央重疊音效規則均沿用。

@@ -68,6 +68,7 @@ node tests/check_hardware_test.cjs                            # hardware_test.ht
 node tests/check_oled.cjs                                     # OLED 翻譯／互斥／警告
 node tests/check_competition.cjs                              # 競賽前端、音效去重／缺檔處理、授權操作
 node tests/check_student_layout.cjs                           # 學生頁手機排版（需 Playwright 與 Chrome）
+node tests/check_timer_referee.cjs                            # 純計時裁判頁（需 Playwright 與 Chrome）
 ```
 
 - 改了 `ai-relay/prompts.py` 的 `SYSTEM_PROMPT` → 必須執行 `python tools/sync_ai_prompt.py`，把提示詞同步進 `data/ai.html`。

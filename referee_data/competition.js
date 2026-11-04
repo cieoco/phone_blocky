@@ -12,6 +12,7 @@
   const labels={IDLE:'等待準備',PREPARING:'檢查參賽車輛',READY:'全員就緒',STARTING:'準備啟動',RUN_MANUAL:'手動模式',RUN_AUTO:'自動模式',GAP:'階段間暫停',PAUSED:'裁判暫停',FINISHED:'比賽結束',ABORTED:'比賽已中止',FAULT:'故障停止'};
   const errors={another_operator:'另一位裁判持有控制權',claim_control_first:'請先取得裁判控制權',state_conflict:'狀態已變更，請重新操作',invalid_state:'目前狀態不能執行此操作',invalid_config:'請選擇 1–4 隊並檢查時間設定',stop_not_confirmed:'仍有車輛尚未回覆輸出鎖定，不能清場',not_paired:'隊伍尚未完成配對',participant_unhealthy:'參賽板失聯或回報故障',prepare_timeout:'準備逾時：請檢查配對、頻道與已儲存程式',commit_timeout:'啟動確認逾時，本場已停止'};
   function note(text){$('notice').textContent=text;}
+  Object.assign(errors,{radio_unavailable:'ESP-NOW 無法使用；可清場後選「僅計時／音效」',invalid_control_mode:'控制方式不正確'});
   Object.assign(errors,{referee_network_changed:'裁判 Wi-Fi 連線或頻道已變更，本場已停止；重新連線不會自動續賽',wifi_not_configured:'尚未設定裁判 STA 網路',wifi_disconnected:'裁判尚未連上路由器',unsupported_channel:'路由器須使用 2.4GHz 頻道 1–11'});
   Object.assign(errors,{discovery_stale:'車輛資訊已過期，請重新搜尋',student_consent_required:'請先在學生原網頁允許更換裁判',invalid_name:'隊名需為 1–48 個 UTF-8 bytes',key_exchange_failed:'無法建立配對金鑰，請重新搜尋',pairing_write_failed:'配對資料儲存失敗',peer_add_failed:'無法建立車輛通訊'});
   Object.assign(errors,{central_audio_online:'中央音效台已接管，本頁保持靜音',another_audio_station:'另一個中央音效台已連線'});
@@ -23,10 +24,23 @@
     $('network').textContent=['STA','AP_STA'].includes(state.wifi_mode)?`裁判板 ${state.mac} · STA ${state.ssid}：${state.wifi_connected?state.ip:'未連線'} · AP ${state.ap_ssid||''}：${state.ap_ip||''} · 頻道 ${state.channel}`:'';
     $('phase').textContent=state.releasing?'清場中・等待各車解除管制':labels[state.state]||state.state;
     const timing=['RUN_MANUAL','RUN_AUTO','GAP','STARTING'].includes(state.state);
-    const ms=Math.max(0,state.remaining_ms-(online&&timing?performance.now()-lastUpdate:0));
+    const ms=state.state==='READY'?state[state.phase_mode==='AUTO'?'auto_ms':'manual_ms']:Math.max(0,state.remaining_ms-(online&&timing?performance.now()-lastUpdate:0));
     const seconds=Math.ceil(ms/1000);$('timer').textContent=`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
-    $('next').textContent=state.state==='GAP'?`下一階段：${state.phase_mode==='AUTO'?'自動':'手動'}`:state.state==='PAUSED'?'等待裁判恢復；不會自動繼續':`${state.mode==='MIXED'?'混合比賽':'單一模式'} · 頻道 ${state.channel}`;
     const idle=state.state==='IDLE', own=hasControl();
+    if(!idle || !own) {
+      $('controlMode').value=state.control_mode||'ESP_NOW';
+      $('timerTeams').value=state.timer_teams||'';
+    }
+    const timerOnly=$('controlMode').value==='TIMER_ONLY';
+    $('next').textContent=state.state==='GAP'?`下一階段：${state.phase_mode==='AUTO'?'自動':'手動'}`:state.state==='PAUSED'?'等待裁判恢復；不會自動繼續':`${state.mode==='MIXED'?'混合比賽':'單一模式'}${timerOnly?'':` · 頻道 ${state.channel}`}`;
+    $('controlNotice').textContent=timerOnly?'僅計時／音效：不會啟動、切換或停止車輛，請由現場人員操作小車。':'ESP-NOW 控車：依裁判授權同步管理參賽車輛。';
+    $('timerTeamsRow').hidden=!timerOnly;
+    for(const id of ['wirelessRegistration','wirelessPlayers','wirelessRules','teams'])$(id).hidden=timerOnly;
+    $('stop').textContent=timerOnly?'停止本場計時':'停止本場全部車輛';
+    if(timerOnly) {
+      if(state.state==='READY')$('phase').textContent='計時就緒';
+      $('next').textContent+=' · 僅計時／音效'+(state.timer_teams?' · '+state.timer_teams:'');
+    }
     if(!idle){
       $('mode').value=state.mode;$('first').value=state.first_mode;
       for(const id of ['manual','auto','gap'])if(Number.isFinite(state[id+'_ms']))$(id).value=state[id+'_ms']/1000;
@@ -48,9 +62,9 @@
         button.onclick=()=>click('pair',{mac:car.mac,name:name.value.trim()});row.append(label,name,button);$('discovered').append(row);
       }
     }
-    for(const id of ['mode','first','manual','auto','gap'])$(id).disabled=!idle||!own;
+    for(const id of ['controlMode','timerTeams','mode','first','manual','auto','gap'])$(id).disabled=!idle||!own||busy;
     for(const el of document.querySelectorAll('#teams input'))el.disabled=!idle||!own||el.dataset.unavailable==='true';
-    const allowed={prepare:idle&&state.ready,cancel:['PREPARING','READY'].includes(state.state),start:state.state==='READY',pause:['RUN_MANUAL','RUN_AUTO','GAP'].includes(state.state),resume:state.state==='PAUSED',reset:['FINISHED','ABORTED','FAULT'].includes(state.state)};
+    const allowed={prepare:idle&&(timerOnly?state.timer_ready:state.ready),cancel:['PREPARING','READY'].includes(state.state),start:state.state==='READY',pause:['RUN_MANUAL','RUN_AUTO','GAP'].includes(state.state),resume:state.state==='PAUSED',reset:['FINISHED','ABORTED','FAULT'].includes(state.state)};
     for(const [id,value] of Object.entries(allowed))$(id).disabled=!own||busy||state.releasing||state.pairing||!value;
     $('stop').disabled=!own||state.state==='IDLE';
     $('stopAll').disabled=!own;
@@ -84,9 +98,10 @@
   }
   async function click(action,extra) {busy=true;render();try{await invoke(action,extra);note('');}catch(e){note(e.message);}finally{busy=false;render();}}
   $('claim').onclick=()=>click('claim');
-  $('stopAll').onclick=()=>{if(confirm('確定停止 A、B 兩場的所有參賽車輛？'))return click('stop_all');};
+  $('stopAll').onclick=()=>{if(confirm('確定停止 A、B 兩場賽程？僅計時場不會停止車輛。'))return click('stop_all');};
   $('scan').onclick=()=>click('scan');
-  $('prepare').onclick=()=>click('prepare',{mode:$('mode').value,first_mode:$('first').value,manual_ms:Number($('manual').value)*1000,auto_ms:Number($('auto').value)*1000,gap_ms:Number($('gap').value)*1000,teams:Array.from(document.querySelectorAll('#teams input:checked'),x=>x.value)});
+  $('controlMode').onchange=render;
+  $('prepare').onclick=()=>click('prepare',{control_mode:$('controlMode').value,timer_teams:$('timerTeams').value.trim(),mode:$('mode').value,first_mode:$('first').value,manual_ms:Number($('manual').value)*1000,auto_ms:Number($('auto').value)*1000,gap_ms:Number($('gap').value)*1000,teams:$('controlMode').value==='TIMER_ONLY'?[]:Array.from(document.querySelectorAll('#teams input:checked'),x=>x.value)});
   for(const action of ['pause','resume','stop','cancel','reset'])$(action).onclick=()=>click(action);
   $('start').onclick=()=>{if(state?.audio_route!=='CENTRAL'&&!(state?.audio_route==='LOCAL'&&audio.ready)&&!$('mute').checked){note('請連上中央音效台、啟用本機音效，或明確勾選靜音。');return;}click('start');};
   $('audio').onclick=async()=>{try{await audio.enable(false);await invoke('audio_local');audio.reset();note('本機音效已接回，僅播放接下來的事件。');}catch(e){audio.stop();note(e.message);}};

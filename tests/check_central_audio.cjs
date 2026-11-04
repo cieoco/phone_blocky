@@ -7,7 +7,7 @@ const a=new Audio(),b=new Audio();
 for(const player of [a,b]){player.context=context;player.ready=true;player.buffers={start:{},end:{},abort:{}};}
 const fa=new CentralFeed(a),fb=new CentralFeed(b);
 const base={audio_route:'CENTRAL',audio_owner:'speaker',audio_lease_ms:4900,boot_id:'bootA',match_id:'matchA',event_id:0,sound:''};
-const other={...base,boot_id:'bootB',match_id:'matchB'};
+const other={...base,boot_id:'bootB',match_id:'matchB',control_mode:'TIMER_ONLY'};
 assert(fa.accept(base,'speaker',50,0));assert(fb.accept(other,'speaker',50,0));
 fa.accept({...base,event_id:1,sound:'start'},'speaker',50,100);
 fb.accept({...other,event_id:1,sound:'start'},'speaker',50,100);
