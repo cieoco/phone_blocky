@@ -247,6 +247,12 @@ void webJobs() {
   WebJob j; if(!jobs.pop(j))return;
   DynamicJsonDocument d(2048); if(deserializeJson(d,j.json))return;
   String id=d["request_id"]|""; if(id.length()<1 || id.length()>48)return;
+  const char* op=d["action"]|"";
+  // Lease keepalives are observed through the next state snapshot. They must
+  // not evict pending match-command results from the bounded history.
+  if(!strcmp(op,"heartbeat") || !strcmp(op,"audio_heartbeat") || !strcmp(op,"audio_release")) {
+    action(d);return;
+  }
   for(auto& r:results) if(r.id==id){lastRequest=id;lastResult=r.result;return;}
   lastRequest=id;lastResult=action(d);
   results[resultIndex]={lastRequest,lastResult}; resultIndex=(resultIndex+1)%16;

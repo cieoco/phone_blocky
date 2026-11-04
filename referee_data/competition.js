@@ -78,7 +78,12 @@
     const sig=JSON.stringify(state.teams);
     if(sig!==teamSignature){teamSignature=sig;const selected=new Set(Array.from(document.querySelectorAll('#teams input:checked'),x=>x.value));$('teams').replaceChildren();for(const t of state.teams||[]){const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.value=t.mac;input.checked=selected.has(t.mac);input.dataset.unavailable=String(Boolean(t.arena&&t.arena!==arena));input.disabled=!idle||!own||input.dataset.unavailable==='true';if(input.dataset.unavailable==='true')input.checked=false;label.append(input,document.createTextNode(`${t.name} · ${t.mac}${t.arena?' · '+t.arena+' 場使用中':''}`));$('teams').append(label);}if(!state.teams?.length)$('teams').textContent='尚未登記隊伍，請先搜尋車輛。';}
   }
-  async function refresh() {
+  let refreshPending=null;
+  function refresh() {
+    if(!refreshPending)refreshPending=readState().finally(()=>{refreshPending=null;});
+    return refreshPending;
+  }
+  async function readState() {
     const r=await fetch('/api/competition/state',{cache:'no-store',signal:AbortSignal.timeout(2000)});
     if(!r.ok)throw new Error('主控板無回應');state=RefereeSession.arenaState(await r.json(),arena);lastUpdate=performance.now();online=true;
     $('online').textContent=state.owner===operator?'已連線 · 本頁持有裁判控制權':'已連線 · 觀看模式';$('online').className='';
@@ -87,11 +92,15 @@
     audio.observe(state,local);render();
     if(state.reason)note(errors[state.reason]||state.reason);
   }
-  async function invoke(action,extra={}) {
+  async function submit(action,extra={}) {
     const id=`${operator.slice(0,16)}-${Date.now()}-${++requestCounter}`;
     const payload={action,arena,operator,request_id:id,expected_version:state?.version,match_id:state?.match_id,...extra};
     const response=await fetch('/api/competition/action',{method:'POST',headers:{'Content-Type':'application/json','X-Competition-Key':key},body:JSON.stringify(payload),signal:AbortSignal.timeout(2500)});
     if(!response.ok)throw new Error(response.status===403?'裁判密碼不正確':`主控板拒絕請求 (${response.status})`);
+    return id;
+  }
+  async function invoke(action,extra={}) {
+    const id=await submit(action,extra);
     const deadline=performance.now()+4000;
     while(performance.now()<deadline){await new Promise(r=>setTimeout(r,120));await refresh();const result=state.results?.find(r=>r.id===id);if(result){if(result.result!=='ok')throw new Error(errors[result.result]||result.result);return;}}
     throw new Error('未收到操作結果；請查看主控板狀態，不要假設已成功。');
@@ -107,5 +116,5 @@
   $('audio').onclick=async()=>{try{await audio.enable(false);await invoke('audio_local');audio.reset();note('本機音效已接回，僅播放接下來的事件。');}catch(e){audio.stop();note(e.message);}};
   $('volume').oninput=()=>{audio.volume=Number($('volume').value);};
   setInterval(render,100);
-  (async function poll(){try{await refresh();if(hasControl()&&!busy&&Date.now()-lastHeartbeat>3000){lastHeartbeat=Date.now();await invoke('heartbeat');}}catch(e){online=false;audio.reset();localPlaying=false;$('online').textContent='連線中斷 · 畫面資料已過期；主控板計時仍持續';$('online').className='offline';render();}setTimeout(poll,200);})();
+  (async function poll(){try{if(!busy)await refresh();if(hasControl()&&!busy&&Date.now()-lastHeartbeat>3000){await submit('heartbeat');lastHeartbeat=Date.now();}}catch(e){online=false;audio.reset();localPlaying=false;$('online').textContent='連線中斷 · 畫面資料已過期；主控板計時仍持續';$('online').className='offline';render();}setTimeout(poll,250);})();
 })();

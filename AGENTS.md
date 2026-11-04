@@ -308,6 +308,7 @@ OLED：SSD1306 I2C 128×32（0.91 吋），SDA21 / SCL22，0x3C 或 0x3D。
 - 一塊裁判板管理 A／B 兩場：`referee_data/index.html` 驗證操作密碼後分流至各場裁判頁與中央音效頁。`referee_main.cpp` 每場獨立 engine／operator／名單／清場；無線序號與傳輸共用，成功送出後才輪換場地。`ArenaRoster.h` 限制兩場合計 4 車，收到 Release 確認前不可轉場。搜尋／配對僅兩場皆 IDLE 可用；網路或無線佇列故障停止兩場，單車故障只停止所屬場。一般 stop 只影響指定場；stop_all 是另行確認的全場緊急操作。
 - 中央音效：`referee_data/audio.html`＋`central_audio.js` 直接向同一裁判板取狀態，不需 Python。音檔由本機忽略目錄打包 uploadfs；操作密碼只留 sessionStorage，不放 URL 或 localStorage。中央播放權與各場操作權分離，5 秒到期後等待各場明確手動接回，不得自動恢復本機播放；中央重連不重播舊事件，A／B 允許同時播放。相關修改加跑 `node tests/check_central_audio.cjs`、`node tests/check_referee_portal.cjs`。
 - `ChannelSearch.h` 是競賽學生車的背景尋頻試作：裁判 Beacon 每 500ms、車每 900ms 輪詢 1–11 頻道、見公告停留 3 秒。手機連著 AP、STA 連線／未配對車有 STA 設定、有效 lease 或接管窗口時不跳頻。公告不能解鎖或授權；已配對車只跟隨原裁判。一般教學版不編入此功能。未管制學生 UI 隱藏狀態列，設定頁保留選用收合的無線換裁判入口。
+- 裁判／音效多頁：各頁狀態 GET 不得重疊；中央 250ms 查狀態、1 秒續租，裁判約 3 秒續租。`heartbeat`／`audio_heartbeat`／`audio_release` 不進命令結果環；不要用 invoke 等待這些心跳結果。修改此流程加跑 `node tests/check_multi_referee.cjs`（Playwright＋Chrome，三個獨立頁面延遲測試）。
 - 修改共用競賽核心後加跑 `bash tools/check_competition_core.sh`（Windows 可從 WSL 執行），它編譯真正的 Core.h／Protocol.h／ArenaRoster.h／ChannelSearch.h。改韌體需編譯兩個競賽角色並回歸既有兩角色；打包兩角色 `buildfs`。`tests/check_timer_referee.cjs` 以 Playwright＋Chrome 測試純計時及加入本場自動勾選；`tests/check_student_layout.cjs` 測試九個原學生頁排版。尚未量測的無線同步／停止時限不得宣稱已驗證。
 
 | 需求 | 位置 |

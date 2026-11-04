@@ -19,7 +19,7 @@
   const $=id=>document.getElementById(id),master=new MatchAudio();
   const phases={IDLE:'等待準備',PREPARING:'準備本場',READY:'全員就緒',STARTING:'即將開始',RUN_MANUAL:'手動階段',RUN_AUTO:'自動階段',GAP:'換段暫停',PAUSED:'裁判暫停',FINISHED:'比賽結束',ABORTED:'比賽中止',FAULT:'故障停車'};
   const sounds={start:'開始',resume:'恢復',end:'結束',abort:'中止'};
-  let enabled=false,starting=false,generation=0,audioId='',counter=0;
+  let enabled=false,starting=false,generation=0,audioId='',counter=0,lastHeartbeat=-Infinity;
   const fields=['A','B'].map(label=>{
     const audio=new MatchAudio(),feed=new CentralFeed(audio),play=audio.play.bind(audio);
     audio.play=name=>{if(!sounds[name])return;play(name);$('event'+label).textContent=`${label} 場 · ${sounds[name]} · ${new Date().toLocaleTimeString()}`;};
@@ -46,7 +46,7 @@
       audioId=Array.from(crypto.getRandomValues(new Uint32Array(2)),n=>n.toString(16).padStart(8,'0')).join('');
       if(audioId==='0000000000000000')audioId='0000000000000001';
       for(const f of fields){f.feed.disconnect();f.audio.context=master.context;f.audio.buffers=master.buffers;f.audio.ready=true;f.audio.volume=Number($('volume').value);}
-      enabled=true;++generation;$('notice').textContent='正在取得中央播放權，請保持本頁開啟。';
+      lastHeartbeat=-Infinity;enabled=true;++generation;$('notice').textContent='正在取得中央播放權，請保持本頁開啟。';
     }catch(e){$('notice').textContent=e.message;}
     finally{starting=false;controls();}
   };
@@ -61,7 +61,9 @@
     const run=generation,id=audioId;
     try {
       if(enabled&&master.context.state==='running'){
-        await post('audio_heartbeat',id);
+        // The lease lasts 5 seconds; state polling need not renew it each time.
+        if(performance.now()-lastHeartbeat>=1000){await post('audio_heartbeat',id);if(!enabled||run!==generation)return;lastHeartbeat=performance.now();}
+        if(!enabled||run!==generation)return;
         const sent=performance.now();
         const response=await fetch('/api/competition/state',{cache:'no-store',signal:AbortSignal.timeout(1500)});
         if(!response.ok)throw new Error('裁判板無回應');

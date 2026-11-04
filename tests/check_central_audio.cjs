@@ -37,11 +37,11 @@ for(const id of ['enable','disable','volume','notice',...['A','B'].flatMap(x=>['
   elements.set(id,{value:id==='volume'?'0.8':'',textContent:'',disabled:false});
 class DeskAudio extends Audio {async enable(){this.context=context;this.buffers={start:{},end:{},abort:{}};this.ready=true;}}
 context.state='running';
-const document={getElementById:id=>elements.get(id)},events={};let event=0,holder='',offline=false;
+const document={getElementById:id=>elements.get(id)},events={};let event=0,holder='',offline=false,now=0;
 const browser={document,addEventListener(type,fn){events[type]=fn;}};
 const environment={window:browser,document,MatchAudio:DeskAudio,console,Date,
   RefereeSession:{...require('../referee_data/referee_session.js'),requireKey:()=>'fake-secret'},
-  crypto:{getRandomValues:a=>a.fill(1)},performance:{now:()=>0},AbortSignal:{timeout:()=>({})},
+  crypto:{getRandomValues:a=>a.fill(1)},performance:{now:()=>now},AbortSignal:{timeout:()=>({})},
   setTimeout:fn=>timers.push(fn),setInterval:fn=>intervals.push(fn),
   fetch:async(url,options)=>{
     assert(url.startsWith('/api/competition/'),'requests go only to this referee origin');
@@ -64,6 +64,9 @@ vm.runInNewContext(fs.readFileSync('referee_data/central_audio.js','utf8'),envir
   assert.equal(elements.get('statusA').textContent,'中央播放中');assert.equal(elements.get('statusB').textContent,'中央播放中');
   event=1;const before=nodes.length;await timers.shift()();assert.equal(nodes.length,before+2);
   await timers.shift()();assert.equal(nodes.length,before+2,'no duplicate sounds');
+  assert.equal(requests.filter(x=>x.action==='audio_heartbeat').length,1,'polling does not renew on every snapshot');
+  now=999;await timers.shift()();assert.equal(requests.filter(x=>x.action==='audio_heartbeat').length,1);
+  now=1000;await timers.shift()();assert.equal(requests.filter(x=>x.action==='audio_heartbeat').length,2,'one-second lease renewal');
   offline=true;await timers.shift()();assert.equal(elements.get('clockA').textContent,'—');
   offline=false;event=3;await timers.shift()();assert.equal(nodes.length,before+2,'reconnect skips missed sounds');
   holder='another-desk';event=4;await timers.shift()();assert.equal(nodes.length,before+2,'another owner cannot play');
