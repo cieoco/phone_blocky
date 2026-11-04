@@ -18,7 +18,7 @@
 | PID 調教 | 速度環（kp/ki/kd、min/maxSpeed）與位置環（posKp/posKi/posKd、posMaxDuty、posToleranceDeg）的完整生命週期：**讀取 / 套用RAM / 寫入NVS / 還原預設**（見下） |
 | 自動估 PID | 開迴路掃描多個 PWM 準位，用韌體 **50Hz 高速擷取緩存**（`chart_buffer_*`）量上升段，自動擬合前饋 kS/kV 與速度環 Kp/Ki；前饋自動套 RAM、PID 填欄位待確認。角度環可依速度環 τ 串級推算 |
 | 輸出曲線圖 | `subscribe` 開 10Hz telemetry，記錄期累積 → 停止後延遲 2 秒 → 繪實際(實線) vs 目標(虛線) |
-| 燒錄韌體 | 內建「燒錄」分頁，用 esptool 寫入四個分區 bin（Offset 預設帶入）；詳見 [安裝教程](../docs/安裝教程.md) |
+| 燒錄韌體 | 內建「燒錄」分頁，可選競賽學生車版／一般教學版，用 esptool 寫入對應四個分區 bin（Offset 預設帶入）；詳見 [安裝教程](../docs/安裝教程.md) |
 
 ### 參數生命週期（read / apply-RAM / write-NVS / reset）
 
@@ -86,7 +86,7 @@ cd c:\project\robot\phone_blocky\motor_tuner
 .\build_exe.bat
 ```
 
-腳本會自動安裝 Python 相依、用 PlatformIO 編譯韌體與 LittleFS 映像，接著打包 EXE。
+腳本會自動安裝 Python 相依，明確編譯 `esp32dev` 與 `esp32dev_competitor` 的韌體和 LittleFS，再打包 EXE；不建置或包入裁判版本、裁判 Wi-Fi 設定或裁判音檔。
 
 完成後會產生：
 
@@ -94,9 +94,16 @@ cd c:\project\robot\phone_blocky\motor_tuner
 motor_tuner\dist\PhoneBlockyMotorTuner.exe
 ```
 
-EXE 會內建 `.pio\build\esp32dev\` 中的 `bootloader.bin`、`partitions.bin`、
-`firmware.bin`、`littlefs.bin`，因此可直接帶到其他 Windows 電腦執行與燒錄。
+EXE 會分別內建 `.pio\build\esp32dev\` 與 `.pio\build\esp32dev_competitor\` 的
+`bootloader.bin`、`partitions.bin`、`firmware.bin`、`littlefs.bin`（兩套共八檔），
+因此可直接帶到其他 Windows 電腦執行與燒錄，不需另裝 Python／PlatformIO。
 若要更新內建韌體，請重新執行 PlatformIO 編譯與 `build_exe.bat`。
+
+「燒錄」分頁預設選 **競賽學生車版（含裁判管制）**，保留原 Blockly、搖桿與設定；加入比賽後受裁判授權，清場後回一般教學。純教學用途可改選 **一般教學版（無裁判管制）**。切換版本會重設四檔路徑、Offset 與勾選；燒錄中禁止切換。兩種都適用原 ESP32／WeMos D1 R32 小車，不適用 ESP32-S3 裁判板。
+
+原始碼模式讀取所選環境的 `.pio/build/<環境>/`；EXE 只讀取內建的對應版本，缺檔會拒絕燒錄，不會退回其他版本。更新通常不要勾選「燒錄前清除 flash」，以保留 NVS 設定與已存程式。
+
+開發檢查：`motor_tuner/.venv/Scripts/python tests/check_tuner_flash.py`（在 repo 根目錄執行）。它以離屏 Qt 驗證版本切換、四檔／Offset、缺檔拒絕，不連接或燒錄硬體。
 
 ## 使用流程
 

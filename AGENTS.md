@@ -51,6 +51,8 @@ PC 端 PyQt6 單馬達調參工具（PID、自動估參、曲線圖），WiFi(WS
 執行 `motor_tuner/run.bat`，詳見 [motor_tuner/README.md](motor_tuner/README.md)。
 `motor_tuner/build*/`、`dist/`、`.venv/` 為建置產物，不要修改。
 
+`motor_tuner/flash_profiles.py` 定義燒錄選項與四檔 Offset。原燒錄分頁預設競賽學生車版，也保留教學版；EXE 依 profile 分目錄包入兩套，不得缺檔時退回其他角色，且不包入裁判憑證或 WAV。打包用 `build_exe.bat` 明確建置 `esp32dev`／`esp32dev_competitor`。相關修改加跑 `motor_tuner/.venv/Scripts/python tests/check_tuner_flash.py`，不得在 UI 測試中實際燒板。發布用產物由打包器生成，不手改 bin／EXE。
+
 ---
 
 ## 驗證（修改後必跑）

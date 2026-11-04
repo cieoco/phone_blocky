@@ -52,25 +52,13 @@ import serial
 from chart_widget import MotorChartWidget
 from serial_worker import SerialWorker
 from ws_worker import WsWorker
+from flash_profiles import DEFAULT_PROFILE, FLASH_PROFILES, FLASH_IMAGES, image_path
 
 NUM_MOTORS = 4
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", PROJECT_ROOT))
-DEFAULT_FLASH_DIR = PROJECT_ROOT / ".pio" / "build" / "esp32dev"
-BUNDLED_FLASH_DIR = BUNDLE_ROOT / "bundled_bins"
-FLASH_IMAGES = (
-    ("bootloader.bin", "0x1000"),
-    ("partitions.bin", "0x8000"),
-    ("firmware.bin", "0x10000"),
-    ("littlefs.bin", "0x1B9000"),
-)
-
-
-def bundled_or_project_bin(name: str) -> Path:
-    bundled = BUNDLED_FLASH_DIR / name
-    if bundled.is_file():
-        return bundled
-    return DEFAULT_FLASH_DIR / name
+def bundled_or_project_bin(name: str, profile: str = DEFAULT_PROFILE) -> Path:
+    return image_path(name, profile, PROJECT_ROOT, BUNDLE_ROOT, getattr(sys, "frozen", False))
 
 
 def run_bundled_esptool() -> int:
@@ -239,6 +227,17 @@ class MotorTuner(QMainWindow):
         w = QWidget()
         v = QVBoxLayout(w)
 
+        profile_row = QHBoxLayout()
+        profile_row.addWidget(QLabel("小車韌體版本："))
+        self.flash_profile_combo = QComboBox()
+        for profile, label, _description in FLASH_PROFILES:
+            self.flash_profile_combo.addItem(label, profile)
+        profile_row.addWidget(self.flash_profile_combo, 1)
+        v.addLayout(profile_row)
+        self.flash_profile_hint = QLabel()
+        self.flash_profile_hint.setWordWrap(True)
+        v.addWidget(self.flash_profile_hint)
+
         target = QGroupBox("燒錄設定")
         tl = QHBoxLayout(target)
         port_hint = QLabel("使用上方「USB（序列）」選擇的 COM 埠")
@@ -251,6 +250,7 @@ class MotorTuner(QMainWindow):
         v.addWidget(target)
 
         files = QGroupBox("燒錄檔案")
+        self.flash_files_group = files
         grid = QGridLayout(files)
         for col, head in enumerate(("啟用", "檔案", "Offset", "路徑", "")):
             grid.addWidget(QLabel(f"<b>{head}</b>"), 0, col)
@@ -289,7 +289,7 @@ class MotorTuner(QMainWindow):
         controls.addWidget(self.btn_flash_stop)
         v.addLayout(controls)
 
-        note = QLabel("提示：請先停止序列連線；燒錄會使用 esptool，四個分區 Offset 已依安裝教程預設帶入。")
+        note = QLabel("適用原 ESP32 小車板（WeMos D1 R32），不是 ESP32-S3 裁判板。切換版本會重新帶入四個檔案與 Offset。請先斷開序列連線；一般更新不要勾選清除 flash，以保留設定與程式。")
         note.setWordWrap(True)
         note.setStyleSheet("color:#666;")
         v.addWidget(note)
@@ -299,7 +299,19 @@ class MotorTuner(QMainWindow):
         self.flash_log.setMinimumHeight(220)
         v.addWidget(self.flash_log, 1)
 
+        self.flash_profile_combo.currentIndexChanged.connect(self._select_flash_profile)
+        self._select_flash_profile()
+
         return w
+
+    def _select_flash_profile(self, _index: int = 0):
+        profile = self.flash_profile_combo.currentData()
+        description = next(p[2] for p in FLASH_PROFILES if p[0] == profile)
+        self.flash_profile_hint.setText(description)
+        for name, offset in FLASH_IMAGES:
+            self.flash_checks[name].setChecked(True)
+            self.flash_offsets[name].setText(offset)
+            self.flash_paths[name].setText(str(bundled_or_project_bin(name, profile)))
 
     def _browse_flash_file(self, name: str):
         cur = self.flash_paths[name].text().strip()
@@ -334,7 +346,7 @@ class MotorTuner(QMainWindow):
             return
         self.settings.setValue("serial_port", port)
         self.flash_log.clear()
-        self._flash_log(f"使用 {port} 開始燒錄")
+        self._flash_log(f"使用 {port} 開始燒錄：{self.flash_profile_combo.currentText()}")
         if self.chk_flash_erase.isChecked():
             self._pending_flash_args = write_args
             self._run_esptool(["--chip", "esp32", "--port", port, "erase_flash"], "清除 flash")
@@ -380,6 +392,10 @@ class MotorTuner(QMainWindow):
         self.flash_process.finished.connect(self._on_flash_finished)
         self.btn_flash_start.setEnabled(False)
         self.btn_flash_stop.setEnabled(True)
+        self.flash_profile_combo.setEnabled(False)
+        self.flash_files_group.setEnabled(False)
+        self.flash_baud_combo.setEnabled(False)
+        self.chk_flash_erase.setEnabled(False)
         program, process_args, display = self._esptool_process_args(args)
         self._flash_log(f"[{title}] {display}")
         self.flash_process.start(program, process_args)
@@ -433,6 +449,10 @@ class MotorTuner(QMainWindow):
     def _set_flash_idle(self):
         self.btn_flash_start.setEnabled(True)
         self.btn_flash_stop.setEnabled(False)
+        self.flash_profile_combo.setEnabled(True)
+        self.flash_files_group.setEnabled(True)
+        self.flash_baud_combo.setEnabled(True)
+        self.chk_flash_erase.setEnabled(True)
 
     def _start_ap_identity_capture(self, port: str):
         """Read the boot log after esptool resets the board and show its AP identity."""

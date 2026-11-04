@@ -1,8 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from pathlib import Path
+import os
+import runpy
+import sys
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+
+# Do not collect incompatible DLLs from unrelated applications on the build PC's
+# PATH (e.g. Poppler's icuuc.dll has different exports from Windows' ICU).
+# Package hooks add their own library directories during dependency analysis.
+if sys.platform == "win32":
+    windows = Path(os.environ["SystemRoot"])
+    os.environ["PATH"] = os.pathsep.join(map(str, (
+        Path(sys.executable).parent, Path(sys.base_prefix),
+        Path(sys.base_prefix) / "DLLs", windows / "System32", windows,
+    )))
 
 
 SPEC_DIR = Path(SPECPATH).resolve()
@@ -15,15 +28,15 @@ elif (SPEC_DIR / "motor_tuner" / "main.py").is_file():
 else:
     APP_DIR = Path(__file__).resolve().parent
     ROOT = APP_DIR.parent
-BIN_DIR = ROOT / ".pio" / "build" / "esp32dev"
-BIN_NAMES = ("bootloader.bin", "partitions.bin", "firmware.bin", "littlefs.bin")
+profiles = runpy.run_path(str(APP_DIR / "flash_profiles.py"))
 
 datas = []
-for name in BIN_NAMES:
-    src = BIN_DIR / name
-    if not src.is_file():
-        raise FileNotFoundError(f"Missing firmware image: {src}")
-    datas.append((str(src), "bundled_bins"))
+for profile, _label, _description in profiles["FLASH_PROFILES"]:
+    for name, _offset in profiles["FLASH_IMAGES"]:
+        src = ROOT / ".pio" / "build" / profile / name
+        if not src.is_file():
+            raise FileNotFoundError(f"Missing firmware image: {src}")
+        datas.append((str(src), f"bundled_bins/{profile}"))
 datas += collect_data_files("esptool")
 
 # 接線分頁用的板子圖（QTextBrowser 以 <img src="wemos.jpg"> 載入）
