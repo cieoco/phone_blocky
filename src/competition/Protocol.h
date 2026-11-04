@@ -3,7 +3,7 @@
 #include <string.h>
 namespace Competition {
 enum class Message : uint8_t { Ping = 1, Pong, Sync, Prepare, Ready, Commit, Renew, Disable, Status, View, Release,
-  Discover, Announce, PairOffer, PairAck };
+  Discover, Announce, PairOffer, PairAck, Beacon };
 constexpr size_t HeaderBytes = 64, MaxPayload = 128, MaxFrame = HeaderBytes + MaxPayload;
 inline void put(uint8_t* p, uint64_t v, size_t n) { for (size_t i=0; i<n; ++i) p[i]=uint8_t(v >> (8*i)); }
 inline uint64_t get(const uint8_t* p, size_t n) { uint64_t v=0; for(size_t i=0;i<n;++i) v |= uint64_t(p[i]) << (8*i); return v; }
@@ -32,6 +32,7 @@ inline uint16_t payloadSize(Message t) {
     case Message::Announce: return 113; // ticket[8], public[65], owner MAC[6], flags[1], name[33]
     case Message::PairOffer: return 79; // target MAC[6], ticket[8], public[65]
     case Message::PairAck: return 16; // key-confirmation HMAC, also sent encrypted
+    case Message::Beacon: return 0; // channel rendezvous only; never grants control
   }
   return 65535;
 }

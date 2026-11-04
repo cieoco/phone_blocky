@@ -78,6 +78,16 @@ console.log('Original student UI: teaching/manual/auto/pause/gap/end/release, st
   now+=400;await win.CompetitionStudent.handover();assert.equal(requests.length,1,'stale state cannot start recovery');
   ws.receive({...base,channel:6,controller_mac:'AA:BB:CC:DD:EE:FF'});
   assert.equal(elements.get('runBtn').disabled,false);
-  assert.match(elements.get('competitionStatusText').textContent,/AA:BB:CC:DD:EE:FF/);
+  assert.equal(elements.get('competitionStatus').hidden,true,'teaching UI stays unchanged');
+  assert.equal(elements.get('competitionHandover').hidden,true,'no everyday pairing control');
+  assert.doesNotMatch(elements.get('competitionStatusText').textContent,/AA:BB:CC:DD:EE:FF/);
+  context.location.pathname='/set.html';
+  ws.receive({...base,channel:6});
+  assert.equal(elements.get('competitionStatus').hidden,true);
+  assert.equal(elements.get('competitionRecovery').hidden,false,'paired teaching car can change referee wirelessly');
+  assert.equal(elements.get('competitionHandover').hidden,false);
+  assert.equal(elements.get('competitionHandover').disabled,false);
+  ws.receive({...base,managed:true,committed:true,channel:6});
+  assert.equal(elements.get('competitionHandover').disabled,true,'active lease still blocks recovery');
   console.log('Student handover: active lease, consent, channel validation, stale state and locked waiting window PASS');
 })().catch(error=>{console.error(error);process.exitCode=1;});

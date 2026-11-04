@@ -10,6 +10,7 @@ namespace Student {
 void boot();
 void attach(AsyncWebServer& server, AsyncWebSocket& socket);
 void begin();
+void stationConfigured(bool value);
 void step(bool serialMode);
 void commandError();
 bool managed();
@@ -28,6 +29,7 @@ public:
 inline bool managed() { return false; }
 inline bool paired() { return false; }
 inline uint8_t channel() { return 1; }
+inline void stationConfigured(bool) {}
 class MutationGuard {
 public:
   bool allowed() const { return true; }

@@ -4,6 +4,7 @@
 #include "Runtime.h"
 #include "InputPolicy.h"
 #include "PairingPolicy.h"
+#include "ChannelSearch.h"
 #include "PairingCrypto.h"
 #include "WebSupport.h"
 #include <new>
@@ -38,6 +39,10 @@ Packet announcement;
 Time announceAt=0,lastAnnounce=0;
 String pairingError;
 bool ownershipDurable=false;
+ChannelSearch channelSearch;
+std::atomic<bool> hasStationConfig{false};
+uint8_t discoveredChannel=0;
+Time channelChangedAt=0;
 uint64_t bootId=0,controllerBoot=0,previousControllerBoot=0,runMatch=0,runController=0,outputMask=0;
 uint32_t txSeq=0,rxSeq=0,runGeneration=0,programHash=0,manualSeq=0;
 Time syncedAt=0,statusAt=0,snapshotAt=0,manualDeadline=0,viewAt=0;
@@ -121,6 +126,7 @@ void publish() {
   d["pairing_error"]=pairingError;
   d["controller_mac"]=isPaired?macString(settings.teams[0].mac):String("");
   d["channel"]=WiFi.channel();
+  d["referee_seen"]=channelSearch.fresh(now);
   d["remaining_ms"]=fresh?viewRemaining:0;
   d["allowed"]=manualAllowed();
   if(manualAllowed()) {
@@ -145,6 +151,12 @@ void sendStatus() {
 }
 
 bool pairingPacket(const Received& r,const Packet& p) {
+  if(p.type==Message::Beacon) {
+    if(r.received<channelChangedAt || !p.controllerBoot || (isPaired && memcmp(r.mac,settings.teams[0].mac,6)))return true;
+    channelSearch.heard(nowMs());
+    discoveredChannel=WiFi.channel();
+    return true;
+  }
   if(p.type==Message::Discover) {
     if(!p.controllerBoot || !p.match || nowMs()-lastAnnounce<350 || announcePending)return true;
     announcement=Packet();announcement.type=Message::Announce;
@@ -301,6 +313,22 @@ void processInputs() {
   }
   processor.processCommands(in->json,in->source);delete in;
 }
+void seekChannel() {
+  // Called under mutationMutex, including Blockly yields during long programs.
+  // Preserve phone/router connections and keep faulted managed cars locked.
+  if(bindingPending || handoverPending)return;
+  if(discoveredChannel && discoveredChannel!=settings.channel && !lease.committed) {
+    if(!settings.setChannel(discoveredChannel))pairingError="channel_write_failed";
+  }
+  discoveredChannel=0;
+  bool canSeek=(!owned || lease.faulted) && !lease.committed && !admission.window(nowMs()) && !announcePending && !ackPending &&
+    !WiFi.softAPgetStationNum() && WiFi.status()!=WL_CONNECTED && (!hasStationConfig || isPaired);
+  uint8_t ch=channelSearch.advance(nowMs(),WiFi.channel(),canSeek);
+  if(ch) {
+    if(esp_wifi_set_channel(ch,WIFI_SECOND_CHAN_NONE)!=ESP_OK)pairingError="channel_change_failed";
+    else channelChangedAt=nowMs();
+  }
+}
 void service() {
   if(!initialized)return;
   // MutationGuard serializes legacy HTTP/USB actions with acquiring ownership.
@@ -318,6 +346,7 @@ void service() {
     if(lease.committed || bindingPending || handoverPending)pairingError="authorization_active";
     else {owned=true;clearContexts();stopOutputs();releasePending=false;handoverPending=requested;}
   }
+  seekChannel();
   // Called recursively from Blockly yield: do not execute another command there.
   static bool processing=false;
   if(!processing && !bindingPending && !handoverPending){processing=true;processInputs();processing=false;}
@@ -329,6 +358,7 @@ void service() {
 }
 
 namespace Student {
+void stationConfigured(bool value){hasStationConfig=value;}
 bool managed(){return owned.load();}
 bool paired(){return isPaired;}
 uint8_t channel(){return settings.channel;}
@@ -379,7 +409,7 @@ void begin() {
   admission.ticket=randomId(); // unpaired teaching boards can be discovered immediately
   if(isPaired) {
     WiFi.setAutoReconnect(false);WiFi.disconnect(false,false);esp_wifi_set_ps(WIFI_PS_NONE);
-    initialized=initialized && radio.add(settings.teams[0],settings.channel);
+    initialized=initialized && radio.add(settings.teams[0],0);
   }
   if(!initialized || owned) {owned=true;lease.fail();stopOutputs();}
   processor.setProgramServiceHook(service);publish();
@@ -412,7 +442,7 @@ void step(bool serialMode) {
       if(!WiFi.softAP(ap.c_str(),pass,ch,0,4)) {pairingError="channel_change_failed";bindingPending=false;publish();return;}
       const char* error=commitPairing(
         [&](){return ch>=1 && ch<=11 && settings.setChannel(ch) && settings.saveTeam(binding,true);},
-        [&](){isPaired=true;radio.remove(binding.mac);return radio.add(binding,ch);},
+        [&](){isPaired=true;radio.remove(binding.mac);return radio.add(binding,0);},
         [](){return persistOwned(false);});
       if(error)pairingError=error;
       else {

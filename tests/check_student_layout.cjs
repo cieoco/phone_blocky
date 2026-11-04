@@ -40,15 +40,23 @@ fs.mkdirSync(out, {recursive:true});
           state = mode === 'unsupported' ? null : {
             type:'competition_state', boot_id:'test', generation:1, epoch:1,
             managed:mode === 'managed', state:mode === 'managed' ? 'PAUSED' : 'TEACHING',
+            paired:true,
             state_fresh:true, allowed:false, channel:8, remaining_ms:30000,
             controller_mac:mode === 'managed' ? 'AA:BB:CC:DD:EE:FF' : '',
           };
           await page.goto(`http://car/${name}.html`);
-          if (state) await page.locator('#competitionStatus').waitFor();
+          if (state) await page.locator('#competitionStatus').waitFor({state:'attached'});
           if (name === 'blockly') await page.locator('#loadingOverlay').waitFor({state:'hidden'});
+          if (state && name === 'set') {
+            assert.equal(await page.locator('#competitionRecovery').isVisible(),true);
+            assert.equal(await page.locator('#competitionRecovery').evaluate(el=>el.open),false);
+            await page.locator('#competitionRecovery summary').click();
+            assert.equal(await page.locator('#competitionHandover').isVisible(),true);
+            await page.locator('#competitionRecovery summary').click();
+          }
           const layout = await page.evaluate(() => {
             const rect = el => { const r=el.getBoundingClientRect(); return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height}; };
-            const banner=document.getElementById('competitionStatus');
+            const banner=document.querySelector('#competitionStatus:not([hidden])');
             const content=document.querySelector('.container');
             return {viewport:innerWidth, scroll:document.documentElement.scrollWidth,
               banner:banner && rect(banner), content:content && rect(content),
@@ -59,7 +67,7 @@ fs.mkdirSync(out, {recursive:true});
           });
           const context=`${name} ${width}px ${mode}`;
           if (['index','set'].includes(name)) assert.ok(layout.scroll <= width + 1, `${context}: horizontal overflow ${JSON.stringify(layout)}`);
-          if (state) {
+          if (state?.managed) {
             assert.ok(layout.banner.x >= -1 && layout.banner.right <= width + 1, `${context}: banner offscreen`);
             for (const control of layout.controls) assert.ok(control.x >= -1 && control.right <= width + 1, `${context}: banner child offscreen`);
             if (['index','set'].includes(name)) assert.ok(layout.content.y >= layout.banner.bottom, `${context}: content must be below banner`);

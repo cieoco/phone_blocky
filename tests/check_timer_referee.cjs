@@ -18,6 +18,10 @@ const root=path.resolve(__dirname,'..');
           const d=route.request().postDataJSON();requests.push(d);assert.equal(d.arena,arena);
           if(d.action==='claim')current.owner=d.operator;
           if(d.action==='prepare')Object.assign(current,{control_mode:d.control_mode,timer_teams:d.timer_teams,mode:d.mode,first_mode:d.first_mode,state:'READY',match_id:'123',version:1});
+          if(d.action==='pair') {
+            snap.teams.push({mac:d.mac,name:d.name,arena:''});
+            snap.pair_result='ok';snap.pair_mac=d.mac;
+          }
           snap.results.push({id:d.request_id,result:'ok'});
           return route.fulfill({status:202,json:{ok:true,queued:true}});
         }
@@ -54,8 +58,20 @@ const root=path.resolve(__dirname,'..');
       assert.equal(requests.some(r=>['scan','pair'].includes(r.action)),false);
       fs.mkdirSync(path.join(root,'.pio/timer-referee-check'),{recursive:true});
       await page.screenshot({path:path.join(root,`.pio/timer-referee-check/${arena}.png`),fullPage:true});
+      // Selecting a discovered car registers and checks it without student UI steps.
+      Object.assign(current,{state:'IDLE',control_mode:'ESP_NOW'});
+      Object.assign(snap,{ready:true,registration_available:true,channel:8,discovered:[{mac:'12:34:56:78:90:AB',name:'New car',channel:8,fresh:true,available:true}]});
+      await page.locator('#controlMode').selectOption('ESP_NOW');
+      await page.locator('#discovered input').fill('藍隊');
+      await page.locator('#discovered button').click();
+      const selected=page.locator('#teams input[value="12:34:56:78:90:AB"]');
+      await selected.waitFor();
+      await page.waitForFunction(()=>document.querySelector('#teams input[value="12:34:56:78:90:AB"]')?.checked);
+      assert.equal(requests.filter(r=>r.action==='pair').length,1);
+      assert.equal(requests.find(r=>r.action==='pair').name,'藍隊');
+      assert.equal(await selected.isChecked(),true);
       await page.close();
-      console.log(`PASS ${arena}: no radio readiness/pairing needed, locked mode, explicit non-control UI, audio gate, isolated arena`);
+      console.log(`PASS ${arena}: timer without radio, locked mode, audio gate, isolated arena; wireless enrollment selects the car`);
     }
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

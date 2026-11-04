@@ -226,6 +226,7 @@ public:
     staPassword = wifiPassword;
     WiFi.mode(WIFI_AP_STA);
     WiFi.setAutoReconnect(!Student::paired());
+    Student::stationConfigured(staSsid.length()>0);
     if(Student::paired() || Student::managed()){staSsid="";staPassword="";WiFi.disconnect(false,false);}
     if (staSsid.length() > 0 && staPassword.length() > 0) {
       WiFi.begin(staSsid.c_str(), staPassword.c_str());

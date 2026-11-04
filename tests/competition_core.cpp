@@ -5,10 +5,26 @@
 #include "../src/competition/PairingPolicy.h"
 #include "../src/competition/AudioRoute.h"
 #include "../src/competition/ArenaRoster.h"
+#include "../src/competition/ChannelSearch.h"
 #include <cassert>
 #include <iostream>
 using namespace Competition;
 int main() {
+  // Rendezvous on any 1-11 channel within the referee's 15-second search window.
+  for(uint8_t target=1;target<=11;++target)for(Time phase=0;phase<500;phase+=10) {
+    ChannelSearch search;uint8_t current=1;
+    for(Time t=0;t<15000;t+=10) {
+      if(current==target && t%RefereeBeaconMs==phase)search.heard(t);
+      uint8_t next=search.advance(t,current,true);if(next)current=next;
+    }
+    assert(search.fresh(15000) && current==target);
+  }
+  ChannelSearch seek;
+  assert(!seek.advance(0,1,false)); // phone, configured STA, or active lease blocks hopping
+  assert(seek.advance(0,1,true)==2);assert(!seek.advance(899,2,true));
+  seek.heard(900);assert(!seek.advance(3899,8,true));assert(seek.advance(3900,8,true)==9);
+  // A beacon cannot change the lease, even when an owned car has lost its referee.
+  Lease locked;locked.fail();seek.heard(4000);assert(locked.faulted && !locked.allowed(4000));
   // Timer-only matches need no students/ACKs, but retain the same timeline/cues.
   for(Mode first:{Mode::Manual,Mode::Auto}) {
     MatchEngine timer;Config c;c.mode=Mode::Mixed;c.first=first;c.manualMs=c.autoMs=c.gapMs=1000;
@@ -141,7 +157,7 @@ int main() {
   assert(q.controllerBoot==p.controllerBoot && q.generation==42 && get(q.payload,8)==99999);
   for(size_t i=0;i<len;++i) assert(!decode(data,i,q));
   data[6]=1; assert(!decode(data,len,q)); data[6]=0; data[3]=255; assert(!decode(data,len,q));
-  for(Message type:{Message::View,Message::Release,Message::Status,Message::Discover,Message::Announce,Message::PairOffer,Message::PairAck}) {
+  for(Message type:{Message::View,Message::Release,Message::Status,Message::Discover,Message::Announce,Message::PairOffer,Message::PairAck,Message::Beacon}) {
     p.type=type;p.length=payloadSize(type);len=encode(p,data);assert(decode(data,len,q));assert(q.type==type);
     assert(!decode(data,len-1,q));
   }

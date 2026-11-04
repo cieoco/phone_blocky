@@ -95,15 +95,13 @@
       const change = document.createElement('button'); change.id = 'competitionHandover';
       change.onclick = handover; banner.appendChild(change);
     }
-    banner.hidden = false;
+    banner.hidden = !state.managed;
     banner.style.display = banner.hidden ? 'none' : 'flex';
     const staleState = !current() || !state.state_fresh;
     let label = names[state.state] || '等待裁判';
     if (state.managed && staleState && !state.fault) label = '狀態連線中斷・操作鎖定';
     if (state.managed && !staleState) label += ' · ' + (state.remaining_ms / 1000).toFixed(1) + ' 秒';
     if (state.managed) label += state.allowed && !staleState ? ' · 可手動操作' : ' · 手動操作鎖定';
-    label += ` · 頻道 ${state.channel || '?'}`;
-    if (state.controller_mac) label += ` · 裁判 ${state.controller_mac}`;
     if (state.pairing_open) { handoverNotice = ''; label += ` · 開放接管 ${Math.ceil(state.pairing_remaining_ms / 1000)} 秒`; }
     const pairingErrors = {authorization_active:'授權仍在進行，請先停止本車後再更換裁判',ownership_write_failed:'管制狀態寫入失敗，維持鎖定',pairing_write_failed:'配對寫入失敗，維持鎖定',channel_write_failed:'頻道儲存失敗',channel_change_failed:'頻道切換失敗',peer_add_failed:'新裁判通訊建立失敗'};
     if (state.pairing_error) { handoverNotice = ''; label += ' · ' + (pairingErrors[state.pairing_error] || '配對未完成'); }
@@ -111,6 +109,17 @@
     document.getElementById('competitionStatusText').textContent = label;
     document.getElementById('competitionStop').hidden = !state.managed;
     const change = document.getElementById('competitionHandover');
+    // Optional recovery stays in a collapsed Settings section, off daily pages.
+    const settingsPage = /\/set(?:\.html)?$/.test(location.pathname);
+    let recovery = document.getElementById('competitionRecovery');
+    if (settingsPage && !recovery) {
+      recovery = document.createElement('details'); recovery.id = 'competitionRecovery';
+      recovery.style.cssText = 'width:100%;max-width:100%;box-sizing:border-box;padding:8px 12px;font:14px sans-serif';
+      const summary = document.createElement('summary'); summary.textContent = '裁判連線設定（選用）';
+      recovery.appendChild(summary); recovery.appendChild(change); document.body.prepend(recovery);
+    }
+    if (recovery) recovery.hidden = !(state.paired || state.managed);
+    change.hidden = !settingsPage;
     change.textContent = state.paired || state.managed ? '允許更換裁判' : '開放配對／設定頻道';
     change.disabled = !current() || !!state.committed || handoverBusy;
     const locked = state.managed;

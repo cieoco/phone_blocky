@@ -48,7 +48,7 @@
     $('audio').disabled=!own||busy||state.audio_route==='CENTRAL';
     $('audioState').textContent=state.audio_route==='CENTRAL'?'中央音效台已連線・由中央播放，本頁自動靜音':state.audio_route==='LOCAL'?'本機音效模式・僅本頁持有操作權且啟用音效時播放':'中央音效未連線・目前不播放；可按「本機接回音效」，或選擇靜音比賽';
     $('scan').disabled=!idle||!own||busy||state.pairing||!state.registration_available||!state.ready;
-    $('pairState').textContent=state.pairing?`正在配對 ${state.pair_mac}，等待車輛確認…`:state.pair_result==='ok'?`${state.pair_mac} 配對已確認`:state.pair_result==='pairing_unconfirmed'?`${state.pair_mac} 配對未確認；請查看學生頁的裁判 MAC，必要時重新開放接管。`:state.scanning?'正在搜尋同頻道車輛（15 秒）…':'';
+    $('pairState').textContent=state.pairing?`正在連線 ${state.pair_mac}，等待車輛確認…`:state.pair_result==='ok'?`${state.pair_mac} 連線登記完成`:state.pair_result==='pairing_unconfirmed'?`${state.pair_mac} 連線未確認；請重新搜尋，或檢查車輛供電與頻道。`:state.scanning?'正在搜尋車輛（15 秒）…':'';
     const discoverySig=JSON.stringify([state.discovered,idle,own,busy,state.pairing,state.registration_available]);
     if(discoverySig!==discoverySignature) {
       discoverySignature=discoverySig;
@@ -56,10 +56,10 @@
       $('discovered').replaceChildren();
       for(const car of state.discovered||[]) {
         const row=document.createElement('div'),label=document.createElement('span'),name=document.createElement('input'),button=document.createElement('button');
-        label.textContent=`${car.mac} · ${!car.fresh?'資料過期':car.available?'可登記':car.controller_mac?'回報裁判 '+car.controller_mac:'等待學生開放'} `;
+        label.textContent=`${car.mac} · 頻道 ${car.channel||state.channel} · ${!car.fresh?'資料過期':car.registered?'已登記':car.available?'可加入':car.controller_mac?'由其他裁判登記':'尚未就緒'} `;
         name.dataset.mac=car.mac;name.value=names.get(car.mac)||car.name;name.placeholder='隊伍名稱';name.setAttribute('aria-label','隊伍名稱');
-        button.textContent='登記／配對';button.disabled=!idle||!own||busy||state.pairing||!state.registration_available||!car.available;
-        button.onclick=()=>click('pair',{mac:car.mac,name:name.value.trim()});row.append(label,name,button);$('discovered').append(row);
+        button.textContent='加入本場';button.disabled=!idle||!own||busy||state.pairing||!state.registration_available||!car.available;
+        button.onclick=async()=>{try{busy=true;render();await invoke('pair',{mac:car.mac,name:name.value.trim()});for(const input of document.querySelectorAll('#teams input'))if(input.value===car.mac&&!input.disabled)input.checked=true;note('已選入本場；等待自動連線確認後，按「準備本場」。');}catch(e){note(e.message);}finally{busy=false;render();}};row.append(label,name,button);$('discovered').append(row);
       }
     }
     for(const id of ['controlMode','timerTeams','mode','first','manual','auto','gap'])$(id).disabled=!idle||!own||busy;

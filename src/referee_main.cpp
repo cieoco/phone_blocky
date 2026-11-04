@@ -5,6 +5,7 @@
 #include "competition/PairingCrypto.h"
 #include "competition/AudioRoute.h"
 #include "competition/ArenaRoster.h"
+#include "competition/ChannelSearch.h"
 using namespace Competition;
 
 namespace {
@@ -40,6 +41,7 @@ Arena arenas[ArenaCount];
 ArenaRoster roster;
 size_t nextArena=0;
 Time lastSnapshot=0;
+Time lastBeacon=0;
 uint32_t wireSequence=0;
 String lastRequest,lastResult;
 bool allIdle(){for(const auto& a:arenas)if(a.engine.state!=State::Idle)return false;return true;}
@@ -83,7 +85,10 @@ void publish() {
     const auto& car=discovered[i];JsonObject t=found.createNestedObject();
     t["mac"]=macString(car.mac);t["name"]=car.name;t["controller_mac"]=car.flags&1?macString(car.controller):String("");
     t["fresh"]=now-car.seen<DiscoveryFreshMs;t["managed"]=bool(car.flags&2);t["committed"]=bool(car.flags&4);
-    t["available"]=bool(car.flags&8) && now-car.seen<DiscoveryFreshMs;
+    uint8_t self[6];WiFi.macAddress(self);
+    bool registered=settings.index(car.mac)>=0 && (car.flags&1) && !memcmp(car.controller,self,6);
+    t["registered"]=registered;t["channel"]=station.channel();
+    t["available"]=(bool(car.flags&8) || (registered && !(car.flags&6))) && now-car.seen<DiscoveryFreshMs;
   }
   JsonArray teams=d.createNestedArray("teams");
   for(size_t i=0;i<settings.count;++i) {JsonObject t=teams.createNestedObject();t["mac"]=macString(settings.teams[i].mac);t["name"]=settings.teams[i].name;int assigned=roster.owner(settings.teams[i].mac);t["arena"]=assigned<0?"":arenaName(assigned);}
@@ -165,9 +170,15 @@ const char* action(JsonDocument& d) {
     uint8_t mac[6];if(!parseMac(d["mac"]|"",mac))return "invalid_mac";
     Discovered* car=nullptr;for(size_t i=0;i<discoveredCount;++i)if(!memcmp(mac,discovered[i].mac,6))car=&discovered[i];
     if(!car || now-car->seen>=DiscoveryFreshMs)return "discovery_stale";
-    if(!(car->flags&8) || car->flags&4)return "student_consent_required";
     Team team;memcpy(team.mac,mac,6);String name=d["name"]|"";
     if(!name.length() || name.length()>=sizeof(team.name))return "invalid_name";
+    uint8_t self[6];WiFi.macAddress(self);int known=settings.index(mac);
+    if(known>=0 && (car->flags&1) && !memcmp(car->controller,self,6) && !(car->flags&6)) {
+      team=settings.teams[known];name.toCharArray(team.name,sizeof(team.name));
+      if(!settings.saveTeam(team))return "pairing_write_failed";
+      pairMac=macString(mac);pairResult="ok";return "ok";
+    }
+    if(!(car->flags&8) || car->flags&4)return "student_consent_required";
     name.toCharArray(team.name,sizeof(team.name));uint64_t session=randomId();
     if(!pairingCrypto.derive(car->publicKey,bootId,car->boot,session,team.key))return "key_exchange_failed";
     // Store the derived key before sending an offer. ACK loss/reboot must not
@@ -304,6 +315,11 @@ void discoveryTransmit() {
     ++wireSequence;if(p.type==Message::Discover)scanSent=now;else pairing.sent=now;
   }
 }
+void beaconTransmit() {
+  if(!initialized || !station.ready() || nowMs()-lastBeacon<RefereeBeaconMs)return;
+  Packet p;p.type=Message::Beacon;p.controllerBoot=bootId;p.sequence=wireSequence+1;p.sent=nowMs();
+  if(radio.send(Radio::broadcastMac(),p)){wireSequence=p.sequence;lastBeacon=p.sent;}
+}
 bool transmit(Arena& a) {
   if(!initialized || a.engine.timerOnly || !a.playerCount || !station.ready())return false;
   if(a.engine.active() && !station.matches(a.matchNetwork))a.engine.fault("referee_network_changed");
@@ -415,6 +431,7 @@ void loop() {
     if(transmit(arenas[index])){nextArena=(index+1)%ArenaCount;break;}
   }
   if(initialized)discoveryTransmit();
+  beaconTransmit();
   if(now-lastSnapshot>=100){lastSnapshot=now;publish();}
   delay(1);
 }
