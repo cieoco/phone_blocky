@@ -2,7 +2,7 @@
 <html>
 
 <head>
-  <script src="competition_client.js?v=20261103-pairing"></script>
+  <script src="competition_client.js?v=20261104-layout"></script>
   <meta charset="UTF-8">
   <title>🎮 ESP32 機器人控制中心</title>
   <!-- 不鎖縮放：這一頁沒有會被縮放弄壞的版面，鎖住只會讓看不清楚的人沒辦法放大 -->
@@ -30,8 +30,9 @@
       background-attachment: fixed;
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       display: flex;
-      justify-content: center;
-      align-items: flex-start;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
       padding: 16px;
       /* iPhone 瀏海與底部手勢區 */
       padding-top: calc(16px + env(safe-area-inset-top, 0px));

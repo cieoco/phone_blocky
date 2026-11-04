@@ -2,7 +2,7 @@
 <html>
 
 <head>
-  <script src="competition_client.js?v=20261103-pairing"></script>
+  <script src="competition_client.js?v=20261104-layout"></script>
   <meta charset="UTF-8">
   <title>📡 相關設定</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -18,8 +18,11 @@
       background: linear-gradient(135deg, #667eea 0%, #4d7fff 100%);
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       display: flex;
-      justify-content: center;
-      align-items: flex-start;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      height: auto;
+      box-sizing: border-box;
       min-height: 100vh;
       margin: 0;
       padding: 20px;
@@ -33,7 +36,8 @@
       backdrop-filter: blur(10px);
       text-align: center;
       min-width: 320px;
-      max-width: 95vw;
+      max-width: 100%;
+      flex: none;
       box-sizing: border-box;
     }
 

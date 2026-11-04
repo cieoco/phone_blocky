@@ -85,10 +85,13 @@
     if (!banner) {
       banner = document.createElement('div'); banner.id = 'competitionStatus';
       banner.setAttribute('role', 'status');
-      banner.style.cssText = 'position:sticky;top:0;z-index:9999;flex:none;padding:8px 12px;background:#142d43;color:white;font:15px sans-serif;display:flex;gap:12px;align-items:center;justify-content:space-between';
-      const label = document.createElement('span'); label.id = 'competitionStatusText'; banner.appendChild(label);
+      banner.style.cssText = 'position:sticky;top:0;z-index:9999;flex:none;width:100%;max-width:100%;min-width:0;box-sizing:border-box;padding:8px 12px;background:#142d43;color:white;font:15px sans-serif;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between';
+      const label = document.createElement('span'); label.id = 'competitionStatusText';
+      label.style.cssText = 'flex:1 1 160px;min-width:0;overflow-wrap:anywhere'; banner.appendChild(label);
       const button = document.createElement('button'); button.id = 'competitionStop'; button.textContent = '停止本車';
-      button.onclick = stop; banner.appendChild(button); document.body.prepend(banner);
+      button.onclick = stop; banner.appendChild(button);
+      // Fixed-height editors reserve space inside their shell; normal pages use body flow.
+      (document.getElementById('competitionStatusHost') || document.body).prepend(banner);
       const change = document.createElement('button'); change.id = 'competitionHandover';
       change.onclick = handover; banner.appendChild(change);
     }
