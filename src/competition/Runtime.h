@@ -34,6 +34,19 @@ struct Settings {
   static constexpr size_t MaxTeams=64;
   Team teams[MaxTeams]; uint8_t count=0, channel=1;
   char secret[33]={}; uint8_t pmk[16]={};
+  static bool validSecret(const String& token) {
+    if(token.length()<8 || token.length()>32)return false;
+    for(size_t i=0;i<token.length();++i)if(token[i]<32 || token[i]>126)return false;
+    return true;
+  }
+  // Persist only. The caller reboots before publishing the new credential,
+  // avoiding concurrent changes to the HTTP authentication/AP password buffer.
+  bool storeSecret(const String& token) {
+    if(!validSecret(token))return false;
+    Preferences p;if(!p.begin("competition",false))return false;
+    bool ok=p.putString("secret",token)==token.length() && p.getString("secret","")==token;
+    p.end();return ok;
+  }
   bool load() {
     Preferences p;
     if(!p.begin("competition",false)) return false;
@@ -42,7 +55,7 @@ struct Settings {
     if(count>MaxTeams || p.getBytesLength("teams")!=sizeof(Team)*count) count=0;
     if(count) p.getBytes("teams",teams,sizeof(Team)*count);
     String token=p.getString("secret","");
-    if(token.length()!=32) { token=hexId(randomId())+hexId(randomId()); if(p.putString("secret",token)!=32) {p.end();return false;} }
+    if(!validSecret(token)) { token=hexId(randomId())+hexId(randomId()); if(p.putString("secret",token)!=32) {p.end();return false;} }
     token.toCharArray(secret,sizeof(secret));
     if(p.getBytesLength("pmk")==16) p.getBytes("pmk",pmk,16);
     else { esp_fill_random(pmk,16); if(p.putBytes("pmk",pmk,16)!=16) {p.end();return false;} }

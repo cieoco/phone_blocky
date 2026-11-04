@@ -577,3 +577,9 @@ ESP-NOW peers 使用 channel=0 跟隨當前 STA 頻道；比賽準備時另以 `
 - 經使用者授權已完成實板韌體 upload 與 LittleFS uploadfs，兩者皆通過 esptool 寫入雜湊校驗。USB 重置後仍停在下載模式，使用者按 RESET／重新上電後，原生 USB `competition_info` 正常回覆，STA 已連線、AP＋STA 同時運作。
 - HTTP 實板驗證通過：正確登入密碼接受、錯誤密碼回 403、A／B 場皆 IDLE、ready 為 true；首頁、兩個工作頁及其 JS／CSS 與四個 WAV 的 SHA-256 均與本機上傳來源相符，檢查期間 boot_id 保持不變。密碼只從 USB 讀入記憶體供驗證，未存入 repo。
 - 此次未連學生車、未實測 ESP-NOW 同步啟停，也未確認瀏覽器實際出聲；上述實板結果僅代表裁判開機、網路、登入與靜態資源服務已驗證。
+
+## 16. 裁判自訂密碼（2026-11-04）
+
+裁判 USB 新增 `competition_set_password`，只在兩場皆 IDLE 且無配對時接受。密碼限 8–32 個可列印 ASCII 字元，兼容 AP 密碼需求；儲存並讀回確認 NVS secret 後，回覆成功、flush USB 並重開機。HTTP 認證與 AP 密碼均在下次開機載入，避免執行中跨執行緒改寫 secret 緩衝區。不變更隊伍、配對金鑰、路由器設定或網頁資源。
+
+Settings.load 改為接受此有效範圍，不再將非 32 字元的自訂密碼覆寫成新隨機值；首次或無效值仍生成隨機密碼。使用者實際密碼不進程式碼或文件。S3 實板已驗證短於下限的密碼遭拒且舊值保持、有效 8 字元密碼保存並自動重啟、重啟後新密碼登入 HTTP 200／舊密碼 HTTP 403；STA 重新連線正常。密碼指令不開放 HTTP／WebSocket。

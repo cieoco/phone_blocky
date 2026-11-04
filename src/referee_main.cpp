@@ -330,12 +330,19 @@ void serialCommands() {
     if(c!='\n'){if(serialLine.length()<1024)serialLine+=c;else serialLine="";continue;}
     StaticJsonDocument<1024> d; bool parsed=!deserializeJson(d,serialLine);serialLine="";
     if(!parsed)continue;const char* cmd=d["cmd"]|"";
-    StaticJsonDocument<512> out;out["ok"]=false;
+    StaticJsonDocument<512> out;out["ok"]=false;bool reboot=false;
     if(!strcmp(cmd,"competition_info")) {
       out["ok"]=true;out["role"]="referee";out["mac"]=WiFi.macAddress();out["channel"]=station.channel();
       out["wifi_mode"]="AP_STA";out["wifi_connected"]=station.connected();out["wifi_status"]=station.status();
       out["ap_ssid"]=station.apName();out["ap_ip"]=WiFi.softAPIP().toString();
       out["ssid"]=station.ssid();out["ip"]=WiFi.localIP().toString();out["key"]=settings.secret;
+    }
+    else if(!strcmp(cmd,"competition_set_password")) {
+      String token=d["password"]|"";
+      if(!allIdle() || pairing.active)out["error"]="clear_both_arenas_first";
+      else if(!Settings::validSecret(token))out["error"]="password_requires_8_to_32_printable_ASCII";
+      else if(!settings.storeSecret(token))out["error"]="password_write_failed";
+      else {out["ok"]=true;out["rebooting"]=true;reboot=true;}
     }
     else if(!strcmp(cmd,"competition_pair") && allIdle() && !pairing.active) {
       Team t;String name=d["name"]|"";
@@ -344,6 +351,7 @@ void serialCommands() {
       }
     } else if(!strcmp(cmd,"competition_channel")) {out["error"]="STA channel is assigned by the router";}
     serializeJson(out,Serial);Serial.println();
+    if(reboot){Serial.flush();delay(100);ESP.restart();return;}
   }
 }
 }
