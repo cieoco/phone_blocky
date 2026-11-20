@@ -27,6 +27,7 @@
 #include "config.h"
 #include <Arduino.h>
 #include <Wire.h>
+#include "DashboardLease.h"
 #include <string.h>
 
 // ── 命令碼：沿用 motorControl（勿改動數值）──────────────────────────
@@ -253,11 +254,31 @@ public:
 
   // 主迴圈（jsonTask）每拍呼叫：把 callback 排進來的命令落地執行。
   // 動作類命令一律延後到這裡，因為底層會 Serial.printf，不能在 callback 跑。
+  // The bus callback posts requests; only the interpreter task touches outputs.
+  // Stop has priority over queued actuator commands and cannot be overwritten by a heartbeat.
+  void serviceSafety() {
+    portENTER_CRITICAL(&safetyMux_);
+    const auto next = dashboard_lease::afterTimeout(requested_, millis() - lastBeatMs_);
+    requested_ = next;
+    if (next == dashboard_lease::Stopped ||
+        (next == dashboard_lease::Running && applied_ == dashboard_lease::Ready)) qTail_ = qHead_;
+    portEXIT_CRITICAL(&safetyMux_);
+    if (next == applied_) return;
+    if (next == dashboard_lease::Stopped) {
+      proc_.setDashboardInhibit(true);
+      for (uint8_t i = 0; i < funcs_.count(); ++i) funcs_.setValue(i, 0);
+    } else if (next == dashboard_lease::Running) {
+      proc_.setDashboardInhibit(false);
+    }
+    applied_ = next;
+  }
+
   void service() {
+    serviceSafety();
     while (qTail_ != qHead_) {
       const PendingCmd c = queue_[qTail_];
       qTail_ = static_cast<uint8_t>((qTail_ + 1) % kQueueSize);
-      apply(c);
+      if (applied_ == dashboard_lease::Standalone || applied_ == dashboard_lease::Running) apply(c);
     }
   }
 
@@ -292,6 +313,20 @@ private:
     float value;
   };
   static constexpr uint8_t kQueueSize = 16;
+
+  portMUX_TYPE safetyMux_ = portMUX_INITIALIZER_UNLOCKED;
+  volatile dashboard_lease::State applied_ = dashboard_lease::Standalone;
+  dashboard_lease::State requested_ = dashboard_lease::Standalone;
+  uint32_t lastBeatMs_ = 0;
+
+  void receiveSafety(uint8_t op) {
+    portENTER_CRITICAL(&safetyMux_);
+    const uint32_t now = millis();
+    requested_ = dashboard_lease::afterTimeout(requested_, now - lastBeatMs_);
+    requested_ = dashboard_lease::afterOperation(requested_, applied_, op);
+    if (op <= 3) lastBeatMs_ = now;
+    portEXIT_CRITICAL(&safetyMux_);
+  }
 
   CommandProcessor &proc_;
   TwoWire &wire_;
@@ -449,6 +484,16 @@ private:
     lastCmdUnknown_ = false;
 
     switch (cmd) {
+    case 0x68: // [68][0 stop | 1 heartbeat | 2 release | 3 start]
+      if (length == 2 && rxBuffer_[1] <= 3) receiveSafety(rxBuffer_[1]);
+      else lastCmdUnknown_ = true;
+      break;
+    case 0x69: // Applied state. Signature disambiguates old firmware and stale replies.
+      txBuffer_[0] = 0xB7;
+      txBuffer_[1] = applied_;
+      txLength_ = 2;
+      txReady_ = true;
+      break;
     case CMD_PING:
       handlePing(length);
       break;
@@ -781,6 +826,7 @@ private:
   // callback 端：只塞資料，不碰馬達、不列印。佇列滿時丟棄並計數——
   // 丟棄優於阻塞，阻塞會直接撐爆主機的讀取時窗。
   void enqueue(uint8_t cmd, uint8_t motor, uint8_t mode, float value) {
+    if (applied_ == dashboard_lease::Stopped || applied_ == dashboard_lease::Ready) return;
     const uint8_t next = static_cast<uint8_t>((qHead_ + 1) % kQueueSize);
     if (next == qTail_) {
       droppedCount_++;

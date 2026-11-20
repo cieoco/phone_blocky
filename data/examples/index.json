@@ -21,6 +21,13 @@
       "desc": "前方小於 20 cm 就停車，否則以 40% 動力前進，同時把距離畫到 Plotter。",
       "hw": "M1 + 超音波 TRIG 2 / ECHO 33",
       "level": "進階"
+    },
+    {
+      "id": "04-dashboard-near-10cm",
+      "name": "按住偵測：10 cm 內啟動 M1",
+      "desc": "Dashboard 按住 FUNC0 才測距，距離大於 0 且不超過 10 cm 時，以 FUNC1 的動力正轉。放開、超距或無回波就停止。S1 由面板直接調角度。",
+      "hw": "模組 0x36、M1、S1、超音波 TRIG 2 / ECHO 33",
+      "level": "入門"
     }
   ]
 }

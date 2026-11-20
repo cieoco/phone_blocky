@@ -157,6 +157,10 @@ function fakeBlock(node, parent) {
     };
     const self = {
         type: node.attrs.type,
+        getField(name) {
+            const f = node.children.find(c => c.tag === 'field' && c.attrs.name === name);
+            return f ? {getText: () => f.text.trim()} : null;
+        },
         getFieldValue(name) {
             const f = node.children.find(c => c.tag === 'field' && c.attrs.name === name);
             return f ? f.text.trim() : undefined;
@@ -173,6 +177,21 @@ function fakeBlock(node, parent) {
         getParent: () => parent || null
     };
     return self;
+}
+
+// Function declarations may live inside setup. Blockly returns every nested block here.
+function exampleWorkspace(tops) {
+    const all = [];
+    function visit(node, parent) {
+        const isBlock = node.tag === 'block' || node.tag === 'shadow';
+        const current = isBlock ? fakeBlock(node, parent) : parent;
+        if (isBlock) all.push(current);
+        for (const child of node.children) visit(child, current);
+    }
+    for (const top of tops) visit(top, null);
+    const chain = [];
+    for (let b = fakeBlock(tops[0], null); b; b = b.getNextBlock()) chain.push(b);
+    return {getTopBlocks: () => chain, getAllBlocks: () => all};
 }
 
 // ---------------------------------------------------------------------------
@@ -216,14 +235,9 @@ for (const ex of manifest.examples) {
     }
 
     // Finally: does it really become a valid PROG program?
-    context.exampleTops = tops.map(n => fakeBlock(n, null));
+    context.ws = exampleWorkspace(tops);
     const prog = JSON.parse(JSON.stringify(vm.runInContext(`
-        (function () {
-            var chain = [];
-            for (var b = exampleTops[0]; b; b = b.getNextBlock()) chain.push(b);
-            var ws = {getTopBlocks: () => chain, getAllBlocks: () => chain};
-            return buildProgJson(parseWorkspaceToIR(ws), ws);
-        })()
+        buildProgJson(parseWorkspaceToIR(ws), ws)
     `, context)));
     assert.equal(prog.mode, 'PROG', `${file}: 不是 PROG 程式`);
     assert.ok(Array.isArray(prog.setup) && Array.isArray(prog.loop), `${file}: 缺少 setup 或 loop`);
@@ -253,6 +267,26 @@ const EXPECTED = {
         assert.deepEqual(prog.loop[0], {cmd: 'servo', ch: 1, deg: 90});
         assert.deepEqual(prog.loop[2], {cmd: 'servo', ch: 1, deg: 0});
     },
+    '04-dashboard-near-10cm': prog => {
+        assert.deepEqual(prog.functions, [
+            {idx: 0, analog: false, readable: true}, {idx: 1, analog: true, readable: true}
+        ]);
+        const gate = prog.loop[0];
+        assert.deepEqual(gate.condition, {command: 'blockly_func_get', idx: 0});
+        const [sample, range] = gate.then;
+        assert.equal(sample.value.command, 'arduinoUltrasonic');
+        assert.equal(range.condition.operator, 'AND');
+        for (const [comparison, operator, threshold] of [
+            [range.condition.left, 'GT', 0], [range.condition.right, 'LTE', 10]
+        ]) {
+            assert.equal(comparison.left.variableName, sample.variableName);
+            assert.equal(comparison.operator, operator);
+            assert.equal(Number(comparison.right.number), threshold);
+        }
+        assert.deepEqual(range.then, [{cmd: 'pwm', motor: 1, duty: {command: 'blockly_func_get', idx: 1}}]);
+        assert.deepEqual(range.else, [{cmd: 'stop', motor: 1}]);
+        assert.deepEqual(gate.else, range.else);
+    },
     '03-ultrasonic-stop': prog => {
         assert.equal(prog.loop[1].command, 'if');
         assert.deepEqual(prog.loop[1].then, [{cmd: 'stop', motor: 1}]);
@@ -263,14 +297,9 @@ for (const ex of manifest.examples) {
     const check = EXPECTED[ex.id];
     if (!check) continue;
     const xml = parseXml(read(`${EX_DIR}/${ex.id}.xml`), ex.id);
-    context.exampleTops = xml.children.filter(c => c.tag === 'block').map(n => fakeBlock(n, null));
+    context.ws = exampleWorkspace(xml.children.filter(c => c.tag === 'block'));
     check(JSON.parse(JSON.stringify(vm.runInContext(`
-        (function () {
-            var chain = [];
-            for (var b = exampleTops[0]; b; b = b.getNextBlock()) chain.push(b);
-            var ws = {getTopBlocks: () => chain, getAllBlocks: () => chain};
-            return buildProgJson(parseWorkspaceToIR(ws), ws);
-        })()
+        buildProgJson(parseWorkspaceToIR(ws), ws)
     `, context))));
 }
 

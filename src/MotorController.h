@@ -2,11 +2,15 @@
 #define MOTOR_CONTROLLER_H
 
 #include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include "AFMotor.h"
 
 class MotorController
 {
 private:
+  bool inhibited = false;
+  SemaphoreHandle_t ioMutex = nullptr;
   AF_DCMotor motor1;
   AF_DCMotor motor2;
   AF_DCMotor motor3;
@@ -17,7 +21,15 @@ public:
     // 建構子保持最小化，避免在全域初始化時崩潰
   }
 
+  void setInhibited(bool value) {
+    if (!ioMutex) return;
+    xSemaphoreTake(ioMutex, portMAX_DELAY);
+    inhibited = value;
+    xSemaphoreGive(ioMutex);
+  }
+
   void begin() {
+    ioMutex = xSemaphoreCreateMutex();
     motor1.run(RELEASE);
     motor2.run(RELEASE);
     motor3.run(RELEASE);
@@ -68,6 +80,12 @@ public:
         return;
       }
 
+      if (!ioMutex) return;
+      xSemaphoreTake(ioMutex, portMAX_DELAY);
+      if (inhibited && speed != 0) {
+        xSemaphoreGive(ioMutex);
+        return;
+      }
       if (direction == 'F' || direction == 'f')
         motor->run(FORWARD);
       else if (direction == 'B' || direction == 'b')
@@ -78,10 +96,12 @@ public:
         motor->run(BRAKE);
       else
       {
+        xSemaphoreGive(ioMutex);
         Serial.println("Invalid direction");
         return;
       }
       motor->setSpeed(speed);
+      xSemaphoreGive(ioMutex);
     }
     else {
       Serial.printf("Invalid motor number: %d (Supported range: 1-4)\n", motorNumber);

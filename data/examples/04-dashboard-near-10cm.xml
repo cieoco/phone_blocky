@@ -1,0 +1,129 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+  <variables>
+    <variable id="distance_cm">distance_cm</variable>
+  </variables>
+  <block type="arduino_setup" x="20" y="20">
+    <statement name="SETUP_BODY">
+      <block type="motor_stop">
+        <field name="MOTOR">1</field>
+        <next>
+          <block type="blockly_func_declare">
+            <field name="IDX">0</field>
+            <field name="KIND">DIGITAL</field>
+            <field name="READABLE">TRUE</field>
+            <next>
+              <block type="blockly_func_declare">
+                <field name="IDX">1</field>
+                <field name="KIND">ANALOG</field>
+                <field name="READABLE">TRUE</field>
+                <next>
+                  <block type="blockly_func_set">
+                    <field name="IDX">1</field>
+                    <value name="VALUE">
+                      <block type="math_number">
+                        <field name="NUM">40</field>
+                      </block>
+                    </value>
+                  </block>
+                </next>
+              </block>
+            </next>
+          </block>
+        </next>
+      </block>
+    </statement>
+    <next>
+      <block type="arduino_loop">
+        <statement name="LOOP_BODY">
+          <block type="controls_if">
+            <value name="IF0">
+              <block type="blockly_func_get">
+                <field name="IDX">0</field>
+              </block>
+            </value>
+            <statement name="DO0">
+              <block type="variables_set">
+                <field name="VAR" id="distance_cm">distance_cm</field>
+                <value name="VALUE">
+                  <block type="arduino_ultrasonic">
+                    <field name="TRIG">2</field>
+                    <field name="ECHO">33</field>
+                  </block>
+                </value>
+                <next>
+                  <block type="controls_if">
+                    <value name="IF0">
+                      <block type="logic_operation">
+                        <field name="OP">AND</field>
+                        <value name="A">
+                          <block type="logic_compare">
+                            <field name="OP">GT</field>
+                            <value name="A">
+                              <block type="variables_get">
+                                <field name="VAR" id="distance_cm">distance_cm</field>
+                              </block>
+                            </value>
+                            <value name="B">
+                              <block type="math_number">
+                                <field name="NUM">0</field>
+                              </block>
+                            </value>
+                          </block>
+                        </value>
+                        <value name="B">
+                          <block type="logic_compare">
+                            <field name="OP">LTE</field>
+                            <value name="A">
+                              <block type="variables_get">
+                                <field name="VAR" id="distance_cm">distance_cm</field>
+                              </block>
+                            </value>
+                            <value name="B">
+                              <block type="math_number">
+                                <field name="NUM">10</field>
+                              </block>
+                            </value>
+                          </block>
+                        </value>
+                      </block>
+                    </value>
+                    <statement name="DO0">
+                      <block type="motor_pwm">
+                        <field name="MOTOR">1</field>
+                        <field name="DIRECTION">FORWARD</field>
+                        <value name="PWM">
+                          <block type="blockly_func_get">
+                            <field name="IDX">1</field>
+                          </block>
+                        </value>
+                      </block>
+                    </statement>
+                    <statement name="ELSE">
+                      <block type="motor_stop">
+                        <field name="MOTOR">1</field>
+                      </block>
+                    </statement>
+                  </block>
+                </next>
+              </block>
+            </statement>
+            <statement name="ELSE">
+              <block type="motor_stop">
+                <field name="MOTOR">1</field>
+              </block>
+            </statement>
+            <next>
+              <block type="arduino_delay">
+                <value name="DELAY_TIME">
+                  <block type="math_number">
+                    <field name="NUM">100</field>
+                  </block>
+                </value>
+              </block>
+            </next>
+          </block>
+        </statement>
+      </block>
+    </next>
+  </block>
+</xml>

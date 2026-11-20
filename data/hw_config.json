@@ -36,14 +36,16 @@
       "label": "S1",
       "pin": 5,
       "min_deg": 0,
-      "max_deg": 180
+      "max_deg": 180,
+      "stopMode": "hold"
     },
     {
       "id": 2,
       "label": "S2",
       "pin": 13,
       "min_deg": 0,
-      "max_deg": 180
+      "max_deg": 180,
+      "stopMode": "hold"
     }
   ],
   "user_pins": {

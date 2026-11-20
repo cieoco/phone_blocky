@@ -22,6 +22,7 @@
 
 #if I2C_SLAVE_MODE
 #include "I2CSlaveBridge.h"
+#include <LittleFS.h>
 #endif
 
 // 示範功能表開關。Blockly「對外功能」積木完成後應改為 0 並移除相關程式碼。
@@ -350,6 +351,18 @@ void setup() {
   // setup() 10 秒，而 I2C 的 callback 跑在 i2c_slave_task、不受 setup() 影響，
   // 所以先 begin() 的話，那 10 秒裡主機仍讀得到這塊板。
   Serial.println("[初始化] I2C 從機橋接層...");
+  if (LittleFS.begin(false)) {
+    File config = LittleFS.open("/hw_config.json", "r");
+    DynamicJsonDocument hardware(4096);
+    if (config && !deserializeJson(hardware, config)) {
+      for (JsonObject servo : hardware["servos"].as<JsonArray>()) {
+        int ch = servo["id"] | 0;
+        if (ch >= 1 && ch <= 2)
+          servoController.setStopMode(ch - 1, strcmp(servo["stopMode"] | "hold", "detach") == 0);
+      }
+    }
+  }
+  cmdProcessor.setDashboardSafetyTick([]() { i2cBridge.serviceSafety(); });
   i2cBridge.begin(I2C_SLAVE_ADDRESS, I2C_SLAVE_SDA_PIN, I2C_SLAVE_SCL_PIN);
   // 依實際結果印。原本無條件印「已啟動」，begin() 失敗也照印 —— 開機日誌看起來
   // 一切正常、主機卻掃不到這個位址，會把人推去查接線。2026-08-25 實際遇到：

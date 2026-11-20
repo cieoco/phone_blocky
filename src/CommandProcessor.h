@@ -277,6 +277,8 @@ private:
   std::vector<BlocklyCommand> pendingSetupCommands;
   std::vector<BlocklyCommand> pendingLoopCommands;
   std::vector<BlocklyProcedure> pendingProcedures;
+  volatile bool dashboardInhibited = false;
+  void (*dashboardSafetyTick)() = nullptr;
   volatile bool pendingProgram = false;
   SemaphoreHandle_t progMutex = nullptr;
   MotorRuntimeState motorState[NUM_MOTORS + 1];
@@ -1413,6 +1415,16 @@ public:
     stopMotorRuntime(motor);
   }
 
+  void setDashboardSafetyTick(void (*tick)()) { dashboardSafetyTick = tick; }
+  void setDashboardInhibit(bool stop) {
+    dashboardInhibited = stop;
+    motorCtrl.setInhibited(stop);
+    servoCtrl.setInhibited(stop);
+    if (stop) {
+      stopAllRuntime();
+      loopIndex = 0;
+    }
+  }
   void i2cStopAll() { stopAllRuntime(); }
 
   void i2cZero(int motor)
@@ -1927,6 +1939,7 @@ public:
 
   void updateAngleControl()
   {
+    if (dashboardInhibited) return;
     unsigned long now = millis();
 
     // 高速擷取緩存的 start/stop/回傳一律在此情境（motor task）消化，與取樣同一任務無競爭。
@@ -2163,6 +2176,15 @@ public:
 
     // Normalize legacy "command" key to new "cmd" key
     CommandTranslator::translate(doc);
+    const char *incoming = doc["cmd"] | "";
+    if (dashboardInhibited &&
+        (doc["mode"] == "joy" || doc["mode"] == "hardwareTest" ||
+         !strcmp(incoming, "pwm") || !strcmp(incoming, "speed") ||
+         !strcmp(incoming, "move_to") || !strcmp(incoming, "move_by") ||
+         !strcmp(incoming, "servo"))) {
+      sendError("dashboard_stopped");
+      return;
+    }
 
     const char *mode = doc["mode"] | "";
     if (strcmp(mode, "joy") == 0)
@@ -2727,7 +2749,7 @@ public:
   // 給 CMD_IF / CMD_REPEAT / CMD_WHILE 用:把一串巢狀指令依序執行
   void executeCommandList(const std::vector<BlocklyCommand> &cmds) {
     for (const auto &c : cmds) {
-      if (pendingProgram) break;
+      if (pendingProgram || dashboardInhibited) break;
       executeSingleCommand(c);
     }
   }
@@ -2742,6 +2764,7 @@ public:
     TickType_t ticks = pdMS_TO_TICKS(waitMs);
     vTaskDelay(ticks > 0 ? ticks : 1);
     unsigned long now = millis();
+    if (dashboardSafetyTick) dashboardSafetyTick();
     if (now - lastProgramYieldControlMs >= 9) {
       lastProgramYieldControlMs = now;
       updateAngleControl();
@@ -2876,6 +2899,8 @@ public:
   }
 
   void executeSingleCommand(const BlocklyCommand &cmd) {
+    if (dashboardSafetyTick) dashboardSafetyTick();
+    if (dashboardInhibited) return;
     switch (cmd.type) {
       case CMD_PIN_MODE:
         pinMode(cmd.pin, cmd.value);
@@ -2891,7 +2916,7 @@ public:
         {
           int remaining = numericArg(cmd, cmd.delay_ms);   // 負值視為 0
           while (remaining > 0) {
-            if (pendingProgram) break;   // 有新程式待套用 → 中止等待,盡快切換(回應性)
+            if (pendingProgram || dashboardInhibited) break;   // 有新程式待套用 → 中止等待,盡快切換(回應性)
             int step = remaining > 10 ? 10 : remaining;
             programYield(step);
             remaining -= step;
@@ -2978,7 +3003,7 @@ public:
       case CMD_REPEAT: {
         // 次數只在進入時算一次(與 Blockly 語意相同);每圈讓出,新程式到達即跳出
         int times = readBlocklyValue(cmd);
-        for (int i = 0; i < times && !pendingProgram; i++) {
+        for (int i = 0; i < times && !pendingProgram && !dashboardInhibited; i++) {
           executeCommandList(cmd.nested_commands_then);
           programYield(1);
         }
@@ -2987,7 +3012,7 @@ public:
       case CMD_WHILE: {
         // WHILE: 條件成立就繼續;UNTIL: 條件成立就停止。每圈重新評估條件
         const bool until = cmd.direction == 'U';
-        while (!pendingProgram) {
+        while (!pendingProgram && !dashboardInhibited) {
           const bool cond = readBlocklyValue(cmd) != 0;
           if (cond == until) break;
           executeCommandList(cmd.nested_commands_then);
@@ -3063,13 +3088,13 @@ public:
   }
 
   void executeLoopCommands() {
-    if (pendingProgram || loopCommands.empty()) return;
+    if (dashboardInhibited || pendingProgram || loopCommands.empty()) return;
 
     if (loopIndex >= loopCommands.size()) {
       loopIndex = 0;
     }
     executeSingleCommand(loopCommands[loopIndex]);
-    loopIndex++;
+    if (!dashboardInhibited) loopIndex++;
   }
 };
 
