@@ -32,7 +32,7 @@
     {
       "id": "05-dashboard-i2c-remote",
       "name": "I²C 遙控器：四馬達、雙舵機與通訊回讀",
-      "desc": "使用 esp32dev_i2c。主控勾選 M1–M4、S1–S2 即可直控；勾選「I²C 通訊測試」，滑桿寫入 FUNC0，積木複製至 FUNC1 供面板讀回。",
+      "desc": "使用 esp32dev_i2c。主控勾選 M1–M4、S1–S2 即可直控；勾選「I²C 通訊測試（範例 05）」，滑桿寫入 FUNC0，積木複製至 FUNC1 供面板讀回。",
       "hw": "0x36，SDA 21、SCL 22、共地，100 kHz",
       "level": "入門"
     }
