@@ -267,6 +267,14 @@ const EXPECTED = {
         assert.deepEqual(prog.loop[0], {cmd: 'servo', ch: 1, deg: 90});
         assert.deepEqual(prog.loop[2], {cmd: 'servo', ch: 1, deg: 0});
     },
+    '05-dashboard-i2c-remote': prog => {
+        assert.deepEqual(prog.functions, [0, 1].map(idx => ({idx, analog:true, readable:true})));
+        assert.deepEqual(prog.setup[0], {cmd:'stop'});
+        assert.deepEqual(prog.loop, [
+            {command:'blockly_func_set',idx:1,value:{command:'blockly_func_get',idx:0}},
+            {cmd:'delay',ms:100}
+        ]);
+    },
     '04-dashboard-near-10cm': prog => {
         assert.deepEqual(prog.functions, [
             {idx: 0, analog: false, readable: true}, {idx: 1, analog: true, readable: true}

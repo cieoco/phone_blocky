@@ -28,6 +28,13 @@
       "desc": "Dashboard 按住 FUNC0 才測距，距離大於 0 且不超過 10 cm 時，以 FUNC1 的動力正轉。放開、超距或無回波就停止。S1 由面板直接調角度。",
       "hw": "模組 0x36、M1、S1、超音波 TRIG 2 / ECHO 33",
       "level": "入門"
+    },
+    {
+      "id": "05-dashboard-i2c-remote",
+      "name": "I²C 遙控器：四馬達、雙舵機與通訊回讀",
+      "desc": "使用 esp32dev_i2c。主控勾選 M1–M4、S1–S2 即可直控；勾選「I²C 通訊測試」，滑桿寫入 FUNC0，積木複製至 FUNC1 供面板讀回。",
+      "hw": "0x36，SDA 21、SCL 22、共地，100 kHz",
+      "level": "入門"
     }
   ]
 }

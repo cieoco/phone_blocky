@@ -1,0 +1,36 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+  <block type="arduino_setup" x="20" y="20">
+    <comment pinned="false" h="130" w="330">Blockly 板使用 esp32dev_i2c，位址 0x36。主控與模組連接 SDA、SCL 和 GND。先讓馬達停止。直控由韌體接收，迴圈只示範對外功能回讀。</comment>
+    <statement name="SETUP_BODY">
+      <block type="motor_stop">
+        <field name="MOTOR">0</field>
+        <next>
+          <block type="blockly_func_declare">
+            <field name="IDX">0</field><field name="KIND">ANALOG</field><field name="READABLE">TRUE</field>
+            <next>
+              <block type="blockly_func_declare">
+                <field name="IDX">1</field><field name="KIND">ANALOG</field><field name="READABLE">TRUE</field>
+              </block>
+            </next>
+          </block>
+        </next>
+      </block>
+    </statement>
+    <next>
+      <block type="arduino_loop">
+        <statement name="LOOP_BODY">
+          <block type="blockly_func_set">
+            <comment pinned="false" h="90" w="280">主控送 37 到 FUNC0，這裡把 37 複製到 FUNC1。面板出現 37，即可核對寫入與回讀。</comment>
+            <field name="IDX">1</field>
+            <value name="VALUE"><block type="blockly_func_get"><field name="IDX">0</field></block></value>
+            <next>
+              <block type="arduino_delay">
+                <value name="DELAY_TIME"><shadow type="math_number"><field name="NUM">100</field></shadow></value>
+              </block>
+            </next>
+          </block>
+        </statement>
+      </block>
+    </next>
+  </block>
+</xml>
