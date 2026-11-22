@@ -9,10 +9,10 @@
   <!-- 載入 Blockly -->
   <script src="blockly.min.js"></script>
   <!-- 載入客戶端邏輯 -->
-  <script src="appBlock.js?v=20261103-competition"></script>
-  <script src="appIr.js?v=20261103-competition"></script>
-  <script src="appJson.js?v=20261103-competition"></script>
-  <script src="app.js?v=20261103-competition"></script>
+  <script src="appBlock.js?v=20261119-color-comment"></script>
+  <script src="appIr.js?v=20261119-rgb255"></script>
+  <script src="appJson.js?v=20261119-rgb255"></script>
+  <script src="app.js?v=20261119-rgb255"></script>
   <style>
     /* ========================================================================
        版面：固定高度的 app shell，整頁不捲動。
@@ -537,6 +537,16 @@
            接紅外線就用上面具名的那兩顆，名字講得出在量什麼。 -->
       <block type="arduino_digitalRead"></block>
       <block type="arduino_analogRead"></block>
+    </category>
+    <category name="顏色感測器" colour="190">
+      <block type="tcs34725_rgb"></block>
+      <block type="tcs34725_read"></block>
+      <block type="tcs34725_lux"></block>
+      <block type="tcs34725_cct"></block>
+      <block type="tcs34725_color"></block>
+      <block type="tcs34725_is_color"></block>
+      <block type="tcs34725_gain"></block>
+      <block type="tcs34725_time"></block>
     </category>
     <category name="OLED 顯示" colour="190">
       <block type="oled_text"></block>

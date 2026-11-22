@@ -1,0 +1,26 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="message_print">
+       <value name="TEXT">
+       <block type="tcs34725_color">
+         <comment pinned="false" h="124" w="260">代碼對照：1 紅、2 黃、3 藍、4 綠、0 未知、-1 尚無可用結果。用色紙靠近感測器，保持相近的距離與光線，再觀察代碼。</comment>
+       </block>
+       </value>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <shadow type="math_number">
+           <field name="NUM">500</field>
+         </shadow>
+         </value>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

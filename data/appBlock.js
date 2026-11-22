@@ -633,6 +633,29 @@ Blockly.Blocks['blockly_func_set'] = {
   }
 };
 
+Blockly.Blocks['tcs34725_rgb'] = {
+  init: function () {
+    this.appendDummyInput().appendField('讀取 RGB').appendField(new Blockly.FieldDropdown([
+      ['紅 R','r'], ['綠 G','g'], ['藍 B','b']
+    ]), 'CHANNEL').appendField('（0～255）');
+    this.setOutput(true,'Number');
+    this.setColour(190);
+    this.setTooltip('依總光量換算 RGB 分量。準備中或通訊失敗回 -1。');
+  }
+};
+
+Blockly.Blocks['tcs34725_read'] = {
+  init: function () {
+    this.appendDummyInput().appendField('讀取原始 RGBC')
+      .appendField(new Blockly.FieldDropdown([
+        ['紅 R', 'r'], ['綠 G', 'g'], ['藍 B', 'b'], ['總光量 C', 'c']
+      ]), 'CHANNEL');
+    this.setOutput(true, 'Number');
+    this.setColour(190);
+    this.setTooltip('TCS34725，SDA21/SCL22、0x29；預設24ms、1倍增益。自動初始化，讀取原始 RGBC，準備中或失敗回 -1。可與 OLED 共用，與對上主控互斥。');
+  }
+};
+
 // SSD1306 0.91 inch, 128x32. First use initializes automatically.
 for (const kind of ['text', 'value', 'clear']) {
   Blockly.Blocks['oled_' + kind] = {
@@ -652,4 +675,24 @@ for (const kind of ['text', 'value', 'clear']) {
       this.setTooltip('SSD1306 128×32，SDA=21 / SCL=22；自動初始化。每行 21 個英數符號，不支援中文。與對上主控互斥，使用前請移除主控接線。');
     }
   };
+}
+
+// Optional exposure settings; initialization remains automatic.
+for (const [kind, label, options, field] of [
+  ['lux','估算照度（lux）'], ['cct','估算色溫（K）'], ['color','顏色代碼'],
+  ['is_color','是否為', [['未知','0'],['紅色','1'],['黃色','2'],['藍色','3'],['綠色','4']], 'COLOR'],
+  ['gain','設定增益', [['1 倍','1'],['4 倍','4'],['16 倍','16'],['60 倍','60']], 'GAIN'],
+  ['time','設定積分時間', [['24 ms','10'],['2.4 ms','1'],['50.4 ms','21'],['100.8 ms','42'],['153.6 ms','64'],['614.4 ms','256']], 'CYCLES']
+]) {
+  Blockly.Blocks['tcs34725_' + kind] = {init: function() {
+    const input = this.appendDummyInput().appendField('顏色感測器 ' + label);
+    if (options) input.appendField(new Blockly.FieldDropdown(options), field);
+    if (kind === 'gain' || kind === 'time') { this.setPreviousStatement(true); this.setNextStatement(true); }
+    else this.setOutput(true, kind === 'is_color' ? 'Boolean' : 'Number');
+    this.setColour(190);
+    if (kind === 'color') {
+      this.setCommentText('顏色代碼對照\n1：紅色\n2：黃色\n3：藍色\n4：綠色\n0：未知顏色\n-1：尚未取得可用結果（準備中、讀取失敗或過曝）');
+    }
+    this.setTooltip('SDA21/SCL22。設定建議放 setup；每次執行預設 1 倍、24ms。照度與色溫為估算；顏色代碼 0未知/1紅/2黃/3藍/4綠，受光源與距離影響。準備中、失敗或曝光飽和回 -1；是否為顏色回 false。');
+  }};
 }

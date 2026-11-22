@@ -73,7 +73,7 @@
     "scl": 22,
     "exclusive_roles": [
       "upstream",
-      "oled"
+      "downstream"
     ],
     "oled": {
       "driver": "SSD1306",
@@ -82,6 +82,19 @@
       "addresses": [
         60,
         61
+      ]
+    },
+    "tcs34725": {
+      "address": 41,
+      "integration_ms": 24,
+      "integration_options_ms": [2.4,24,50.4,100.8,153.6,614.4],
+      "gain_options": [1,4,16,60],
+      "gain": 1,
+      "channels": [
+        "r",
+        "g",
+        "b",
+        "c"
       ]
     }
   }

@@ -1038,6 +1038,33 @@ function translateBlocklyFuncSet(block) {
 }
 
 // 用一個小小的 getTranslator() 來集中管理
+class Tcs34725ReadNode extends BaseNode {
+    constructor(channel, kind = 'tcs34725_read') { super(); this.channel = channel; this.kind = kind; }
+    toJson() {
+        if (!(this.kind === 'tcs34725_rgb' ? ['r','g','b'] : ['r','g','b','c']).includes(this.channel)) throw new Error('顏色感測器通道必須是 R／G／B／C');
+        return {command:this.kind, channel:this.channel};
+    }
+}
+
+class Tcs34725ExtendedNode extends BaseNode {
+    constructor(block) { super(); this.kind = block.type; this.field = name => block.getFieldValue(name); }
+    toJson() {
+        const json = {command:this.kind};
+        const spec = {
+            tcs34725_gain:['gain','GAIN',[1,4,16,60]],
+            tcs34725_time:['cycles','CYCLES',[1,10,21,42,64,256]],
+            tcs34725_is_color:['color','COLOR',[0,1,2,3,4]]
+        }[this.kind];
+        if (spec) {
+            const raw = this.field(spec[1]);
+            const value = Number(raw);
+            if (raw == null || raw === '' || !spec[2].includes(value)) throw new Error('顏色感測器設定值錯誤');
+            json[spec[0]] = value;
+        }
+        return json;
+    }
+}
+
 class OledNode extends BaseNode {
     constructor(block) {
         super();
@@ -1062,6 +1089,12 @@ class OledNode extends BaseNode {
 
 function getTranslator(blockType) {
     switch (blockType) {
+        case 'tcs34725_lux': case 'tcs34725_cct': case 'tcs34725_color':
+        case 'tcs34725_is_color': case 'tcs34725_gain': case 'tcs34725_time':
+            return block => new Tcs34725ExtendedNode(block);
+        case 'tcs34725_rgb': return block => new Tcs34725ReadNode(block.getFieldValue('CHANNEL'), block.type);
+        case 'tcs34725_read':
+            return block => new Tcs34725ReadNode(block.getFieldValue('CHANNEL'));
         case 'oled_text': case 'oled_value': case 'oled_clear':
             return block => new OledNode(block);
         case "arduino_setup":

@@ -32,6 +32,10 @@ static const uint32_t I2C_SLAVE_FREQ = 100000; // 與主機 I2C_FREQ 一致
 static const uint8_t OLED_WIDTH = 128;
 static const uint8_t OLED_HEIGHT = 32;
 static const uint8_t OLED_DEFAULT_ADDRESS = 0x3C;
+static const uint8_t TCS34725_ADDRESS = 0x29;
+static const uint8_t TCS34725_ATIME = 0xF6; // 24 ms, same as motorControl
+static const uint8_t TCS34725_GAIN = 0x00; // 1x
+static const uint32_t TCS34725_SAMPLE_MS = 24;
 
 // 編碼器腳位，對齊 motorControl 的 M3/M4 配置
 static const int ENCODER_M3_PIN_A = 35;

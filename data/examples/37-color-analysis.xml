@@ -1,0 +1,86 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="tcs34725_gain">
+     <comment pinned="false" h="108" w="260">辨色受光源、距離影響，代碼 0未知/1紅/2黃/3藍/4綠；-1 為準備中、故障或飽和。</comment>
+     <field name="GAIN">1</field>
+     <next>
+     <block type="tcs34725_time">
+       <field name="CYCLES">10</field>
+       <next>
+       <block type="oled_clear">
+         <field name="ADDRESS">60</field>
+       </block>
+       </next>
+     </block>
+     </next>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="oled_value">
+       <field name="ADDRESS">60</field>
+       <field name="ROW">0</field>
+       <value name="VALUE">
+       <block type="tcs34725_lux">
+       </block>
+       </value>
+       <next>
+       <block type="oled_value">
+         <field name="ADDRESS">60</field>
+         <field name="ROW">1</field>
+         <value name="VALUE">
+         <block type="tcs34725_cct">
+         </block>
+         </value>
+         <next>
+         <block type="oled_value">
+           <field name="ADDRESS">60</field>
+           <field name="ROW">2</field>
+           <value name="VALUE">
+           <block type="tcs34725_color">
+           </block>
+           </value>
+           <next>
+           <block type="oled_text">
+             <field name="ADDRESS">60</field>
+             <field name="ROW">3</field>
+             <field name="TEXT">OTHER</field>
+             <next>
+             <block type="controls_if">
+               <value name="IF0">
+               <block type="tcs34725_is_color">
+                 <field name="COLOR">1</field>
+               </block>
+               </value>
+               <statement name="DO0">
+               <block type="oled_text">
+                 <field name="ADDRESS">60</field>
+                 <field name="ROW">3</field>
+                 <field name="TEXT">RED</field>
+               </block>
+               </statement>
+               <next>
+               <block type="arduino_delay">
+                 <value name="DELAY_TIME">
+                 <shadow type="math_number">
+                   <field name="NUM">100</field>
+                 </shadow>
+                 </value>
+               </block>
+               </next>
+             </block>
+             </next>
+           </block>
+           </next>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

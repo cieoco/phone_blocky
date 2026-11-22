@@ -18,6 +18,7 @@
 #include "ProgramStore.h"
 #include "config.h"
 #include "OledDisplay.h"
+#include "Tcs34725Sensor.h"
 #include "ControlTiming.h"
 
 // --- 效能優化：定義指令的枚舉和結構體 ---
@@ -35,6 +36,7 @@ enum CommandType {
   CMD_PRINT,
   CMD_PLOT,
   CMD_OLED,
+  CMD_TCS_CONFIG,
   CMD_VARIABLE_DECLARE,
   CMD_VARIABLE_SET,
   CMD_MATH_CHANGE,
@@ -77,6 +79,7 @@ struct BlocklyValueExpression {
 
 struct BlocklyCommand {
   CommandType type = CMD_NONE;
+  int oledAddress = OLED_DEFAULT_ADDRESS; // Independent of value-source GPIO metadata.
   int pin = -1;
   int value = 0;
   int motor_id = 0;
@@ -147,9 +150,12 @@ private:
     float positionLastError = 0.0f;
   };
 
-  OledDisplay oledDisplay;
-  bool oledMode = false;
-  bool pendingOledMode = false;
+  PeripheralI2cBus peripheralBus;
+  OledDisplay oledDisplay{peripheralBus};
+  Tcs34725Sensor colorSensor{peripheralBus};
+  bool colorErrorReported = false;
+  bool downstreamMode = false;
+  bool pendingDownstreamMode = false;
   bool oledErrorReported = false;
   void (*i2cOwnershipHook)(bool downstream) = nullptr;
   MotorController &motorCtrl;
@@ -1076,7 +1082,10 @@ private:
     DynamicJsonDocument resp(1024);
     resp["type"] = "capabilities";
     resp["oled_ssd1306_128x32"] = true;
-    resp["i2c_role"] = oledMode ? "downstream" : (i2cOwnershipHook ? "upstream" : "idle");
+    resp["tcs34725"] = true;
+    resp["tcs34725_extended"] = true;
+    resp["tcs34725_rgb"] = true;
+    resp["i2c_role"] = downstreamMode ? "downstream" : (i2cOwnershipHook ? "upstream" : "idle");
     resp["schema"] = "phone_blocky/v1";
     JsonArray motors = resp.createNestedArray("motors");
     for (int i = 0; i < NUM_MOTORS; i++) {
@@ -1471,7 +1480,7 @@ public:
       pendingProcedures.clear();
       pendingDeclarations.clear();
       pendingDeclarationsValid = false;
-      pendingOledMode = oledMode; // STOP preserves bus ownership; no surprise reconnection
+      pendingDownstreamMode = downstreamMode; // STOP preserves bus ownership; no surprise reconnection
       pendingProgram = true;
     }
     if (progMutex) xSemaphoreGive(progMutex);
@@ -1541,7 +1550,7 @@ public:
     std::vector<BlocklyProcedure> incomingProcedures;
     std::vector<BlocklyFunctions::Declaration> incomingDecls;
     bool haveDecls = false;
-    bool incomingOled = false;
+    bool incomingDownstream = false;
     if (progMutex) xSemaphoreTake(progMutex, portMAX_DELAY);
     if (!pendingProgram) {            // 上鎖後再確認一次（雙重檢查）
       if (progMutex) xSemaphoreGive(progMutex);
@@ -1552,19 +1561,25 @@ public:
     incomingProcedures.swap(pendingProcedures);
     incomingDecls.swap(pendingDeclarations);
     haveDecls = pendingDeclarationsValid;
-    incomingOled = pendingOledMode;
+    incomingDownstream = pendingDownstreamMode;
     pendingDeclarationsValid = false;
     pendingProgram = false;
     if (progMutex) xSemaphoreGive(progMutex);
 
-    if (incomingOled != oledMode) {
+    if (incomingDownstream != downstreamMode) {
       stopAllRuntime();
-      if (oledMode) oledDisplay.end();
-      if (i2cOwnershipHook) i2cOwnershipHook(incomingOled);
-      oledMode = incomingOled;
+      if (downstreamMode) {
+        oledDisplay.end();
+        colorSensor.reset();
+        peripheralBus.end();
+      }
+      if (i2cOwnershipHook) i2cOwnershipHook(incomingDownstream);
+      downstreamMode = incomingDownstream;
       sendCapabilities();
     }
+    if (!incomingSetup.empty() || !incomingLoop.empty()) colorSensor.defaults();
     oledErrorReported = false;
+    colorErrorReported = false;
 
     // 對外功能表在安全點套用。I2C callback 只會唯讀快照這張表，寫入者只有
     // 這裡（主迴圈），所以不需要額外的鎖（BlocklyFunctions.h 的併發模型）。
@@ -1799,7 +1814,7 @@ public:
 
   void handleHardwareTest(const JsonDocument &doc)
   {
-    if (oledMode) {
+    if (downstreamMode) {
       for (const char *key : {"gpio", "pin", "trig", "echo"}) {
         if (!doc[key].isNull()) {
           int pin = parseIntOrString(doc[key], -1);
@@ -2371,7 +2386,7 @@ public:
     // An intentionally run empty workspace includes functions:[] and restores default.
     const bool stopOnly = !doc.containsKey("functions") &&
         doc["setup"].size() == 0 && doc["loop"].size() == 0 && doc["procedures"].size() == 0;
-    pendingOledMode = stopOnly ? oledMode : programUsesOled(doc.as<JsonVariantConst>());
+    pendingDownstreamMode = stopOnly ? downstreamMode : programUsesDownstreamI2c(doc.as<JsonVariantConst>());
     pendingProgram = true;
     if (progMutex) xSemaphoreGive(progMutex);
     Serial.println("[PROG] Parsing complete.");
@@ -2396,6 +2411,23 @@ public:
     } else if (strcmp(kind, "blockly_func_get") == 0) {
       expr->kind = "func_get";
       expr->funcIdx = parseIntOrString(obj["idx"], -1);
+    } else if (strcmp(kind, "tcs34725_lux") == 0 || strcmp(kind, "tcs34725_cct") == 0 ||
+               strcmp(kind, "tcs34725_color") == 0 || strcmp(kind, "tcs34725_is_color") == 0) {
+      expr->kind = kind;
+      expr->auxPin = strcmp(kind, "tcs34725_lux") == 0 ? 0 : strcmp(kind, "tcs34725_cct") == 0 ? 1 : 2;
+      if (strcmp(kind, "tcs34725_is_color") == 0) {
+        if (!obj["color"].is<int>()) return nullptr;
+        expr->pin = obj["color"].as<int>();
+        if (expr->pin < 0 || expr->pin > 4) return nullptr;
+      }
+    } else if (strcmp(kind, "tcs34725_read") == 0 || strcmp(kind, "tcs34725_rgb") == 0) {
+      const char *channel = obj["channel"] | "";
+      if (strlen(channel) != 1) return nullptr;
+      const char *channels = strcmp(kind, "tcs34725_rgb") == 0 ? "rgb" : "rgbc";
+      const char *index = strchr(channels, channel[0]);
+      if (!index) return nullptr;
+      expr->kind = kind;
+      expr->auxPin = int(index - channels);
     } else if (strcmp(kind, "arduinoUltrasonic") == 0) {
       expr->kind = "ultrasonic";
       expr->pin = parseIntOrString(obj["trigPin"], USER_ULTRASONIC_TRIG_PIN);
@@ -2482,19 +2514,19 @@ public:
 
   // 解析整份 PROG（setup / loop / 選用的 procedures），不碰執行中的資料；存檔驗證也用它。
   // procedures: [{"name":"…","params":["變數ID",…],"body":[…]}]
-  static bool programUsesOled(JsonVariantConst v) {
+  static bool programUsesDownstreamI2c(JsonVariantConst v) {
     if (v.is<JsonObjectConst>()) {
       const char *c = v["command"] | "";
-      if (strncmp(c, "oled_", 5) == 0) return true;
+      if (strncmp(c, "oled_", 5) == 0 || strncmp(c, "tcs34725_", 9) == 0) return true;
       for (JsonPairConst p : v.as<JsonObjectConst>())
-        if (programUsesOled(p.value())) return true;
+        if (programUsesDownstreamI2c(p.value())) return true;
     } else if (v.is<JsonArrayConst>()) {
-      for (JsonVariantConst x : v.as<JsonArrayConst>()) if (programUsesOled(x)) return true;
+      for (JsonVariantConst x : v.as<JsonArrayConst>()) if (programUsesDownstreamI2c(x)) return true;
     }
     return false;
   }
   // Validate nested expressions, procedures and raw JSON, not only top-level blocks.
-  static bool oledResourceConflict(JsonVariantConst v) {
+  static bool downstreamResourceConflict(JsonVariantConst v) {
     if (v.is<JsonObjectConst>()) {
       const char *c = v["command"] | "";
       if (strncmp(c, "blockly_func_", 13) == 0) return true;
@@ -2506,9 +2538,9 @@ public:
         }
       }
       for (JsonPairConst p : v.as<JsonObjectConst>())
-        if (oledResourceConflict(p.value())) return true;
+        if (downstreamResourceConflict(p.value())) return true;
     } else if (v.is<JsonArrayConst>()) {
-      for (JsonVariantConst x : v.as<JsonArrayConst>()) if (oledResourceConflict(x)) return true;
+      for (JsonVariantConst x : v.as<JsonArrayConst>()) if (downstreamResourceConflict(x)) return true;
     }
     return false;
   }
@@ -2517,7 +2549,7 @@ public:
                        std::vector<BlocklyCommand> &loopOut,
                        std::vector<BlocklyProcedure> &procsOut) {
     lastParseError = nullptr;
-    if (programUsesOled(doc.as<JsonVariantConst>()) && oledResourceConflict(doc.as<JsonVariantConst>())) {
+    if (programUsesDownstreamI2c(doc.as<JsonVariantConst>()) && downstreamResourceConflict(doc.as<JsonVariantConst>())) {
       lastParseError = "i2c_role_conflict";
       return false;
     }
@@ -2746,13 +2778,22 @@ public:
                      strcmp(contentCommand, "logic_negate") == 0 ||
                      strcmp(contentCommand, "logic_operation") == 0) cmd.message = "條件結果";
           }
+        } else if (strcmp(commandStr, "tcs34725_gain") == 0 || strcmp(commandStr, "tcs34725_time") == 0) {
+          cmd.type = CMD_TCS_CONFIG;
+          cmd.direction = strcmp(commandStr, "tcs34725_gain") == 0 ? 'G' : 'T';
+          const char *key = cmd.direction == 'G' ? "gain" : "cycles";
+          if (!jsonObj[key].is<int>()) return false;
+          cmd.value = jsonObj[key].as<int>();
+          const int v = cmd.value;
+          if (cmd.direction == 'G' ? (v != 1 && v != 4 && v != 16 && v != 60) :
+              (v != 1 && v != 10 && v != 21 && v != 42 && v != 64 && v != 256)) return false;
         } else if (strcmp(commandStr, "oled_text") == 0 ||
                    strcmp(commandStr, "oled_value") == 0 ||
                    strcmp(commandStr, "oled_clear") == 0) {
           cmd.type = CMD_OLED;
-          cmd.pin = parseIntOrString(jsonObj["address"], OLED_DEFAULT_ADDRESS);
+          cmd.oledAddress = parseIntOrString(jsonObj["address"], OLED_DEFAULT_ADDRESS);
           cmd.angle = parseIntOrString(jsonObj["row"], 0);
-          if ((cmd.pin != 60 && cmd.pin != 61) || cmd.angle < 0 || cmd.angle > 3) return false;
+          if ((cmd.oledAddress != 60 && cmd.oledAddress != 61) || cmd.angle < 0 || cmd.angle > 3) return false;
           cmd.direction = strcmp(commandStr, "oled_clear") == 0 ? 'C' :
                           (strcmp(commandStr, "oled_value") == 0 ? 'V' : 'T');
           if (cmd.direction == 'V') {
@@ -2921,6 +2962,17 @@ public:
 
   // 讀感測器,回傳整數 (距離 cm / 數位值 / 類比值 ...)。供 CMD_IF 評估條件
   int readSensorValue(const BlocklyCommand &cmd) {
+    if (cmd.message.startsWith("tcs34725_")) {
+      const bool predicate = cmd.message == "tcs34725_is_color";
+      if (!downstreamMode) return predicate ? 0 : -1;
+      const int result = cmd.message == "tcs34725_read" ? colorSensor.readChannel(cmd.value) :
+        cmd.message == "tcs34725_rgb" ? colorSensor.rgb(cmd.value) : colorSensor.derived(cmd.value);
+      if (colorSensor.failed() && !colorErrorReported) {
+        colorErrorReported = true;
+        sendError("tcs34725_read_failed");
+      } else if (result >= 0) colorErrorReported = false;
+      return predicate ? (result >= 0 && result == cmd.pin) : result;
+    }
     if (cmd.message == "ultrasonic") {
       pinMode(cmd.pin, OUTPUT);
       pinMode(cmd.value, INPUT);
@@ -3207,10 +3259,16 @@ public:
         }
         break;
       }
+      case CMD_TCS_CONFIG:
+        if (downstreamMode) {
+          if (cmd.direction == 'G') colorSensor.setGain(cmd.value);
+          else colorSensor.setCycles(cmd.value);
+        }
+        break;
       case CMD_OLED: {
-        if (!oledMode || oledErrorReported) break;
+        if (!downstreamMode || oledErrorReported) break;
         const String text = cmd.direction == 'V' ? String(readBlocklyValue(cmd)) : cmd.message;
-        if (!oledDisplay.write(cmd.pin, cmd.angle, text, cmd.direction == 'C')) {
+        if (!oledDisplay.write(cmd.oledAddress, cmd.angle, text, cmd.direction == 'C')) {
           oledErrorReported = true;
           sendError("oled_not_found");
         }

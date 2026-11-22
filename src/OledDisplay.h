@@ -1,26 +1,22 @@
 #pragma once
 #include <Adafruit_SSD1306.h>
 #include "config.h"
+#include "PeripheralI2cBus.h"
 
 // Owned exclusively by jsonTask. No Wire calls from WS or I2C callbacks.
 class OledDisplay {
   Adafruit_SSD1306 display_{OLED_WIDTH, OLED_HEIGHT, &Wire, -1, 400000, 100000};
-  bool busStarted_ = false;
+  PeripheralI2cBus &bus_;
   uint8_t address_ = 0;
   String rows_[4];
   bool blank_ = true;
 public:
+  explicit OledDisplay(PeripheralI2cBus &bus) : bus_(bus) {}
   void end() {
-    if (busStarted_) Wire.end();
-    busStarted_ = false;
     address_ = 0;
   }
   bool ensure(uint8_t address) {
-    if (!busStarted_) {
-      if (!Wire.begin(I2C_SLAVE_SDA_PIN, I2C_SLAVE_SCL_PIN, 100000)) return false;
-      Wire.setTimeOut(20);
-      busStarted_ = true;
-    }
+    if (!bus_.ensure()) return false;
     Wire.beginTransmission(address);
     if (Wire.endTransmission() != 0) { address_ = 0; return false; }
     if (address_ == address) return true;

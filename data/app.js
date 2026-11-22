@@ -5,12 +5,16 @@
 var workspace;
 var ws;
 let boardOledSupport = false;
+let boardTcsSupport = false;
+let boardRgbSupport = false;
+let boardTcsExtended = false;
 let boardI2cRole = 'unknown';
-const I2C_CONFLICT_TEXT = 'I2C GPIO 21／22 只能擇一：OLED 對下、對外功能對上，或一般 GPIO，不能混用';
-function inspectI2cProgram(value, state = {oled:false, upstream:false, gpio:false}) {
+const I2C_CONFLICT_TEXT = 'I2C GPIO 21／22 只能擇一：OLED／顏色感測器對下、對外功能對上，或一般 GPIO，不能混用';
+function inspectI2cProgram(value, state = {oled:false, tcs:false, upstream:false, gpio:false}) {
   if (!value || typeof value !== 'object') return state;
   if (Array.isArray(value)) { value.forEach(v => inspectI2cProgram(v, state)); return state; }
   if ((value.command || '').startsWith('oled_')) state.oled = true;
+  if ((value.command || '').startsWith('tcs34725_')) { state.tcs = true; if (value.command === 'tcs34725_rgb') state.rgb = true; if (value.command !== 'tcs34725_read') state.tcsExtended = true; }
   if ((value.command || '').startsWith('blockly_func_') || (value.functions || []).length) state.upstream = true;
   for (const key of ['pin','trigPin','echoPin']) if ([21,22].includes(Number(value[key]))) state.gpio = true;
   Object.values(value).forEach(v => inspectI2cProgram(v, state));
@@ -20,14 +24,14 @@ function updateI2cWarnings() {
   if (!workspace) return;
   const blocks = workspace.getAllBlocks(false);
   const enabled = b => !(b.isEnabled && !b.isEnabled()) && !(b.getInheritedDisabled && b.getInheritedDisabled());
-  const oled = blocks.filter(b => enabled(b) && b.type.startsWith('oled_'));
+  const peripherals = blocks.filter(b => enabled(b) && (b.type.startsWith('oled_') || b.type.startsWith('tcs34725_')));
   const conflicts = blocks.filter(b => enabled(b) && (b.type.startsWith('blockly_func_') ||
     ['PIN','TRIG','ECHO'].some(k => [21,22].includes(Number(b.getFieldValue(k))))));
   for (const b of blocks) {
     let warning = null;
-    if (oled.length && conflicts.length && (oled.includes(b) || conflicts.includes(b))) warning = I2C_CONFLICT_TEXT;
-    else if (oled.includes(b)) warning = !boardOledSupport ? '尚未確認板子支援 OLED：請連線並更新韌體' :
-      (boardI2cRole === 'upstream' ? '執行將停用對上 I2C，改為 OLED；請先移除上層主控接線' : null);
+    if (peripherals.length && conflicts.length && (peripherals.includes(b) || conflicts.includes(b))) warning = I2C_CONFLICT_TEXT;
+    else if (peripherals.includes(b)) warning = (b.type.startsWith('tcs34725_') ? (!boardTcsSupport || (b.type === 'tcs34725_rgb' && !boardRgbSupport) || (b.type !== 'tcs34725_read' && !boardTcsExtended)) : !boardOledSupport) ? '尚未確認板子支援此 I2C 周邊：請連線並更新韌體' :
+      (boardI2cRole === 'upstream' ? '執行將停用對上 I2C，改為對下周邊；請先移除上層主控接線' : null);
     b.setWarningText(warning, 'i2c-role');
   }
 }
@@ -297,6 +301,7 @@ function initWebSocket() {
   ws = socket;
 
   boardOledSupport = false;
+  boardTcsSupport = false; boardRgbSupport = false; boardTcsExtended = false;
   boardI2cRole = 'unknown';
   socket.onopen = () => {
     appendSensorOutput("WebSocket 已連線");
@@ -308,6 +313,9 @@ function initWebSocket() {
       const data = JSON.parse(e.data);
       if (data.type === 'capabilities') {
         boardOledSupport = data.oled_ssd1306_128x32 === true;
+        boardTcsSupport = data.tcs34725 === true;
+        boardRgbSupport = data.tcs34725_rgb === true;
+        boardTcsExtended = data.tcs34725_extended === true;
         boardI2cRole = data.i2c_role || 'unknown';
         updateI2cWarnings();
         return;
@@ -332,7 +340,7 @@ function initWebSocket() {
   };
 
   socket.onclose = () => {
-    if (ws === socket) { ws = null; boardOledSupport = false; boardI2cRole = 'unknown'; updateI2cWarnings(); }
+    if (ws === socket) { ws = null; boardTcsSupport = false; boardRgbSupport = false; boardTcsExtended = false; boardOledSupport = false; boardI2cRole = 'unknown'; updateI2cWarnings(); }
     appendSensorOutput("連線關閉，2 秒後重連");
     if (wsReconnectEnabled && !wsReconnectTimer) {
       wsReconnectTimer = setTimeout(initWebSocket, WS_RECONNECT_DELAY_MS);
@@ -439,13 +447,14 @@ function buildProgJson(irNodes, ws = null) {
     throw new Error(`積木巢狀太深：目前 ${depth} 層，最多 ${MAX_BLOCK_DEPTH} 層（如果／重複／當…重複互相包的層數，呼叫副程式也算一層）`);
   }
   const resources = inspectI2cProgram(json);
-  if (resources.oled && (resources.upstream || resources.gpio)) throw new Error(I2C_CONFLICT_TEXT);
+  if ((resources.oled || resources.tcs) && (resources.upstream || resources.gpio)) throw new Error(I2C_CONFLICT_TEXT);
   return json;
 }
 
 // 韌體錯誤代碼 → 使用者看得懂的說明
 const FIRMWARE_ERROR_TEXT = {
   i2c_role_conflict: I2C_CONFLICT_TEXT,
+  tcs34725_read_failed: '顏色感測器讀取失敗（-1），請檢查 0x29 模組的供電與 SDA21／SCL22 接線；系統會自動重試',
   oled_not_found: 'OLED 初始化或通訊失敗，請檢查接線及 0x3C／0x3D 位址後重新執行',
   nesting_too_deep: `積木巢狀太深（最多 ${MAX_BLOCK_DEPTH} 層）`,
   json_parse_failed: '程式格式錯誤或巢狀太深，板子無法解析',
@@ -549,6 +558,9 @@ function runBlocklyCode() {
     warnStrayBlocks(irNodes);
 
     if (ws && ws.readyState === WebSocket.OPEN) {
+      if (inspectI2cProgram(payload).rgb && !boardRgbSupport) throw new Error('請更新韌體以讀取 0～255 RGB');
+      if (inspectI2cProgram(payload).tcsExtended && !boardTcsExtended) throw new Error('請更新韌體以支援顏色感測器進階功能');
+      if (inspectI2cProgram(payload).tcs && !boardTcsSupport) throw new Error('板子尚未確認支援 TCS34725，請更新韌體並重新連線');
       if (inspectI2cProgram(payload).oled && !boardOledSupport) throw new Error('板子尚未確認支援 OLED，請更新韌體並重新連線');
       ws.send(JSON.stringify(payload));
       appendSensorOutput("🚀 程式已傳送 (v1.3.1)");
@@ -596,6 +608,9 @@ function buildProgPayload() {
 async function saveFile() {
   try {
     const payload = buildProgPayload();
+    if (inspectI2cProgram(payload.json).rgb && !boardRgbSupport) throw new Error('請更新韌體以讀取 0～255 RGB');
+      if (inspectI2cProgram(payload.json).tcsExtended && !boardTcsExtended) throw new Error('請更新韌體以支援顏色感測器進階功能');
+      if (inspectI2cProgram(payload.json).tcs && !boardTcsSupport) throw new Error('板子尚未確認支援 TCS34725，請更新韌體並重新連線');
     if (inspectI2cProgram(payload.json).oled && !boardOledSupport) throw new Error('板子尚未確認支援 OLED，請更新韌體並重新連線');
     // 板子上只存一支：畫面上的程式不是從 ESP32 開的、而板子上已經有程式時，先確認會覆蓋
     if (!workspaceMatchesEsp32) {

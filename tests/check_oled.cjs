@@ -40,4 +40,43 @@ run("boardI2cRole='upstream'; updateI2cWarnings();");
 assert.match(run('warningBlocks[0].warning'),/停用對上/);
 run('boardOledSupport=false; updateI2cWarnings();');
 assert.match(run('warningBlocks[0].warning'),/更新韌體/);
-console.log('OLED translation, validation, nested role conflicts and live warnings: PASS');
+// TCS34725 is a downstream peer, not a conflict with OLED.
+for (const channel of ['r','g','b','c']) {
+  assert.deepEqual(value(`getTranslator('tcs34725_read')(block('tcs34725_read',{CHANNEL:'${channel}'})).toJson()`),
+    {command:'tcs34725_read',channel});
+}
+assert.throws(()=>run("new Tcs34725ReadNode('lux').toJson()"),/通道/);
+run(`var tcsDisplay = new OledNode(block('oled_value',{ADDRESS:'60',ROW:'0'},
+  {VALUE:block('tcs34725_read',{CHANNEL:'r'})}));`);
+assert.equal(value('inspectI2cProgram(buildProgJson([new arduino_setupNode([tcsDisplay])])).tcs'),true);
+assert.equal(value('inspectI2cProgram(buildProgJson([new arduino_setupNode([tcsDisplay])])).oled'),true);
+for (const conflict of [
+  '{command:"blockly_func_set",idx:0,value:1}',
+  '{command:"if",condition:{command:"blockly_func_get",idx:0},then:[]}',
+  '{command:"digitalWrite",pin:"21",value:1}'
+]) {
+  assert.throws(()=>run(`buildProgJson([new arduino_setupNode([
+    raw({command:'message_print',content:{command:'tcs34725_read',channel:'r'}}),raw(${conflict})])])`), /只能擇一/);
+}
+run(`warningBlocks[0].type='tcs34725_read'; boardTcsSupport=false; updateI2cWarnings();`);
+assert.match(run('warningBlocks[0].warning'),/更新韌體/);
+run(`boardTcsSupport=true; boardOledSupport=false; boardI2cRole='idle'; updateI2cWarnings();`);
+assert.equal(run('warningBlocks[0].warning'),null);
+run('warningBlocks[1].enabled=true; updateI2cWarnings();');
+assert.match(run('warningBlocks[0].warning'),/只能擇一/);
+console.log('OLED/TCS translation, validation, nested role conflicts and live warnings: PASS');
+
+for (const kind of ['lux','cct','color']) {
+ assert.deepEqual(value(`getTranslator('tcs34725_${kind}')(block('tcs34725_${kind}',{})).toJson()`),{command:'tcs34725_'+kind});
+ assert.equal(run(`inspectI2cProgram({command:'tcs34725_${kind}'}).tcsExtended`),true);
+ assert.throws(()=>run(`buildProgJson([new arduino_setupNode([raw({command:'tcs34725_${kind}'}),raw({command:'digitalWrite',pin:21,value:1})])])`),/只能擇一/);
+}
+for (const [kind,field,key,valid,invalid] of [['gain','GAIN','gain',60,2],['time','CYCLES','cycles',256,20],['is_color','COLOR','color',4,5]]) {
+ assert.deepEqual(value(`getTranslator('tcs34725_${kind}')(block('tcs34725_${kind}',{${field}:'${valid}'})).toJson()`),{command:'tcs34725_'+kind,[key]:valid});
+ assert.throws(()=>run(`getTranslator('tcs34725_${kind}')(block('tcs34725_${kind}',{${field}:'${invalid}'})).toJson()`));
+}
+
+run(`warningBlocks=[{type:'tcs34725_lux',isEnabled:()=>true,getFieldValue:()=>null,setWarningText(t){this.warning=t}}]; workspace={getAllBlocks:()=>warningBlocks}; boardTcsSupport=true; boardTcsExtended=false; boardI2cRole='idle'; updateI2cWarnings();`);
+assert.match(run('warningBlocks[0].warning'),/更新韌體/);
+run('boardTcsExtended=true; updateI2cWarnings();');
+assert.equal(run('warningBlocks[0].warning'),null);

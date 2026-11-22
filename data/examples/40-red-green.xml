@@ -1,0 +1,62 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="arduino_setup" x="20" y="20">
+   <statement name="SETUP_BODY">
+   <block type="oled_clear">
+     <field name="ADDRESS">60</field>
+   </block>
+   </statement>
+   <next>
+   <block type="arduino_loop">
+     <statement name="LOOP_BODY">
+     <block type="controls_if">
+       <comment pinned="false" h="108" w="260">依次把紅色和綠色色卡移到感測器前。設置否則分支，拿走色卡後也會更新畫面。</comment>
+       <value name="IF0">
+       <block type="tcs34725_is_color">
+         <field name="COLOR">1</field>
+       </block>
+       </value>
+       <statement name="DO0">
+       <block type="oled_text">
+         <field name="ADDRESS">60</field>
+         <field name="ROW">0</field>
+         <field name="TEXT">RED</field>
+       </block>
+       </statement>
+       <statement name="ELSE">
+       <block type="controls_if">
+         <value name="IF0">
+         <block type="tcs34725_is_color">
+           <field name="COLOR">4</field>
+         </block>
+         </value>
+         <statement name="DO0">
+         <block type="oled_text">
+           <field name="ADDRESS">60</field>
+           <field name="ROW">0</field>
+           <field name="TEXT">GREEN</field>
+         </block>
+         </statement>
+         <statement name="ELSE">
+         <block type="oled_text">
+           <field name="ADDRESS">60</field>
+           <field name="ROW">0</field>
+           <field name="TEXT">SHOW RED OR GREEN</field>
+         </block>
+         </statement>
+       </block>
+       </statement>
+       <next>
+       <block type="arduino_delay">
+         <value name="DELAY_TIME">
+         <shadow type="math_number">
+           <field name="NUM">150</field>
+         </shadow>
+         </value>
+       </block>
+       </next>
+     </block>
+     </statement>
+   </block>
+   </next>
+ </block>
+</xml>

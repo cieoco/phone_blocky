@@ -66,6 +66,7 @@ node tests/check_realtime.cjs                                 # joy.html 即時�
 node tests/check_examples.cjs                                 # data/examples/ 內建範例
 node tests/check_hardware_test.cjs                            # hardware_test.html 啟動/執行/確認流程
 node tests/check_oled.cjs                                     # OLED 翻譯／互斥／警告
+wsl bash tools/check_i2c_sensors.sh                           # 共用 I2C、TCS34725 驅動與原始韌體解析（需 g++）
 node tests/check_competition.cjs                              # 競賽前端、音效去重／缺檔處理、授權操作
 node tests/check_student_layout.cjs                           # 學生頁手機排版（需 Playwright 與 Chrome）
 node tests/check_timer_referee.cjs                            # 純計時裁判頁（需 Playwright 與 Chrome）
@@ -241,7 +242,13 @@ OLED：SSD1306 I2C 128×32（0.91 吋），SDA21 / SCL22，0x3C 或 0x3D。
 `oled_text` / `oled_value` / `oled_clear` 自動初始化，僅支援每行 21 個 ASCII 字元、共 4 行。
 與對上 I2C／`blockly_func_*` 互斥，前端警告與韌體 `parseProgramDoc` 皆檢查。
 角色切換只在主迴圈 `applyPendingProgramIfAny`，由 `I2CSlaveBridge::setSuspended` 停用 callbacks／佇列／看門狗；勿從 WS callback 切換 Wire。
-停止程式保留角色；新程式依 OLED 用途選擇角色。AI 子集尚不產生 OLED 指令。
+停止程式保留角色；新程式依 OLED／TCS34725 用途選擇角色。AI 子集尚不產生 OLED 指令。
+
+TCS34725：`tcs34725_read` 數值積木，channel=`r/g/b/c`；0x29、24 ms、1 倍增益。
+與 OLED 共用 SDA21/SCL22，統一由 `PeripheralI2cBus` 啟閉 Wire，驅動不可自行 end／重啟共用匯流排。
+對下角色由 OLED 或 TCS 值表達式自動選擇，與對外功能及 21/22 GPIO 互斥。
+`Tcs34725Sensor` 非阻塞初始化，24 ms RGBC 快取，準備中／失敗回 -1；通訊失敗500 ms後重試。
+AI 子集尚不產生 TCS 指令。`tools/examples_src/` 是範例來源，以 `node tools/gen_examples.cjs` 生成 XML。
 
 ---
 
@@ -329,3 +336,5 @@ OLED：SSD1306 I2C 128×32（0.91 吋），SDA21 / SCL22，0x3C 或 0x3D。
 | 硬體腳位圖 | [docs/腳位.md](docs/腳位.md) |
 | 使用者操作說明 | [docs/操作說明書.md](docs/操作說明書.md) |
 | 疑難排解 | [docs/卡住了怎麼辦.md](docs/卡住了怎麼辦.md) |
+
+TCS34725 擴充積木：`tcs34725_lux/cct/color/is_color/gain/time`；共用對下 I2C，與對上角色互斥。曝光設定每支程式重設為 1x/24ms，設定建議放 setup；色名為估算。能力旗標 `tcs34725_extended`。驗證另跑 `wsl bash tools/check_i2c_sensors.sh`。
