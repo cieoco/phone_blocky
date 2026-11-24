@@ -246,7 +246,9 @@ for (const ex of manifest.examples) {
     assert.deepEqual(ex.blocks, foundTypes, `範例 ${ex.id} 的 blocks 與 XML 實際用到的積木不一致`);
     foundTypes.forEach(t => usedTypes.add(t));
     totalBytes += Buffer.byteLength(text);
-    assert.ok(Buffer.byteLength(text) <= 8192, `${file}: 單支範例超過 8 KB，拆小一點`);
+    // The requested six-output integration intentionally combines six lessons.
+    const xmlLimit = ex.id === '49-i2c-six-outputs' ? 24576 : 8192;
+    assert.ok(Buffer.byteLength(text) <= xmlLimit, `${file}: XML exceeds ${xmlLimit} bytes`);
 
     const xml = parseXml(text, file);
     const tops = xml.children.filter(c => c.tag === 'block');
@@ -270,6 +272,33 @@ for (const ex of manifest.examples) {
             return buildProgJson(parseWorkspaceToIR(ws), ws);
         })()
     `, context)));
+    if (/^(4[3-9])-i2c-/.test(ex.id)) {
+        const combined = ex.id === '49-i2c-six-outputs';
+        const count = combined ? 6 : 1;
+        assert.deepEqual(prog.functions, Array.from({length:count}, (_,idx)=>({idx,analog:true,readable:true})));
+        assert.deepEqual(prog.setup[0], {cmd:'stop'});
+        const payload = JSON.stringify({program:prog, xml:text, autorun:false});
+        assert.ok(Buffer.byteLength(payload) < 32768, `${file}: exceeds board save budget`);
+        const first = Number(ex.id.slice(0,2));
+        for (let i=0; i<count; ++i) {
+            const motor = combined ? i < 4 : first <= 46;
+            const port = combined ? (motor ? i+1 : i-3) : (motor ? first-42 : first-46);
+            const cmd = prog.loop[i];
+            if (motor) {
+                assert.equal(cmd.command, 'if');
+                assert.equal(cmd.then[0].cmd, 'pwm');
+                assert.equal(cmd.else[0].cmd, 'pwm');
+                assert.equal(cmd.then[0].motor, port);
+                assert.equal(cmd.else[0].motor, port);
+            } else {
+                assert.equal(cmd.cmd, 'servo');
+                assert.equal(cmd.ch, port);
+                assert.equal(cmd.deg.command, 'math_constrain');
+            }
+        }
+        assert.equal(prog.loop.length, count + 1);
+        assert.deepEqual(prog.loop[count], {cmd:'delay',ms:50});
+    }
     assert.equal(prog.mode, 'PROG', `${file}: 不是 PROG 程式`);
     assert.ok(Array.isArray(prog.setup) && Array.isArray(prog.loop), `${file}: 缺少 setup 或 loop`);
     assert.ok(prog.loop.length || prog.setup.length, `${file}: setup 與 loop 都是空的`);
@@ -281,7 +310,8 @@ for (const ex of manifest.examples) {
         assert.ok(c && (c.cmd || c.command), `${file}: 產出了沒有 cmd/command 的指令 ${JSON.stringify(c)}`);
     }
 }
-assert.ok(totalBytes <= 131072, '範例總量超過 128 KB，LittleFS 空間要重新評估');
+// Seven new I2C lessons: ~129 KiB XML; entire data/ ~858 KiB in 1700 KiB LittleFS.
+assert.ok(totalBytes <= 147456, '範例總量超過 144 KB，LittleFS 空間要重新評估');
 
 // Known-good output for the examples shipped today; catches silent protocol drift
 // (deg is fixed-point ×100, duty is signed ±100).
