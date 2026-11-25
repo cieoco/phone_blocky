@@ -3407,6 +3407,13 @@ public:
   // jsonTask 每拍（10ms）呼叫一次：整段 loop 跑完一圈，與 repeat / while 本體的執行方式一致。
   // （舊版每拍只跑一條，loop 有 N 個積木就額外多出 N×10ms，放進 repeat 前後時序不同。）
   // 指令之間由 executeCommandList 維持控制節拍，不會因一圈很長而餓死角度控制。
+  bool hostPhaseOwnsOutputs() {
+    portENTER_CRITICAL(&phaseMux);
+    const bool owned = phasePage[4] != 0 && (static_cast<uint16_t>(phasePage[5]) >> 14) != 0;
+    portEXIT_CRITICAL(&phaseMux);
+    return owned;
+  }
+
   bool copyPhasePage(int16_t *out) {
     portENTER_CRITICAL(&phaseMux);
     const bool enabled = phasePage[4] != 0;

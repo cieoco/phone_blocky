@@ -278,6 +278,10 @@ void WebServerHandler::loadPIDSettings() {
 
 // WebSocket 連接監控相關函數實現
 void WebServerHandler::stopAllMotors() {
+#if I2C_SLAVE_MODE
+  // Closing the editor is independent of the host phone and its I2C lease.
+  if (cmdProcessor.hostPhaseOwnsOutputs()) return;
+#endif
   Serial.println("[WebSocket] 連接中斷，停止所有馬達");
   String stopCommand = "{\"cmd\":\"stop\"}";
 #if COMPETITION_COMPETITOR
