@@ -464,6 +464,7 @@ function buildProgJson(irNodes, ws = null) {
 
 // 韌體錯誤代碼 → 使用者看得懂的說明
 const FIRMWARE_ERROR_TEXT = {
+  phase_slot_reserved: "雙階段配件功能請使用 0～7，每個編號宣告一次",
   i2c_role_conflict: I2C_CONFLICT_TEXT,
   tcs34725_read_failed: '顏色感測器讀取失敗（-1），請檢查 0x29 模組的供電與 SDA21／SCL22 接線；系統會自動重試',
   oled_not_found: 'OLED 初始化或通訊失敗，請檢查接線及 0x3C／0x3D 位址後重新執行',
@@ -608,7 +609,8 @@ function buildProgPayload() {
   const irNodes = parseWorkspaceToIR(workspace);
   const json = buildProgJson(irNodes, workspace);
   warnStrayBlocks(irNodes);
-  const size = xmlText.length + JSON.stringify(json).length;
+  const bytes = new TextEncoder();
+  const size = bytes.encode(xmlText).length + bytes.encode(JSON.stringify(json)).length;
   if (size > MAX_SAVE_BYTES) {
     throw new Error(`程式太大，無法存檔（目前約 ${Math.ceil(size / 1024)} KB，上限 ${MAX_SAVE_BYTES / 1024} KB）。` +
                     `可以把重複的動作改成副程式或迴圈來縮小`);

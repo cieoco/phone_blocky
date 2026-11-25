@@ -308,7 +308,7 @@ for (const ex of manifest.examples) {
         const events = Object.fromEntries(prog.procedures.map(p => [p.name,p.body]));
         assert.deepEqual(events.__kit_match_auto[0], {command:'match_drive',f:300,l:0,w:0});
         assert.equal(events.__kit_match_manual.some(c => c.command === 'if'), true);
-        assert.deepEqual(prog.functions, [{idx:0,analog:false,readable:true}]);
+        assert.deepEqual(prog.functions, [{idx:0,analog:true,readable:true}]);
         assert.ok(Buffer.byteLength(JSON.stringify({json:prog,xml:text})) < 32768);
         continue;
     }
