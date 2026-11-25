@@ -1097,6 +1097,14 @@ function getTranslator(blockType) {
             return block => new Tcs34725ReadNode(block.getFieldValue('CHANNEL'));
         case 'oled_text': case 'oled_value': case 'oled_clear':
             return block => new OledNode(block);
+        case "match_auto":
+        case "match_manual":
+            return block => ({phase: block.type, body: parseBlockChain(block.getInputTargetBlock('DO'))});
+        case "match_drive":
+            return block => ({toJson: () => ({
+                command: 'match_drive', f: Number(block.getFieldValue('f')),
+                l: Number(block.getFieldValue('l')), w: Number(block.getFieldValue('w'))
+            })});
         case "arduino_setup":
             return translateArduinoSetup;
         case "arduino_loop":

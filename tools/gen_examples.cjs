@@ -56,9 +56,9 @@ function renderExample(ex) {
   const used = new Set();
   const top = {type: 'arduino_setup', fields: {}, values: {}, statements: {SETUP_BODY: ex.setup || []}, pos: ' x="20" y="20"'};
   const loop = {type: 'arduino_loop', fields: {}, values: {}, statements: {LOOP_BODY: ex.loop || []}};
-  let xml = renderChain([top, loop], 1, used);
-  let y = 300;
-  for (const extra of ex.extra || []) { // optional extra top-level blocks (e.g. procedure definitions)
+  let xml = ex.phases ? '' : renderChain([top, loop], 1, used);
+  let y = ex.phases ? 20 : 300;
+  for (const extra of [...(ex.phases || []), ...(ex.extra || [])]) { // optional extra top-level blocks (e.g. procedure definitions)
     extra.pos = ` x="20" y="${y}"`;
     xml += renderChain([extra], 1, used);
     y += 200;

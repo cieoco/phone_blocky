@@ -3,6 +3,20 @@
  ********************************************/
 
 // Arduino 設定區塊
+for (const [type, label] of [['match_auto','當自主開始'], ['match_manual','遙控期間重複執行']]) {
+  Blockly.Blocks[type] = {init() {
+    this.appendDummyInput().appendField(label);
+    this.appendStatementInput('DO');
+    this.setColour(25);
+  }};
+}
+Blockly.Blocks.match_drive = {init() {
+  this.appendDummyInput().appendField('自主底盤 ‰');
+  for (const [key,label] of [['f','前進'],['l','左移'],['w','逆時針']]) {
+    this.appendDummyInput().appendField(label).appendField(new Blockly.FieldNumber(0,-1000,1000,1),key);
+  }
+  this.setPreviousStatement(true); this.setNextStatement(true); this.setColour(25);
+}};
 Blockly.Blocks['arduino_setup'] = {
   init: function () {
     this.appendDummyInput().appendField("setup");

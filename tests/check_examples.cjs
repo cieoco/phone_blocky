@@ -301,6 +301,17 @@ for (const ex of manifest.examples) {
     }
     assert.equal(prog.mode, 'PROG', `${file}: 不是 PROG 程式`);
     assert.ok(Array.isArray(prog.setup) && Array.isArray(prog.loop), `${file}: 缺少 setup 或 loop`);
+    if (ex.id === '50-two-board-match') {
+        assert.equal(prog.phaseKit, 1);
+        assert.deepEqual(prog.setup, []);
+        assert.deepEqual(prog.loop, []);
+        const events = Object.fromEntries(prog.procedures.map(p => [p.name,p.body]));
+        assert.deepEqual(events.__kit_match_auto[0], {command:'match_drive',f:300,l:0,w:0});
+        assert.equal(events.__kit_match_manual.some(c => c.command === 'if'), true);
+        assert.deepEqual(prog.functions, [{idx:0,analog:false,readable:true}]);
+        assert.ok(Buffer.byteLength(JSON.stringify({json:prog,xml:text})) < 32768);
+        continue;
+    }
     assert.ok(prog.loop.length || prog.setup.length, `${file}: setup 與 loop 都是空的`);
     // Examples must show both halves of the shape students will copy.
     assert.ok(text.includes('arduino_setup') && text.includes('arduino_loop'),

@@ -17,7 +17,7 @@ def section(start, end):
 declarations = '\n'.join(re.search(pattern, source, re.S).group(0) for pattern in [
     r'enum CommandType \{.*?\};',
     r'struct BlocklyValueExpression \{.*?\};',
-    r'struct BlocklyCommand \{.*?\};',
+    r'struct BlocklyCommand \{.*?\n\};',
 ])
 parsers = section('  std::shared_ptr<BlocklyValueExpression> parseValueExpression(',
                   '  int getRuntimeVariable(')

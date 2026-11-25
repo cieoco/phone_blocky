@@ -302,6 +302,7 @@ private:
   // 延後執行佇列。單一生產者（i2c_slave_task）／單一消費者（jsonTask）的
   // SPSC 環形緩衝，因此不需要鎖；head 只由生產者寫、tail 只由消費者寫。
   struct PendingCmd {
+    uint32_t received;
     uint8_t cmd;
     uint8_t motor;
     uint8_t mode;
@@ -775,7 +776,7 @@ private:
   void handleFuncStateAnalog(uint8_t page) {
     int16_t values[BlocklyFunctions::kAnalogPerPage] = {0};
     const uint8_t filled =
-        funcs_.analogPage(page, values, BlocklyFunctions::kAnalogPerPage);
+        page == 1 && proc_.copyPhasePage(values) ? 8 : funcs_.analogPage(page, values, BlocklyFunctions::kAnalogPerPage);
     txBuffer_[0] = page;
     for (uint8_t i = 0; i < filled; ++i) {
       txBuffer_[1 + i * 2] = static_cast<uint8_t>((values[i] >> 8) & 0xFF);
@@ -803,6 +804,7 @@ private:
       droppedCount_++;
       return;
     }
+    queue_[qHead_].received = millis();
     queue_[qHead_].cmd = cmd;
     queue_[qHead_].motor = motor;
     queue_[qHead_].mode = mode;
@@ -815,6 +817,7 @@ private:
     switch (c.cmd) {
     case CMD_FUNC_SET:
       // 主迴圈落地：此時 Blockly 直譯器不會同時讀取，無競態。
+      if (proc_.acceptPhaseValue(c.motor, static_cast<int16_t>(c.value), c.received)) break;
       funcs_.setValue(c.motor, static_cast<int16_t>(c.value));
       break;
     case CMD_SET_MODE:

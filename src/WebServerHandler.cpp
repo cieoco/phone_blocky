@@ -5,6 +5,17 @@
 // 靜態成員定義
 WebServerHandler *WebServerHandler::instance = nullptr;
 
+namespace {
+#if I2C_SLAVE_MODE
+bool isMatchProgram(const String &json) {
+  StaticJsonDocument<64> filter, result;
+  filter["phaseKit"] = true;
+  return !deserializeJson(result,json,DeserializationOption::Filter(filter),
+                          DeserializationOption::NestingLimit(64)) && result["phaseKit"] == 1;
+}
+#endif
+}
+
 void WebServerHandler::handleSystemRestart(AsyncWebServerRequest *request) {
   Student::MutationGuard competitionGuard;
   if (!competitionGuard.allowed()) {request->send(409,"application/json","{\"ok\":false,\"err\":\"competition_locked\"}");return;}
@@ -389,6 +400,9 @@ void WebServerHandler::handleProgramPost(AsyncWebServerRequest *request,
     return;
   }
 
+#if I2C_SLAVE_MODE
+  if (isMatchProgram(progJsonStr)) cmdProcessor.processCommands(progJsonStr, Comm::CH_SERIAL);
+#endif
   Serial.printf("[ProgramStore] 已存檔 (source=%s, has_xml=%d, json_len=%d)\n",
                 req.source.c_str(), hasXml ? 1 : 0, progJsonStr.length());
 
@@ -434,7 +448,11 @@ void WebServerHandler::handleProgramAutorunPost(
 }
 
 void WebServerHandler::runAutorunProgramIfEnabled(uint8_t channels) {
-  if (!ProgramStore::isAutorun()) {
+  if (!ProgramStore::isAutorun()
+#if I2C_SLAVE_MODE
+      && !isMatchProgram(ProgramStore::loadJson())
+#endif
+  ) {
     Serial.println("[ProgramStore] 開機 autorun: 未啟用（存檔程式不會自動執行）");
     return;
   }

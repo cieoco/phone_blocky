@@ -439,6 +439,17 @@ function buildProgJson(irNodes, ws = null) {
     warnings.forEach(w => appendSensorOutput(`⚠️ 對外功能：${w}`));
   }
   const procedures = irNodes.filter(n => n instanceof ProcedureDefNode).map(n => n.toJson());
+  const events = irNodes.filter(n => n.phase);
+  if (events.length) {
+    // Declarations are metadata collected above and may live in an existing setup hat.
+    json.setup = json.setup.filter(c => c.command !== 'blockly_func_declare');
+    if (json.setup.length || json.loop.length) throw Error('雙階段程式請將動作接在事件內，清空 setup 與 loop');
+    if (new Set(events.map(n => n.phase)).size !== events.length) throw Error('每種階段事件最多一個');
+    if (json.functions?.some(d => d.idx >= 8)) throw Error('雙階段配件功能限 0～7');
+    if (procedures.some(p => p.name.startsWith('__kit_'))) throw Error('副程式名稱 __kit_ 為系統保留');
+    json.phaseKit = 1;
+    for (const e of events) procedures.push({name:'__kit_'+e.phase, params:[], body:e.body.map(c=>c.toJson())});
+  }
   if (procedures.length) json.procedures = procedures;   // 沒有副程式時維持原本 JSON 形狀
   const procs = Object.fromEntries(procedures.map(p => [p.name, p]));
   const depth = Math.max(progNestingDepth(json.setup, procs), progNestingDepth(json.loop, procs),
@@ -447,7 +458,7 @@ function buildProgJson(irNodes, ws = null) {
     throw new Error(`積木巢狀太深：目前 ${depth} 層，最多 ${MAX_BLOCK_DEPTH} 層（如果／重複／當…重複互相包的層數，呼叫副程式也算一層）`);
   }
   const resources = inspectI2cProgram(json);
-  if ((resources.oled || resources.tcs) && (resources.upstream || resources.gpio)) throw new Error(I2C_CONFLICT_TEXT);
+  if ((resources.oled || resources.tcs) && (json.phaseKit || resources.upstream || resources.gpio)) throw new Error(I2C_CONFLICT_TEXT);
   return json;
 }
 

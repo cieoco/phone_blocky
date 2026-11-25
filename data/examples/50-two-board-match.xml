@@ -1,0 +1,112 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+ <block type="match_auto" x="20" y="20">
+   <statement name="DO">
+   <block type="match_drive">
+     <field name="f">300</field>
+     <field name="l">0</field>
+     <field name="w">0</field>
+     <next>
+     <block type="arduino_delay">
+       <value name="DELAY_TIME">
+       <shadow type="math_number">
+         <field name="NUM">500</field>
+       </shadow>
+       </value>
+       <next>
+       <block type="procedures_callnoreturn">
+         <mutation name="停止夾爪"></mutation>
+       </block>
+       </next>
+     </block>
+     </next>
+   </block>
+   </statement>
+ </block>
+ <block type="match_manual" x="20" y="220">
+   <statement name="DO">
+   <block type="blockly_func_declare">
+     <field name="IDX">0</field>
+     <field name="KIND">DIGITAL</field>
+     <field name="READABLE">TRUE</field>
+     <next>
+     <block type="arduino_pinMode">
+       <field name="PIN">33</field>
+       <field name="MODE">INPUT_PULLUP</field>
+       <next>
+       <block type="controls_if">
+         <value name="IF0">
+         <block type="logic_operation">
+           <field name="OP">AND</field>
+           <value name="A">
+           <block type="logic_compare">
+             <field name="OP">NEQ</field>
+             <value name="A">
+             <block type="blockly_func_get">
+               <field name="IDX">0</field>
+             </block>
+             </value>
+             <value name="B">
+             <block type="math_number">
+               <field name="NUM">0</field>
+             </block>
+             </value>
+           </block>
+           </value>
+           <value name="B">
+           <block type="logic_compare">
+             <field name="OP">NEQ</field>
+             <value name="A">
+             <block type="arduino_digitalRead">
+               <field name="PIN">33</field>
+             </block>
+             </value>
+             <value name="B">
+             <block type="math_number">
+               <field name="NUM">0</field>
+             </block>
+             </value>
+           </block>
+           </value>
+         </block>
+         </value>
+         <statement name="DO0">
+         <block type="motor_pwm">
+           <field name="MOTOR">1</field>
+           <field name="DIRECTION">FORWARD</field>
+           <value name="PWM">
+           <shadow type="math_number">
+             <field name="NUM">30</field>
+           </shadow>
+           </value>
+         </block>
+         </statement>
+         <statement name="ELSE">
+         <block type="procedures_callnoreturn">
+           <mutation name="停止夾爪"></mutation>
+         </block>
+         </statement>
+         <next>
+         <block type="arduino_delay">
+           <value name="DELAY_TIME">
+           <shadow type="math_number">
+             <field name="NUM">20</field>
+           </shadow>
+           </value>
+         </block>
+         </next>
+       </block>
+       </next>
+     </block>
+     </next>
+   </block>
+   </statement>
+ </block>
+ <block type="procedures_defnoreturn" x="20" y="420">
+   <field name="NAME">停止夾爪</field>
+   <statement name="STACK">
+   <block type="motor_stop">
+     <field name="MOTOR">1</field>
+   </block>
+   </statement>
+ </block>
+</xml>

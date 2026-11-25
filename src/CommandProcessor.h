@@ -44,6 +44,7 @@ enum CommandType {
   CMD_REPEAT,     // 重複 N 次：valueExpr = 次數，nested_commands_then = 迴圈本體
   CMD_WHILE,      // 當／直到：valueExpr = 條件，direction 'W'/'U'，nested_commands_then = 迴圈本體
   CMD_CALL,       // 呼叫副程式：value = 副程式索引，argExprs = 參數值
+  CMD_MATCH_DRIVE,
   CMD_FUNC_SET,   // 對外功能：把值寫回去讓主機讀得到（契約 §6.2）
 };
 
@@ -77,7 +78,10 @@ struct BlocklyValueExpression {
   std::vector<std::shared_ptr<BlocklyValueExpression>> args;
 };
 
+#include "KitPhaseLease.h"
+
 struct BlocklyCommand {
+  int16_t axes[3]{};
   CommandType type = CMD_NONE;
   int oledAddress = OLED_DEFAULT_ADDRESS; // Independent of value-source GPIO metadata.
   int pin = -1;
@@ -304,6 +308,20 @@ private:
   std::vector<BlocklyCommand> pendingSetupCommands;
   std::vector<BlocklyCommand> pendingLoopCommands;
   std::vector<BlocklyProcedure> pendingProcedures;
+  bool phased = false, pendingPhased = false;
+  bool phaseCancelled = false, autoPending = false;
+  KitPhaseLease lease;
+  int16_t axes[3]{};
+  portMUX_TYPE phaseMux = portMUX_INITIALIZER_UNLOCKED;
+  int16_t phasePage[8]{};
+  void publishPhase() {
+    portENTER_CRITICAL(&phaseMux);
+    memcpy(phasePage, axes, sizeof(axes));
+    phasePage[3] = static_cast<uint16_t>(phasePage[3])+1;
+    phasePage[4] = phased ? 0x4d31 : 0;
+    phasePage[5] = lease.word;
+    portEXIT_CRITICAL(&phaseMux);
+  }
   volatile bool pendingProgram = false;
   SemaphoreHandle_t progMutex = nullptr;
   MotorRuntimeState motorState[NUM_MOTORS + 1];
@@ -1471,10 +1489,18 @@ public:
   // 清空程式）。不在此直接清向量——呼叫端可能正在程式執行中（programServiceHook）。
   // 沒有程式在跑、也沒有待套用的程式時不做事，避免舵機無故回 90°。
   // 對外功能表（pendingDeclarations）不動：停止程式不該讓主機看到功能表改版。
-  void requestProgramStop() {
+  void requestProgramStop(bool phaseOnly = false) {
+    if (phaseOnly) {
+      phaseCancelled = true;
+      autoPending = false;
+      stopAllRuntime();
+      memset(axes, 0, sizeof(axes));
+      return;
+    }
     if (progMutex) xSemaphoreTake(progMutex, portMAX_DELAY);
     const bool running = !setupCommands.empty() || !loopCommands.empty();
-    if (running || pendingProgram) {
+    if (phased || running || pendingProgram) {
+      pendingPhased = false;
       pendingSetupCommands.clear();
       pendingLoopCommands.clear();
       pendingProcedures.clear();
@@ -1556,6 +1582,8 @@ public:
       if (progMutex) xSemaphoreGive(progMutex);
       return;
     }
+    const bool wasPhased = phased;
+    phased = pendingPhased;
     incomingSetup.swap(pendingSetupCommands);   // 快速搬出，鎖只持有極短時間
     incomingLoop.swap(pendingLoopCommands);
     incomingProcedures.swap(pendingProcedures);
@@ -1566,6 +1594,12 @@ public:
     pendingProgram = false;
     if (progMutex) xSemaphoreGive(progMutex);
 
+    if (phased || wasPhased) {
+      cancelPhaseOutputs();
+      if (wasPhased && !phased && !haveDecls) haveDecls = true; // Retire system slots on editor STOP.
+      lease = {};
+      publishPhase();
+    }
     if (incomingDownstream != downstreamMode) {
       stopAllRuntime();
       if (downstreamMode) {
@@ -1604,6 +1638,7 @@ public:
     memset(pullupPins, 0, sizeof(pullupPins));
     plotClockCount = 0;
     clearManualControlState();
+    if (phased) return; // Wait for a new host match.
     if (setupCommands.empty() && loopCommands.empty()) {
       resetActuators();                         // 空程式 = 停止程式：停所有致動器
     } else {
@@ -1638,6 +1673,8 @@ public:
       Serial.println("[FUNC] 已存檔程式解析失敗，略過對外功能表");
       return;
     }
+    // The phase program is always staged at boot, including its reserved table.
+    if (doc["phaseKit"] == 1) return;
     if (!doc.containsKey("functions") || !doc["functions"].is<JsonArrayConst>()) {
       return; // 舊版存檔沒有這個欄位，正常
     }
@@ -2376,7 +2413,16 @@ public:
       }
     }
 
+    if (doc["phaseKit"] == 1) {
+      for (const auto &decl : newDecls) {
+        if (decl.idx >= 8) { sendError("phase_slot_reserved"); return; }
+      }
+      for (uint8_t idx=8; idx<16; ++idx)
+        newDecls.push_back({idx, static_cast<uint8_t>(idx==15 ? 1 : 3)});
+      haveDecls = true;
+    }
     if (progMutex) xSemaphoreTake(progMutex, portMAX_DELAY);
+    pendingPhased = doc["phaseKit"] == 1;
     pendingSetupCommands.swap(newSetup);
     pendingLoopCommands.swap(newLoop);
     pendingProcedures.swap(newProcedures);
@@ -2549,6 +2595,28 @@ public:
                        std::vector<BlocklyCommand> &loopOut,
                        std::vector<BlocklyProcedure> &procsOut) {
     lastParseError = nullptr;
+    if (doc.containsKey("phaseKit")) {
+#if !I2C_SLAVE_MODE
+      return false;
+#endif
+      if (doc["phaseKit"] != 1 || doc["setup"].size() || doc["loop"].size() ||
+          programUsesDownstreamI2c(doc.as<JsonVariantConst>())) return false;
+      bool event = false;
+      for (JsonObjectConst proc : doc["procedures"].as<JsonArrayConst>()) {
+        const String name = proc["name"] | "";
+        event |= name == "__kit_match_auto" || name == "__kit_match_manual";
+      }
+      if (!event) return false;
+      unsigned declared = 0;
+      for (JsonObjectConst decl : doc["functions"].as<JsonArrayConst>()) {
+        const int slot = decl["idx"] | -1;
+        if (slot < 0 || slot >= 8 || (declared & (1u << slot))) {
+          lastParseError = "phase_slot_reserved";
+          return false;
+        }
+        declared |= 1u << slot;
+      }
+    }
     if (programUsesDownstreamI2c(doc.as<JsonVariantConst>()) && downstreamResourceConflict(doc.as<JsonVariantConst>())) {
       lastParseError = "i2c_role_conflict";
       return false;
@@ -2821,6 +2889,14 @@ public:
           cmd.type = CMD_MATH_CHANGE;
           cmd.variableName = jsonObj["variableName"] | "";
           if (!parseValueSource(jsonObj["value"], cmd)) return false;
+        } else if (strcmp(commandStr, "match_drive") == 0) {
+          cmd.type = CMD_MATCH_DRIVE;
+          const char *names[] = {"f","l","w"};
+          for (unsigned i=0; i<3; ++i) {
+            JsonVariantConst v = jsonObj[names[i]];
+            if (!v.is<int>() || v.as<int>() < -1000 || v.as<int>() > 1000) return false;
+            cmd.axes[i] = v.as<int>();
+          }
         } else if (strcmp(commandStr, "blockly_func_set") == 0) {
           // 注意：對外功能的積木一定走**舊格式**分支。Blockly 的 IR 節點
           // （appIr.js）產生的是 `{"command": ...}`，只有直接指令才用 `"cmd"`。
@@ -2924,7 +3000,7 @@ public:
   // 每條之後補一次控制節拍,一長串不讓出的指令(例如多次超音波量測)也不會餓死角度控制。
   void executeCommandList(const std::vector<BlocklyCommand> &cmds) {
     for (const auto &c : cmds) {
-      if (pendingProgram || !CompetitionGate::allowed()) break;
+      if (pendingProgram || (phased && phaseCancelled) || !CompetitionGate::allowed()) break;
       executeSingleCommand(c);
       controlTickDuringProgram();
     }
@@ -3132,7 +3208,7 @@ public:
         {
           int remaining = numericArg(cmd, cmd.delay_ms);   // 負值視為 0
           while (remaining > 0) {
-            if (pendingProgram || !CompetitionGate::allowed()) break;
+            if (pendingProgram || (phased && phaseCancelled) || !CompetitionGate::allowed()) break;
             int step = remaining > 10 ? 10 : remaining;
             programYield(step);
             remaining -= step;
@@ -3219,7 +3295,7 @@ public:
       case CMD_REPEAT: {
         // 次數只在進入時算一次(與 Blockly 語意相同);每圈讓出,新程式到達即跳出
         int times = readBlocklyValue(cmd);
-        for (int i = 0; i < times && !pendingProgram && CompetitionGate::allowed(); i++) {
+        for (int i = 0; i < times && !pendingProgram && !(phased && phaseCancelled) && CompetitionGate::allowed(); i++) {
           executeCommandList(cmd.nested_commands_then);
           programYield(1);
         }
@@ -3228,7 +3304,7 @@ public:
       case CMD_WHILE: {
         // WHILE: 條件成立就繼續;UNTIL: 條件成立就停止。每圈重新評估條件
         const bool until = cmd.direction == 'U';
-        while (!pendingProgram && CompetitionGate::allowed()) {
+        while (!pendingProgram && !(phased && phaseCancelled) && CompetitionGate::allowed()) {
           const bool cond = readBlocklyValue(cmd) != 0;
           if (cond == until) break;
           executeCommandList(cmd.nested_commands_then);
@@ -3302,7 +3378,14 @@ public:
         setRuntimeVariable(cmd.variableName,
                            getRuntimeVariable(cmd.variableName) + readBlocklyValue(cmd));
         break;
+      case CMD_MATCH_DRIVE:
+        if (phased && lease.phase() == 1) {
+          memcpy(axes, cmd.axes, sizeof(axes));
+          publishPhase();
+        }
+        break;
       case CMD_FUNC_SET:
+        if (phased && cmd.funcIdx >= 8) break;
         // 把值寫回註冊表，主機下次讀 0x66 / 0x67 就看得到（契約 §6.2 的反向）。
         // setValue() 自己會把數位功能正規化成 0/1，並擋掉越界的 idx。
         if (externalFunctions_ && cmd.funcIdx >= 0) {
@@ -3324,7 +3407,59 @@ public:
   // jsonTask 每拍（10ms）呼叫一次：整段 loop 跑完一圈，與 repeat / while 本體的執行方式一致。
   // （舊版每拍只跑一條，loop 有 N 個積木就額外多出 N×10ms，放進 repeat 前後時序不同。）
   // 指令之間由 executeCommandList 維持控制節拍，不會因一圈很長而餓死角度控制。
+  bool copyPhasePage(int16_t *out) {
+    portENTER_CRITICAL(&phaseMux);
+    const bool enabled = phasePage[4] != 0;
+    if (enabled) memcpy(out, phasePage, sizeof(phasePage));
+    portEXIT_CRITICAL(&phaseMux);
+    return enabled;
+  }
+
+  bool acceptPhaseValue(uint8_t slot, int16_t value, uint32_t received) {
+    if (!phased) return false;
+    if (slot < 8) return lease.phase() != 3;
+    if (slot != 15) return true;
+    servicePhase();
+    const auto update = lease.accept(static_cast<uint16_t>(value), received, millis());
+    if (update == KitPhaseLease::Change) {
+      cancelPhaseOutputs();
+      autoPending = lease.phase() == 1;
+      if (autoPending) runtimeVariables.clear();
+      publishPhase();
+    }
+    return true;
+  }
+
+  void cancelPhaseOutputs() {
+    requestProgramStop(true);
+    if (externalFunctions_) {
+      for (unsigned i = 0; i < 8; ++i) externalFunctions_->setValue(i, 0);
+    }
+  }
+
+  void servicePhase() {
+    if (!phased) return;
+    if (lease.expire(millis())) cancelPhaseOutputs();
+    publishPhase();
+  }
+
   void executeLoopCommands() {
+    if (phased) {
+      if (pendingProgram) return;
+      const bool autonomous = lease.phase() == 1 && autoPending;
+      if (!autonomous && lease.phase() != 3) return;
+      autoPending = false;
+      phaseCancelled = false;
+      for (const auto &proc : procedures)
+        if (proc.name == (autonomous ? "__kit_match_auto" : "__kit_match_manual"))
+          executeCommandList(proc.body);
+      if (autonomous) {
+        stopAllRuntime();
+        memset(axes,0,sizeof(axes));
+        publishPhase();
+      }
+      return;
+    }
     if (pendingProgram || loopCommands.empty()) return;
     executeCommandList(loopCommands);
   }

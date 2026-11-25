@@ -197,6 +197,7 @@ void jsonTask(void *pvParameters) {
 
 #if I2C_SLAVE_MODE
     // 同一個「安全點落地」原則：I2C callback 只解析排隊，動作在此執行。
+    cmdProcessor.servicePhase();
     i2cBridge.service();
     // I2C 周邊看門狗。必須在主迴圈呼叫：它會 Wire.end()，而那會
     // vTaskDelete(i2c_slave_task)——在 callback 內呼叫等於刪掉自己。
@@ -395,6 +396,7 @@ void setup() {
   // 程式在 delay / 迴圈裡時 jsonTask 回不到頂層；靠這個掛鉤（jsonTask 情境、約每 10ms）
   // 照常落地主機命令與跑看門狗，主機的 STOP_ALL、0x65 設定值不必等 delay 結束。
   cmdProcessor.setProgramServiceHook([]() {
+    cmdProcessor.servicePhase();
     i2cBridge.service();
     i2cBridge.checkLink();
   });

@@ -9,10 +9,10 @@
   <!-- 載入 Blockly -->
   <script src="blockly.min.js"></script>
   <!-- 載入客戶端邏輯 -->
-  <script src="appBlock.js?v=20261119-color-comment"></script>
-  <script src="appIr.js?v=20261119-rgb255"></script>
-  <script src="appJson.js?v=20261119-rgb255"></script>
-  <script src="app.js?v=20261124-i2c-outputs"></script>
+  <script src="appBlock.js?v=two-phase-1"></script>
+  <script src="appIr.js?v=two-phase-1"></script>
+  <script src="appJson.js?v=two-phase-1"></script>
+  <script src="app.js?v=two-phase-1"></script>
   <style>
     /* ========================================================================
        版面：固定高度的 app shell，整頁不捲動。
@@ -464,6 +464,9 @@
 
   <xml id="toolbox" style="display: none">
     <category name="Arduino" colour="120">
+      <block type="match_auto"></block>
+      <block type="match_manual"></block>
+      <block type="match_drive"></block>
       <block type="arduino_setup"></block>
       <block type="arduino_loop"></block>
       <!-- 數位／類比讀取在「感測器」分類裡也有一份。刻意重複：在這裡它們是與
