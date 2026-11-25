@@ -39,6 +39,7 @@ public:
 
   void clear() {
     count_ = 0;
+    written_ = 0;
     memset(types_, 0, sizeof(types_));
     memset(values_, 0, sizeof(values_));
   }
@@ -51,6 +52,7 @@ public:
     }
     types_[idx] = typeByte;
     values_[idx] = 0;
+    written_ &= ~(1u << idx);
     if (idx >= count_) {
       count_ = static_cast<uint8_t>(idx + 1);
     }
@@ -97,6 +99,7 @@ public:
     }
 
     count_ = newCount;
+    written_ = 0;
     memcpy(types_, newTypes, sizeof(types_));
     // 表變了，舊的值不再有意義（型態可能整個換掉），一律歸零。
     memset(values_, 0, sizeof(values_));
@@ -123,9 +126,12 @@ public:
       return false;
     }
     // 數位一律正規化為 0/1，避免主機送 2 之後 bitmap 與 Blockly 判讀不一致。
+    written_ |= 1u << idx;
     values_[idx] = isAnalog(idx) ? value : (value != 0 ? 1 : 0);
     return true;
   }
+
+  bool hasValue(uint8_t idx) const { return valid(idx) && (written_ & (1u << idx)); }
 
   int16_t valueAt(uint8_t idx) const {
     return valid(idx) ? values_[idx] : 0;
@@ -169,6 +175,7 @@ public:
   }
 
 private:
+  uint16_t written_ = 0;
   uint8_t count_ = 0;
   uint8_t generation_ = 0;
   uint8_t types_[kMaxFunctions] = {0};

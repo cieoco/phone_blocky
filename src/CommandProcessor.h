@@ -311,6 +311,8 @@ private:
   bool phased = false, pendingPhased = false;
   bool phaseCancelled = false, autoPending = false;
   KitPhaseLease lease;
+  int phaseZeroMask = -1; // Configured by the host before autonomous starts.
+  bool readUnsetAccessory = false;
   int16_t axes[3]{};
   portMUX_TYPE phaseMux = portMUX_INITIALIZER_UNLOCKED;
   int16_t phasePage[8]{};
@@ -320,6 +322,7 @@ private:
     phasePage[3] = static_cast<uint16_t>(phasePage[3])+1;
     phasePage[4] = phased ? 0x4d31 : 0;
     phasePage[5] = lease.word;
+    phasePage[6] = phaseZeroMask < 0 ? 0x5b00 : 0x5a00 | phaseZeroMask;
     portEXIT_CRITICAL(&phaseMux);
   }
   volatile bool pendingProgram = false;
@@ -1598,6 +1601,7 @@ public:
       cancelPhaseOutputs();
       if (wasPhased && !phased && !haveDecls) haveDecls = true; // Retire system slots on editor STOP.
       lease = {};
+      phaseZeroMask = -1;
       publishPhase();
     }
     if (incomingDownstream != downstreamMode) {
@@ -3095,6 +3099,8 @@ public:
     if (expr->kind == "constant") return expr->value;
     if (expr->kind == "variable_get") return getRuntimeVariable(expr->variableName);
     if (expr->kind == "func_get") {
+      if (phased && expr->funcIdx >= 0 && expr->funcIdx < 8 &&
+          (!externalFunctions_ || !externalFunctions_->hasValue(expr->funcIdx))) readUnsetAccessory = true;
       // 主機經 0x65 下達的值，由 I2C callback 排隊、主迴圈落地寫進註冊表。
       // 這裡只是唯讀快照，不做任何 I2C 動作。
       return externalFunctions_ ? externalFunctions_->valueAt(
@@ -3269,7 +3275,11 @@ public:
         break;
       case CMD_SERVO:
         if (cmd.servo_id >= 1 && cmd.servo_id <= NUM_SERVOS) {
-          servoDeg[cmd.servo_id] = constrain(numericArg(cmd, cmd.angle), 0, 180);
+          readUnsetAccessory = false;
+          const int target = numericArg(cmd, cmd.angle);
+          // On first handoff, an unwritten slider has no angle; an explicit 0 is valid.
+          if (phased && lease.phase() == 3 && readUnsetAccessory) break;
+          servoDeg[cmd.servo_id] = constrain(target, 0, 180);
           servoCtrl.controlServo(cmd.servo_id, servoDeg[cmd.servo_id]);
         }
         break;
@@ -3424,12 +3434,19 @@ public:
 
   bool acceptPhaseValue(uint8_t slot, int16_t value, uint32_t received) {
     if (!phased) return false;
-    if (slot < 8) return lease.phase() != 3;
-    if (slot != 15) return true;
     servicePhase();
+    if (millis() - received >= 300) return true;
+    if (slot < 8) return lease.phase() != 3;
+    if (slot == 14 && lease.phase() == 0 && (uint16_t(value) & 0xff00) == 0x5a00) {
+      phaseZeroMask = uint8_t(value);
+      publishPhase();
+    }
+    if (slot != 15 || (phaseZeroMask < 0 && (uint16_t(value) >> 14))) return true;
+    const auto previous = lease.phase();
     const auto update = lease.accept(static_cast<uint16_t>(value), received, millis());
     if (update == KitPhaseLease::Change) {
       cancelPhaseOutputs();
+      if (previous && !lease.phase()) phaseZeroMask = -1;
       autoPending = lease.phase() == 1;
       if (autoPending) runtimeVariables.clear();
       publishPhase();
@@ -3439,14 +3456,18 @@ public:
 
   void cancelPhaseOutputs() {
     requestProgramStop(true);
-    if (externalFunctions_) {
-      for (unsigned i = 0; i < 8; ++i) externalFunctions_->setValue(i, 0);
+    if (externalFunctions_ && phaseZeroMask >= 0) {
+      for (unsigned i = 0; i < 8; ++i)
+        if (phaseZeroMask & (1u << i)) externalFunctions_->setValue(i, 0);
     }
   }
 
   void servicePhase() {
     if (!phased) return;
-    if (lease.expire(millis())) cancelPhaseOutputs();
+    if (lease.expire(millis())) {
+      cancelPhaseOutputs();
+      phaseZeroMask = -1;
+    }
     publishPhase();
   }
 
