@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
 const read = p => fs.readFileSync(path.join(root, p), 'utf8');
 const html = read('data/ai.html');
-const context = vm.createContext({console, window: {addEventListener() {}}});
+const context = vm.createContext({console, TextEncoder, window: {addEventListener() {}}});
 const constants = html.slice(html.indexOf('    const ALLOWED_CMDS'), html.indexOf('    const MAX_COMMANDS'));
 const validator = html.slice(html.indexOf('    function validateProg('), html.indexOf('    //', html.indexOf('    function countList(')));
 vm.runInContext(constants + '\nconst MAX_COMMANDS = 64;\n' + validator, context);
